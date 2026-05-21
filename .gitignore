@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.uv/
+.python-version-local
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+.turbo/
+.parcel-cache/
+
+# Vite / TS build
+packages/ab-leaderboard/dist/
+packages/ab-leaderboard/.vite/
+*.tsbuildinfo
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local project memory pointer (machine-local; not for remote)
+.claude/CLAUDE.local.md
+
+# Local data
+results/
+*.sqlite
+*.db
+*.log
+
+# Private dataset overlay (LSN-006)
+packages/ab-datasets-private/
+**/private_fixtures/
+
+# Docker volumes
+infra/.data/

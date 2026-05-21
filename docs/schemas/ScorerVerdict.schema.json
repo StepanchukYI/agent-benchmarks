@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "ScorerKind": {
+      "enum": [
+        "deterministic",
+        "llm_judge",
+        "state_diff",
+        "schema",
+        "exec",
+        "privacy_check"
+      ],
+      "title": "ScorerKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      ],
+      "default": "",
+      "title": "Detail"
+    },
+    "kind": {
+      "$ref": "#/$defs/ScorerKind"
+    },
+    "pass": {
+      "title": "Pass",
+      "type": "boolean"
+    },
+    "score": {
+      "title": "Score",
+      "type": "number"
+    },
+    "scorer_name": {
+      "title": "Scorer Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scorer_name",
+    "kind",
+    "pass",
+    "score"
+  ],
+  "title": "ScorerVerdict",
+  "type": "object"
+}

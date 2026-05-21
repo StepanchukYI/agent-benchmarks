@@ -1,0 +1,197 @@
+{
+  "$defs": {
+    "Difficulty": {
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "title": "Difficulty",
+      "type": "string"
+    },
+    "Layer": {
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5"
+      ],
+      "title": "Layer",
+      "type": "string"
+    },
+    "ScorerKind": {
+      "enum": [
+        "deterministic",
+        "llm_judge",
+        "state_diff",
+        "schema",
+        "exec",
+        "privacy_check"
+      ],
+      "title": "ScorerKind",
+      "type": "string"
+    },
+    "ScorerSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "kind": {
+          "$ref": "#/$defs/ScorerKind"
+        },
+        "name": {
+          "description": "Scorer instance name; matches verdict.scorer_name.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "ScorerSpec",
+      "type": "object"
+    },
+    "TaskConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "also_run_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Also Run On",
+          "type": "array"
+        },
+        "recommended_tier": {
+          "title": "Recommended Tier",
+          "type": "string"
+        },
+        "required_tier": {
+          "description": "Minimum tier needed to attempt the task, e.g. T0..T3.",
+          "title": "Required Tier",
+          "type": "string"
+        },
+        "requires": {
+          "additionalProperties": true,
+          "title": "Requires",
+          "type": "object"
+        }
+      },
+      "required": [
+        "required_tier",
+        "recommended_tier"
+      ],
+      "title": "TaskConfig",
+      "type": "object"
+    },
+    "TrustTier": {
+      "enum": [
+        "self_reported",
+        "verified",
+        "official"
+      ],
+      "title": "TrustTier",
+      "type": "string"
+    },
+    "Visibility": {
+      "enum": [
+        "public",
+        "private"
+      ],
+      "title": "Visibility",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "config": {
+      "$ref": "#/$defs/TaskConfig"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "difficulty": {
+      "$ref": "#/$defs/Difficulty",
+      "default": "medium"
+    },
+    "fixture_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fixture Ref"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "layer": {
+      "$ref": "#/$defs/Layer"
+    },
+    "scorer_chain": {
+      "items": {
+        "$ref": "#/$defs/ScorerSpec"
+      },
+      "title": "Scorer Chain",
+      "type": "array"
+    },
+    "suite": {
+      "title": "Suite",
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "trust_tier_ceiling": {
+      "$ref": "#/$defs/TrustTier",
+      "default": "verified"
+    },
+    "visibility": {
+      "$ref": "#/$defs/Visibility",
+      "default": "public"
+    },
+    "weights": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Weights",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "layer",
+    "suite",
+    "title",
+    "description",
+    "config"
+  ],
+  "title": "Task",
+  "type": "object"
+}

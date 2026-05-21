@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ab-sdk"
+version = "0.0.1"
+description = "Result-format library and replay helpers for agent-benchmarks run dirs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "agent-benchmarks contributors" }]
+dependencies = [
+    "pydantic>=2.5",
+    "pyyaml>=6",
+    "ab-datasets",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ab_sdk"]

@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ScorerKind": {
+      "enum": [
+        "deterministic",
+        "llm_judge",
+        "state_diff",
+        "schema",
+        "exec",
+        "privacy_check"
+      ],
+      "title": "ScorerKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ScorerKind"
+    },
+    "name": {
+      "description": "Scorer instance name; matches verdict.scorer_name.",
+      "title": "Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "kind"
+  ],
+  "title": "ScorerSpec",
+  "type": "object"
+}

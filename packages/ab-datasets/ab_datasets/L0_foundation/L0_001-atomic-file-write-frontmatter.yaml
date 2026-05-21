@@ -1,0 +1,99 @@
+# L0_001 — Atomic file write with frontmatter
+#
+# Pilot task: simplest deterministic case. One tool call, fully predictable
+# outcome, no fixtures required, no memory required. Establishes that the
+# harness can dispatch a single file write and that the deterministic scorer
+# chain (schema_validator + exec + privacy_check) executes end-to-end.
+#
+# Re-scorability: every scorer in this chain consumes the trajectory alone
+# (vault_state_diff + tool_returns), so the task is eligible for the
+# `verified` trust tier per docs/trust-tiers.md.
+
+id: L0_001
+layer: L0
+suite: file-ops
+title: "Atomic file write with frontmatter"
+description: |
+  Create a single Markdown file at `notes/hello.md` with a YAML frontmatter
+  block followed by exactly one paragraph of body text.
+
+  The frontmatter MUST contain the following keys with valid values:
+    - `title` (non-empty string)
+    - `date` (ISO 8601 date, e.g. `2026-05-21`)
+    - `tags` (YAML sequence of at least one string)
+
+  The body MUST contain a non-empty paragraph after the closing `---` of the
+  frontmatter block. The agent has access to a single `write_file` tool. The
+  task succeeds when the file is created in one tool call, the frontmatter
+  parses as valid YAML, and the privacy scan produces no hits.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: []
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: frontmatter_schema_validator
+    kind: schema
+    config:
+      target_path: "notes/hello.md"
+      required_frontmatter_fields:
+        - title
+        - date
+        - tags
+      field_patterns:
+        title: "^.+$"
+        date: "^\\d{4}-\\d{2}-\\d{2}$"
+      tags_min_length: 1
+
+  - name: file_exec_check
+    kind: exec
+    config:
+      assertions:
+        - kind: file_exists
+          path: "notes/hello.md"
+        - kind: file_nonempty
+          path: "notes/hello.md"
+        - kind: frontmatter_parses_as_yaml
+          path: "notes/hello.md"
+        - kind: body_paragraph_nonempty
+          path: "notes/hello.md"
+        - kind: tool_call_count
+          tool: "write_file"
+          expected: 1
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "File `notes/hello.md` exists after the run."
+  - "Frontmatter block contains keys `title`, `date`, `tags` with valid values."
+  - "Body contains at least one non-empty paragraph after the closing `---`."
+  - "Exactly one `write_file` tool call was made (single atomic write)."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: official
+
+tags:
+  - L0
+  - file-ops
+  - frontmatter
+  - deterministic
+  - smoke-test

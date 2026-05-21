@@ -1,0 +1,42 @@
+patterns:
+  - id: email-real
+    description: "Real email address outside @example.com / @noreply.github.com"
+    regex: "(?i)\\b[a-z0-9._%+-]+@(?!example\\.com\\b)(?!noreply\\.github\\.com\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
+    severity: medium
+
+  - id: maintainer-home-path
+    description: "Maintainer home directory path leaked into tree"
+    regex: "/Users/evgeniystepanchuk"
+    severity: high
+
+  - id: aws-access-key-id
+    description: "AWS access key id"
+    regex: "AKIA[0-9A-Z]{16}"
+    severity: high
+
+  - id: slack-token
+    description: "Slack bearer token"
+    regex: "xox[abposr]-[A-Za-z0-9-]+"
+    severity: high
+
+  - id: github-token
+    description: "GitHub personal access token"
+    regex: "ghp_[A-Za-z0-9]{36}"
+    severity: high
+
+  - id: openai-api-key
+    description: "OpenAI-style secret key"
+    regex: "sk-[A-Za-z0-9]{32,}"
+    severity: high
+
+  - id: private-key-header
+    description: "PEM private key header"
+    regex: "-----BEGIN [A-Z ]+PRIVATE KEY-----"
+    severity: high
+
+  - id: vault-hub-marker
+    description: "vault hub leakage marker outside .claude/"
+    regex: "vault_hub:\\s"
+    severity: medium
+    exclude_paths:
+      - ".claude/"

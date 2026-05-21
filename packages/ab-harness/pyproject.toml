@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ab-harness"
+version = "0.0.1"
+description = "Inspect-AI-based harness: runners, scorers, sandbox, trajectory protocol."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "agent-benchmarks contributors" }]
+dependencies = [
+    "inspect-ai>=0.3.50",
+    "pydantic>=2.5",
+    "httpx>=0.27",
+    "docker>=7.0",
+    "ab-datasets",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ab_harness"]

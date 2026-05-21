@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "Visibility": {
+      "enum": [
+        "public",
+        "private"
+      ],
+      "title": "Visibility",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Fixture category: vault_snapshot, repo, mcp_mock, config_tier, etc.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    },
+    "sha256": {
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size": {
+      "minimum": 0,
+      "title": "Size",
+      "type": "integer"
+    },
+    "visibility": {
+      "$ref": "#/$defs/Visibility",
+      "default": "public"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "sha256",
+    "path",
+    "size"
+  ],
+  "title": "Fixture",
+  "type": "object"
+}

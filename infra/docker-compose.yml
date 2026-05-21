@@ -1,0 +1,48 @@
+name: ab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ab
+      POSTGRES_PASSWORD: ab
+      POSTGRES_DB: ab
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ab -d ab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ab-server:
+    build:
+      context: ..
+      dockerfile: infra/ab-server.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://ab:ab@postgres:5432/ab
+    ports:
+      - "8000:8000"
+
+  ab-leaderboard:
+    build:
+      context: ..
+      dockerfile: infra/ab-leaderboard.Dockerfile
+    depends_on:
+      - ab-server
+    environment:
+      AB_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    name: ab

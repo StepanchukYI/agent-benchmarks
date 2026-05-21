@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "ScorerKind": {
+      "enum": [
+        "deterministic",
+        "llm_judge",
+        "state_diff",
+        "schema",
+        "exec",
+        "privacy_check"
+      ],
+      "title": "ScorerKind",
+      "type": "string"
+    },
+    "ScorerVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          ],
+          "default": "",
+          "title": "Detail"
+        },
+        "kind": {
+          "$ref": "#/$defs/ScorerKind"
+        },
+        "pass": {
+          "title": "Pass",
+          "type": "boolean"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "scorer_name": {
+          "title": "Scorer Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scorer_name",
+        "kind",
+        "pass",
+        "score"
+      ],
+      "title": "ScorerVerdict",
+      "type": "object"
+    },
+    "Tier": {
+      "enum": [
+        "T0",
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "TrustTier": {
+      "enum": [
+        "self_reported",
+        "verified",
+        "official"
+      ],
+      "title": "TrustTier",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "registered_repo_id": {
+      "title": "Registered Repo Id",
+      "type": "string"
+    },
+    "scorer_verdicts": {
+      "items": {
+        "$ref": "#/$defs/ScorerVerdict"
+      },
+      "title": "Scorer Verdicts",
+      "type": "array"
+    },
+    "source_commit_sha": {
+      "title": "Source Commit Sha",
+      "type": "string"
+    },
+    "source_repo": {
+      "title": "Source Repo",
+      "type": "string"
+    },
+    "submitted_at": {
+      "format": "date-time",
+      "title": "Submitted At",
+      "type": "string"
+    },
+    "tier": {
+      "$ref": "#/$defs/Tier"
+    },
+    "trajectory_path": {
+      "title": "Trajectory Path",
+      "type": "string"
+    },
+    "trust_tier": {
+      "$ref": "#/$defs/TrustTier"
+    }
+  },
+  "required": [
+    "id",
+    "source_repo",
+    "source_commit_sha",
+    "registered_repo_id",
+    "trajectory_path",
+    "trust_tier",
+    "submitted_at",
+    "model",
+    "tier",
+    "dataset_version"
+  ],
+  "title": "Submission",
+  "type": "object"
+}

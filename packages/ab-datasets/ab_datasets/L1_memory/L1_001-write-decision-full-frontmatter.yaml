@@ -1,0 +1,140 @@
+# L1_001 — Write decision with full frontmatter schema
+#
+# Pilot task for the L1 memory layer. Anchors the most common write path:
+# appending a new ADR-style entry to decisions.md with the canonical field
+# set from CLAUDE.md vault_rules (importance, valid_until, structured
+# Context/Decision/Rationale/Consequences blocks).
+#
+# Re-scorability: schema_validator + state_diff + privacy_check all consume
+# trajectory.jsonl alone (vault_state_diff captures the new entry). The
+# llm_judge ensemble is audited but not re-executed by the server, which
+# keeps the task within the `verified` ceiling for L1.
+
+id: L1_001
+layer: L1
+suite: memory-write
+title: "Write decision with full frontmatter schema"
+description: |
+  The agent receives the prompt:
+
+    "Зафиксируй решение: для нового сервиса мы выбираем PostgreSQL вместо
+    MongoDB. Документ-ориентированная модель не оправдана — у нас
+    реляционные данные и сильные связи. Записывай как ADR."
+
+  The agent MUST append exactly one new entry to
+  `Projects/<active-project>/decisions.md` using the canonical decision
+  schema from CLAUDE.md vault_rules:
+
+      ### <YYYY-MM-DD> — <Title>
+      **importance**: <1-5>
+      **Context**: <one paragraph>
+      **Decision**: <one paragraph>
+      **Rationale**: <one paragraph>
+      **Consequences**: <one paragraph>
+      **Valid from**: <YYYY-MM-DD>
+      **Valid until**: ongoing | <YYYY-MM-DD> | superseded by: <link>
+
+  Required: importance is an integer in [1,5]; valid_until parses as
+  `ongoing`, an ISO date, or `superseded by: <wikilink>`. The entry MUST be
+  appended (no prior entries reordered or deleted). The Title field is the
+  one-line summary derived from the user prompt. Heading date matches
+  `Valid from`.
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_decisions_md: true
+      has_hub_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: decision_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      mode: append_only_last_entry
+      heading_pattern: "^### \\d{4}-\\d{2}-\\d{2} — .+$"
+      required_fields:
+        - importance
+        - Context
+        - Decision
+        - Rationale
+        - Consequences
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+        "Valid from": "^\\d{4}-\\d{2}-\\d{2}$"
+        "Valid until": "^(ongoing|\\d{4}-\\d{2}-\\d{2}|superseded by:.+)$"
+
+  - name: append_only_state_diff
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      assertions:
+        - kind: only_appended
+        - kind: prior_entries_unchanged
+        - kind: new_entry_count
+          expected: 1
+
+  - name: hallucination_check
+    kind: llm_judge
+    config:
+      ensemble: 3
+      judges:
+        - opus-4
+        - gpt-5
+        - gemini-2.5-pro
+      criteria:
+        - "Decision content faithfully reflects the user's stated choice
+           (PostgreSQL over MongoDB) and rationale (relational data,
+           strong relations)."
+        - "No invented facts, no fabricated references, no fabricated
+           project names beyond the active project."
+      majority_threshold: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Exactly one new entry is appended to decisions.md; no prior entries
+     were reordered or deleted."
+  - "The new entry contains every required field: importance, Context,
+     Decision, Rationale, Consequences, Valid from, Valid until."
+  - "importance is an integer in [1,5]."
+  - "Valid until parses as `ongoing`, an ISO date, or `superseded by:`."
+  - "Decision content faithfully matches the user prompt (PostgreSQL choice
+     with relational-data rationale) per llm_judge majority."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.30
+  memory_specific: 0.50
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - decisions
+  - schema
+  - append-only
+  - russian-prompt

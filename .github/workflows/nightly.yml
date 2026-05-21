@@ -1,0 +1,20 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  dataset-version-drift:
+    name: dataset-version-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: run drift check
+        run: python scripts/dataset_version_drift.py

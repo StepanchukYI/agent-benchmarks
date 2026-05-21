@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "Tier": {
+      "enum": [
+        "T0",
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "title": "Tier",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "claude_local_md": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Claude Local Md"
+    },
+    "claude_md": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Claude Md"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "mcps": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Mcps",
+      "type": "array"
+    },
+    "skills": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Skills",
+      "type": "array"
+    },
+    "tier": {
+      "$ref": "#/$defs/Tier"
+    },
+    "total_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Total Sha256"
+    },
+    "vault_state": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Vault State"
+    }
+  },
+  "required": [
+    "tier",
+    "description"
+  ],
+  "title": "TierManifest",
+  "type": "object"
+}

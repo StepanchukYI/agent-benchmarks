@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: python (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      - name: ruff
+        run: uv run ruff check .
+
+      - name: pytest
+        run: uv run pytest -q
+
+      - name: mypy (advisory)
+        run: uv run mypy packages || true
+
+  node:
+    name: node
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/ab-leaderboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: packages/ab-leaderboard/pnpm-lock.yaml
+
+      - name: install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: typecheck
+        run: pnpm typecheck
+
+      - name: lint
+        run: pnpm lint
+
+      - name: test
+        run: pnpm test --run
+
+  privacy-scan:
+    name: privacy-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install pyyaml
+        run: pip install pyyaml
+
+      - name: run privacy scan
+        run: python scripts/privacy_scan.py
+
+  schema-diff:
+    name: schema-diff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      - name: regenerate schemas
+        run: uv run python -m ab_datasets.schemas.export --out docs/schemas || true
+
+      - name: diff schemas
+        run: git diff --exit-code docs/schemas

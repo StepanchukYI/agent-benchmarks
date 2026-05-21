@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "also_run_on": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Also Run On",
+      "type": "array"
+    },
+    "recommended_tier": {
+      "title": "Recommended Tier",
+      "type": "string"
+    },
+    "required_tier": {
+      "description": "Minimum tier needed to attempt the task, e.g. T0..T3.",
+      "title": "Required Tier",
+      "type": "string"
+    },
+    "requires": {
+      "additionalProperties": true,
+      "title": "Requires",
+      "type": "object"
+    }
+  },
+  "required": [
+    "required_tier",
+    "recommended_tier"
+  ],
+  "title": "TaskConfig",
+  "type": "object"
+}

@@ -1,0 +1,111 @@
+# L2_001 — Skill router picks memory-write for "запиши решение"
+#
+# Pilot task for the L2 skill-triggering layer. Probes whether the skill
+# router correctly dispatches a canonical Russian-language trigger phrase to
+# the `memory:memory-write` skill (not to `memory:memory-session`, not to
+# `memory:memory-ops`, not to "no skill at all").
+#
+# This is a routing-precision task, not a content task: success is measured
+# by which skill is invoked first, not by what is written. The vault MAY be
+# mutated as a side effect; the scorer chain ignores body content and only
+# inspects the trajectory's skill_invocation events.
+#
+# Re-scorability: skill_invocation_check + tool_call_count + privacy_check
+# are all deterministic over trajectory.jsonl alone. `verified` ceiling.
+
+id: L2_001
+layer: L2
+suite: skill-routing
+title: 'Skill router picks memory-write for "запиши решение"'
+description: |
+  The agent receives a bare, ambiguous Russian-language user message:
+
+    "Запиши решение — мы переходим на pnpm вместо npm."
+
+  Per CLAUDE.md vault_rules, this phrase is a documented trigger for the
+  `memory:memory-write` skill (decisions scenario). The agent's first
+  skill invocation MUST be `memory:memory-write`. Invocations of unrelated
+  skills (e.g. `memory:memory-session`, `memory:memory-ops`,
+  `productivity:start`, `productivity:update`) before `memory-write`
+  count as a failure.
+
+  This task does NOT score the body of the decision. A side-effect write
+  is permitted but not required for routing correctness.
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+      - "memory:memory-session"
+      - "memory:memory-ops"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_decisions_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: skill_invocation_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: first_skill_invocation
+          expected: "memory:memory-write"
+        - kind: no_skill_invocation_before
+          target: "memory:memory-write"
+          forbidden:
+            - "memory:memory-session"
+            - "memory:memory-ops"
+            - "memory:memory-bootstrap"
+            - "productivity:start"
+            - "productivity:update"
+
+  - name: exec_skill_dispatched
+    kind: exec
+    config:
+      assertions:
+        - kind: skill_invocation_count
+          skill: "memory:memory-write"
+          min: 1
+        - kind: trajectory_event_present
+          event_type: "skill_invocation"
+        - kind: max_turn_count
+          max: 5
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "The first skill_invocation event in the trajectory targets
+     `memory:memory-write`."
+  - "No competing memory or productivity skill is invoked before
+     `memory:memory-write`."
+  - "Total turn count is bounded (≤5) — router does not loop."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.30
+  tool_skill: 0.55
+  memory_specific: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L2
+  - skill-routing
+  - memory-write
+  - russian-prompt
+  - precision

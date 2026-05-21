@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ab-cli"
+version = "0.0.1"
+description = "Typer-based CLI for agent-benchmarks: register, run, publish, replay, submit, evolve."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "agent-benchmarks contributors" }]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "ab-sdk",
+    "ab-datasets",
+    "ab-harness",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+ab = "ab_cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ab_cli"]
