@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ab_harness.runners.base import BaseRunner
@@ -20,7 +21,7 @@ class GeminiCLIRunner(BaseRunner):
     def prepare(self, tier_manifest: Any) -> None:
         raise NotImplementedError
 
-    def run_task(self, task: Any, trajectory_writer: TrajectoryWriter) -> Any:
+    def run_task(self, task: Any, trajectory_writer: TrajectoryWriter, workdir: Path) -> Any:
         raise NotImplementedError
 
     def cleanup(self) -> None:

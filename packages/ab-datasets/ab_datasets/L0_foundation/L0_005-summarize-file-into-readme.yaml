@@ -1,0 +1,73 @@
+id: L0_005
+layer: L0
+suite: extract
+title: "Summarize a source file into a 3-line README"
+description: |
+  The fixture provides `source.py` containing three public top-level
+  functions — `alpha`, `beta`, `gamma` — and one private helper `_private`
+  (whose name starts with `_`).
+
+  The agent must create `README.md` containing exactly three bullet-point
+  lines, one per public function, listing the function names. The private
+  helper `_private` MUST NOT appear in the README.
+
+  Each line must start with `- ` (dash + space) followed by the function
+  name. Lines may be in any order.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_005/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: readme_contents_schema
+    kind: schema
+    config:
+      target_path: "README.md"
+      assertions:
+        - kind: line_count_min
+          value: 3
+        - kind: contains_substring
+          value: "- alpha"
+        - kind: contains_substring
+          value: "- beta"
+        - kind: contains_substring
+          value: "- gamma"
+        - kind: does_not_contain_substring
+          value: "_private"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "`README.md` exists at the sandbox working directory after the run."
+  - "README contains exactly three bullet lines (`- alpha`, `- beta`, `- gamma`)."
+  - "The private helper `_private` does not appear anywhere in README.md."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.65
+  tool_skill: 0.15
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.05
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - extract
+  - readme
+  - deterministic
+  - smoke-test

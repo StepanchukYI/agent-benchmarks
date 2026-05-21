@@ -45,6 +45,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["B011"]
+"packages/ab-cli/ab_cli/commands/**" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "tests-e2e"]

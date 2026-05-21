@@ -1,0 +1,70 @@
+id: L0_002
+layer: L0
+suite: file-ops
+title: "Rename a file and edit its docstring"
+description: |
+  The fixture provides a Python module at `old.py` whose top-level docstring
+  reads `TODO: rename me.`
+
+  The agent must:
+    1. Rename `old.py` to `new.py` (the original path must no longer exist).
+    2. Replace the module docstring with the exact string `Renamed module.`
+
+  No other lines in the file may change. The `example` function must remain
+  callable and unchanged.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_002/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      target_path: "new.py"
+      expected_bytes: "\"\"\"Renamed module.\"\"\"\n\n\ndef example():\n    return \"widget\"\n"
+      mode: "exact_bytes"
+
+  - name: old_path_gone
+    kind: deterministic
+    config:
+      assertions:
+        - kind: path_absent
+          path: "old.py"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "File `new.py` exists with the updated docstring `Renamed module.`"
+  - "File `old.py` no longer exists in the sandbox working directory."
+  - "The `example` function body is unchanged and still returns `widget`."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - rename
+  - deterministic
+  - smoke-test

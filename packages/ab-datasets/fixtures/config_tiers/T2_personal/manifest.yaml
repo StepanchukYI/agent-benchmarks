@@ -1,0 +1,15 @@
+tier: T2
+description: "Personal - realistic operator config with memory skills and vault seed."
+claude_md:
+  path: CLAUDE.md
+  sha256: de4729f3c14a93327c5d413f9e9dc02465244022268ad6d2e639e905c3930e3f
+claude_local_md: null
+skills:
+  - id: memory:memory-session
+  - id: memory:memory-write
+mcps:
+  - id: obsidian-memory
+    config: { mock: true }
+vault_state:
+  snapshot: vault_snapshots/T2_seed_small.tar.gz
+  sha256: d6adc32a4e29826b24fb82482c4e885e7cefcac6ed7d592d834d370becd22f8e

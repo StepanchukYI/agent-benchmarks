@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -27,7 +28,7 @@ class MiniMaxAPIRunner(BaseRunner):
     def prepare(self, tier_manifest: Any) -> None:
         raise NotImplementedError
 
-    def run_task(self, task: Any, trajectory_writer: TrajectoryWriter) -> Any:
+    def run_task(self, task: Any, trajectory_writer: TrajectoryWriter, workdir: Path) -> Any:
         raise NotImplementedError
 
     def cleanup(self) -> None:

@@ -1,0 +1,136 @@
+# L3a_001 — session-start: resolve vault_hub from .claude/CLAUDE.local.md
+#
+# Pilot task for L3a (Obsidian system). Verifies the canonical session-start
+# lifecycle rule documented in CLAUDE.md vault_rules:
+#
+#   "If local `.claude/CLAUDE.md` contains `vault_hub: <path>` →
+#    load that vault file before starting work. Silent, no confirmation."
+#
+# The agent receives a fresh session with no prior turns, and a fixture
+# repo that contains a `.claude/CLAUDE.local.md` file referencing a vault
+# hub at `Projects/agent-benchmarks/hub.md`. The agent MUST:
+#   (a) read `.claude/CLAUDE.local.md`,
+#   (b) extract the `vault_hub:` path,
+#   (c) load that file from the vault via `obsidian-memory`,
+# all before issuing any other tool calls or asking the user for
+# confirmation.
+#
+# Re-scorability: trajectory captures every file read and MCP call.
+# Deterministic + state_diff + privacy_check. `verified` ceiling.
+
+id: L3a_001
+layer: L3
+suite: obsidian-lifecycle
+title: "session-start: resolve vault_hub from .claude/CLAUDE.local.md"
+description: |
+  The agent receives a fresh session-start prompt:
+
+    "Привет, начинаем работу."
+
+  The repo fixture contains `.claude/CLAUDE.local.md` whose body includes
+  the line:
+
+      vault_hub: Projects/agent-benchmarks/hub.md
+
+  Per vault_rules, the agent MUST silently (no clarifying questions to the
+  user) resolve and load that hub file before responding substantively.
+  Specifically:
+
+    1. The first read in the trajectory targets `.claude/CLAUDE.local.md`
+       (or `.claude/CLAUDE.md`).
+    2. The agent extracts the `vault_hub:` path.
+    3. The agent then invokes `obsidian-memory` with the extracted path.
+    4. No `request_clarification` or equivalent user-facing question is
+       emitted before the hub is loaded.
+
+  Wrong behaviour to surface as failure: agent skips the read; agent asks
+  the user to paste the hub; agent invents a path; agent loads a
+  different file (e.g. `MEMORY.md` or `hub.md` at root).
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T1
+  requires:
+    skills:
+      - "memory:memory-session"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_hub_md: true
+      hub_path: "Projects/agent-benchmarks/hub.md"
+      claude_local_md_present: true
+      claude_local_md_contains_vault_hub: true
+
+scorer_chain:
+  - name: lifecycle_order_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: first_file_read
+          expected_oneof:
+            - ".claude/CLAUDE.local.md"
+            - ".claude/CLAUDE.md"
+        - kind: mcp_call_with_arg
+          mcp: "obsidian-memory"
+          arg_name: "filename"
+          expected_value: "Projects/agent-benchmarks/hub.md"
+        - kind: ordering
+          before: "read .claude/CLAUDE.local.md"
+          after: "mcp obsidian-memory(filename=Projects/agent-benchmarks/hub.md)"
+        - kind: no_event_of_type
+          event_type: "user_clarification_request"
+
+  - name: vault_state_diff
+    kind: state_diff
+    config:
+      target_paths:
+        - "Projects/agent-benchmarks/"
+      assertions:
+        - kind: no_writes
+        - kind: read_only_session
+
+  - name: exec_silence_check
+    kind: exec
+    config:
+      assertions:
+        - kind: assistant_text_before_hub_load_max_chars
+          max: 0
+        - kind: max_turn_count
+          max: 6
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "First file read is `.claude/CLAUDE.local.md` (or `.claude/CLAUDE.md`)."
+  - "Agent invokes `obsidian-memory` with filename = the exact
+     `vault_hub:` path from CLAUDE.local.md."
+  - "Hub load happens before any user-facing clarifying message."
+  - "No writes are issued to the vault during this lifecycle step."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.30
+  tool_skill: 0.30
+  memory_specific: 0.30
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L3
+  - L3a
+  - obsidian
+  - lifecycle
+  - session-start
+  - vault-hub
+  - russian-prompt

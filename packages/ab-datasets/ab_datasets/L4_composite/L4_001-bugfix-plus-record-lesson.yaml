@@ -1,0 +1,197 @@
+# L4_001 — Bug fix in personal repo + record lesson with proper schema
+#
+# Pilot trajectory for the L4 composite layer. SWE-bench-personal style:
+# the agent must (1) reproduce a failing test, (2) localize and patch the
+# bug, (3) verify the fix by re-running the test, and (4) record the
+# discovery as a lesson in the vault with the canonical lessons.md schema
+# (importance, sub_type=bug, valid_until, How-to-apply block). Verbatim
+# error text from step 1 MUST appear in the lesson per CLAUDE.md vault_rules.
+#
+# This is a multi-skill, multi-tool, multi-turn task. Required tier is T3
+# because the agent needs the full skill library (memory:memory-write,
+# productivity:task-management, a code-aware skill) plus a real repo
+# fixture and an `obsidian-memory` vault.
+#
+# Re-scorability: exec scorer captures pytest stdout/return code into
+# trajectory `tool_returns`; state_diff captures vault and repo diffs.
+# Every deterministic step is re-runnable from trajectory.jsonl alone,
+# preserving the `verified` ceiling for L4.
+
+id: L4_001
+layer: L4
+suite: bugfix-then-document
+title: "Bug fix in personal repo + record lesson with proper schema"
+description: |
+  The agent receives the prompt:
+
+    "У меня падает тест `tests/test_calc.py::test_divide_by_zero` в репо
+    `repos/calc_v1`. Почини и зафиксируй урок."
+
+  The repo fixture `repos/calc_v1.tar.gz` contains a small Python package
+  with a `divide(a, b)` function and a failing test that expects
+  `divide(1, 0)` to raise `ZeroDivisionError` with a specific message.
+  The current implementation silently returns `inf`.
+
+  Required trajectory:
+
+    1. Run `pytest tests/test_calc.py::test_divide_by_zero -q` to capture
+       the original failure (red).
+    2. Localize the bug in `calc/__init__.py` and apply a minimal patch
+       that makes `divide(1, 0)` raise `ZeroDivisionError("division by
+       zero")`.
+    3. Re-run the same pytest invocation and confirm it passes (green).
+    4. Append exactly one entry to
+       `Projects/agent-benchmarks/lessons.md` using the canonical schema:
+
+         ### <YYYY-MM-DD> — <Title>
+         **importance**: <1-5>
+         **sub_type**: bug
+         **Context**: ...
+         **Lesson**: ...
+         **How to apply**: ...
+         **Valid from**: <YYYY-MM-DD>
+         **Valid until**: ongoing
+
+       The lesson MUST include the verbatim error text from step 1 inside
+       the **Context** block (vault_rules requirement for `sub_type: bug`).
+
+fixture_ref: "repos/calc_v1.tar.gz"
+
+config:
+  required_tier: T3
+  recommended_tier: T3
+  also_run_on: []
+  requires:
+    skills:
+      - "memory:memory-write"
+      - "memory:memory-session"
+      - "productivity:task-management"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_lessons_md: true
+      active_project: "agent-benchmarks"
+    repo_state:
+      path: "repos/calc_v1"
+      failing_test: "tests/test_calc.py::test_divide_by_zero"
+      buggy_file: "calc/__init__.py"
+
+scorer_chain:
+  - name: red_green_exec
+    kind: exec
+    config:
+      assertions:
+        - kind: pytest_failure_recorded
+          test_id: "tests/test_calc.py::test_divide_by_zero"
+          must_appear_before_patch: true
+        - kind: pytest_success_recorded
+          test_id: "tests/test_calc.py::test_divide_by_zero"
+          must_appear_after_patch: true
+        - kind: ordering
+          before: "pytest red"
+          middle: "patch calc/__init__.py"
+          after: "pytest green"
+
+  - name: minimal_patch_state_diff
+    kind: state_diff
+    config:
+      target_paths:
+        - "repos/calc_v1/calc/__init__.py"
+      assertions:
+        - kind: file_modified
+        - kind: max_added_lines
+          max: 5
+        - kind: max_deleted_lines
+          max: 3
+        - kind: no_unrelated_file_changes
+          allowed:
+            - "repos/calc_v1/calc/__init__.py"
+            - "Projects/agent-benchmarks/lessons.md"
+
+  - name: lesson_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      mode: append_only_last_entry
+      heading_pattern: "^### \\d{4}-\\d{2}-\\d{2} — .+$"
+      required_fields:
+        - importance
+        - sub_type
+        - Context
+        - Lesson
+        - "How to apply"
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+        sub_type: "^bug$"
+        "Valid from": "^\\d{4}-\\d{2}-\\d{2}$"
+        "Valid until": "^(ongoing|\\d{4}-\\d{2}-\\d{2}|superseded by:.+)$"
+      verbatim_required_in_field:
+        Context: "captured_pytest_failure_text"
+
+  - name: lesson_append_only
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      assertions:
+        - kind: only_appended
+        - kind: new_entry_count
+          expected: 1
+        - kind: prior_entries_unchanged
+
+  - name: hallucination_check
+    kind: llm_judge
+    config:
+      ensemble: 3
+      judges:
+        - opus-4
+        - gpt-5
+        - gemini-2.5-pro
+      criteria:
+        - "The Lesson body accurately describes the root cause
+           (division-by-zero not raised) and the fix (explicit raise)."
+        - "How to apply is a generalizable instruction, not a copy of
+           the patch."
+        - "No invented files, imports, or APIs beyond what appears in
+           the repo fixture."
+      majority_threshold: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Trajectory shows a red pytest run before the patch and a green
+     pytest run after the patch on the same test id."
+  - "Patch in `calc/__init__.py` is minimal (≤5 added, ≤3 deleted) and
+     does not touch unrelated files."
+  - "Exactly one new entry is appended to lessons.md with the canonical
+     schema and `sub_type: bug`."
+  - "The Context block in the new lesson contains the verbatim error
+     text captured from the red pytest run."
+  - "llm_judge majority confirms the Lesson and How-to-apply blocks are
+     faithful to the observed bug."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.35
+  memory_specific: 0.30
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.10
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L4
+  - composite
+  - bugfix
+  - pytest
+  - lessons
+  - schema
+  - multi-tool
+  - russian-prompt

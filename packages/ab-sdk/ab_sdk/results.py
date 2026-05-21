@@ -4,16 +4,26 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from statistics import fmean
 from typing import Any
 
 from ab_datasets.schemas import ScorerVerdict, Trajectory
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .manifest import read_metadata, write_metadata
 
 TRAJECTORY_FILE = "trajectory.jsonl"
 SCORES_FILE = "scores.json"
 METADATA_FILE = "metadata.yaml"
+
+_REQUIRED_METADATA_KEYS = (
+    "model",
+    "tier",
+    "dataset_version",
+    "started_at",
+    "finished_at",
+    "harness",
+)
 
 
 class RunDir(BaseModel):
@@ -26,6 +36,19 @@ class RunDir(BaseModel):
     task_id: str
     model: str
     tier: str
+
+
+class ScoresFile(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True, protected_namespaces=())
+
+    run_id: str
+    task_id: str
+    model: str
+    tier: str
+    dataset_version: str
+    verdicts: list[ScorerVerdict] = Field(default_factory=list)
+    total_score: float = 0.0
+    pass_: bool = Field(default=False, alias="pass")
 
 
 def _trajectory_to_events(trajectory: Trajectory) -> list[dict[str, Any]]:
@@ -64,10 +87,31 @@ def _trajectory_to_events(trajectory: Trajectory) -> list[dict[str, Any]]:
     return events
 
 
+def _build_scores_payload(
+    trajectory: Trajectory,
+    verdicts: list[ScorerVerdict],
+) -> dict[str, Any]:
+    scores = [v.score for v in verdicts]
+    total_score = float(fmean(scores)) if scores else 0.0
+    all_pass = all(v.pass_ for v in verdicts) if verdicts else False
+    tier_val = trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier
+    return {
+        "run_id": trajectory.run_id,
+        "task_id": trajectory.task_id,
+        "model": trajectory.model,
+        "tier": tier_val,
+        "dataset_version": trajectory.dataset_version,
+        "verdicts": [v.model_dump(mode="json", by_alias=True) for v in verdicts],
+        "total_score": total_score,
+        "pass": all_pass,
+    }
+
+
 def write_run_dir(
     run_dir: Path,
     trajectory: Trajectory,
     metadata: dict[str, Any],
+    scorer_verdicts: list[ScorerVerdict] | None = None,
 ) -> None:
     """Write trajectory.jsonl, scores.json, and metadata.yaml into run_dir."""
     run_dir = Path(run_dir)
@@ -79,32 +123,38 @@ def write_run_dir(
             fh.write(json.dumps(ev, ensure_ascii=False))
             fh.write("\n")
 
-    scores_payload: dict[str, Any] = {
-        "run_id": trajectory.run_id,
-        "task_id": trajectory.task_id,
-        "model": trajectory.model,
-        "tier": trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier,
-        "status": trajectory.status.value
-        if trajectory.status is not None and hasattr(trajectory.status, "value")
-        else trajectory.status,
-        "totals": trajectory.totals.model_dump(mode="json") if trajectory.totals else None,
-        "scorer_verdicts": [
-            v.model_dump(mode="json", by_alias=True) for v in trajectory.scorer_verdicts
-        ],
-    }
+    effective_verdicts = (
+        scorer_verdicts if scorer_verdicts is not None else list(trajectory.scorer_verdicts)
+    )
+    payload = _build_scores_payload(trajectory, effective_verdicts)
     with (run_dir / SCORES_FILE).open("w", encoding="utf-8") as fh:
-        json.dump(scores_payload, fh, ensure_ascii=False, indent=2)
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
 
+    tier_val = trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier
+    status_val = (
+        trajectory.status.value
+        if trajectory.status is not None and hasattr(trajectory.status, "value")
+        else trajectory.status
+    )
     enriched = dict(metadata)
     enriched.setdefault("run_id", trajectory.run_id)
     enriched.setdefault("task_id", trajectory.task_id)
     enriched.setdefault("model", trajectory.model)
-    enriched.setdefault(
-        "tier",
-        trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier,
-    )
+    enriched.setdefault("tier", tier_val)
+    enriched.setdefault("tier_hash", trajectory.tier_hash)
     enriched.setdefault("dataset_version", trajectory.dataset_version)
+    enriched.setdefault("harness", trajectory.harness)
+    enriched.setdefault(
+        "started_at",
+        trajectory.started_at.isoformat() if trajectory.started_at else None,
+    )
+    enriched.setdefault(
+        "finished_at",
+        trajectory.finished_at.isoformat() if trajectory.finished_at else None,
+    )
+    enriched.setdefault("status", status_val)
+    enriched.setdefault("prompt_template_hash", trajectory.prompt_template_hash)
     write_metadata(run_dir / METADATA_FILE, enriched)
 
 
@@ -138,6 +188,14 @@ def read_trajectory(run_dir: Path) -> Trajectory:
         events = _iter_events_manual(path)
 
     return _reconstruct_trajectory(path, events)
+
+
+def read_scores(run_dir: Path) -> ScoresFile:
+    """Read scores.json and validate against ScoresFile schema."""
+    run_dir = Path(run_dir)
+    with (run_dir / SCORES_FILE).open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return ScoresFile.model_validate(data)
 
 
 def _iter_events_manual(path: Path) -> list[dict[str, Any]]:
@@ -192,7 +250,7 @@ def _reconstruct_trajectory(path: Path, events: list[dict[str, Any]]) -> Traject
     return Trajectory.model_validate(payload)
 
 
-def validate(run_dir: Path) -> list[str]:
+def validate(run_dir: Path, *, require_privacy_pass: bool = False) -> list[str]:
     """Return a list of issues with the run dir; empty list means valid."""
     run_dir = Path(run_dir)
     issues: list[str] = []
@@ -203,45 +261,100 @@ def validate(run_dir: Path) -> list[str]:
 
     traj_path = run_dir / TRAJECTORY_FILE
     if traj_path.exists():
-        run_start_count = 0
-        run_end_count = 0
-        last_turn_idx = -1
-        with traj_path.open("r", encoding="utf-8") as fh:
-            for lineno, raw in enumerate(fh, start=1):
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    issues.append(f"trajectory.jsonl line {lineno}: invalid JSON ({exc.msg})")
-                    continue
-                kind = ev.get("event")
-                if kind == "run_start":
-                    run_start_count += 1
-                elif kind == "run_end":
-                    run_end_count += 1
-                elif kind == "turn":
-                    idx = ev.get("idx")
-                    if not isinstance(idx, int) or idx != last_turn_idx + 1:
-                        issues.append(
-                            f"trajectory.jsonl line {lineno}: turn idx {idx!r} not monotonic"
-                        )
-                    if isinstance(idx, int):
-                        last_turn_idx = idx
-        if run_start_count != 1:
-            issues.append(f"trajectory.jsonl must have exactly one run_start (got {run_start_count})")
-        if run_end_count != 1:
-            issues.append(f"trajectory.jsonl must have exactly one run_end (got {run_end_count})")
+        issues.extend(_validate_trajectory(traj_path))
 
     scores_path = run_dir / SCORES_FILE
+    scores_data: dict[str, Any] | None = None
     if scores_path.exists():
         try:
             with scores_path.open("r", encoding="utf-8") as fh:
-                json.load(fh)
+                scores_data = json.load(fh)
         except json.JSONDecodeError as exc:
             issues.append(f"scores.json: invalid JSON ({exc.msg})")
+        else:
+            try:
+                ScoresFile.model_validate(scores_data)
+            except Exception as exc:
+                issues.append(f"scores.json: schema validation failed ({exc})")
 
+    meta_path = run_dir / METADATA_FILE
+    if meta_path.exists():
+        try:
+            meta = read_metadata(meta_path)
+        except Exception as exc:
+            issues.append(f"metadata.yaml: cannot read ({exc})")
+        else:
+            for key in _REQUIRED_METADATA_KEYS:
+                if key not in meta:
+                    issues.append(f"metadata.yaml: missing required key {key!r}")
+
+    if require_privacy_pass:
+        if scores_data is None:
+            issues.append("privacy gate: scores.json missing or invalid; cannot verify privacy_check")
+        else:
+            verdicts = scores_data.get("verdicts") or scores_data.get("scorer_verdicts") or []
+            passed = False
+            for v in verdicts:
+                name = v.get("scorer_name") or v.get("name")
+                ok = v.get("pass") if "pass" in v else v.get("pass_")
+                if name == "privacy_check" and bool(ok):
+                    passed = True
+                    break
+            if not passed:
+                issues.append("privacy gate: no passing privacy_check verdict in scores.json")
+
+    return issues
+
+
+def _validate_trajectory(traj_path: Path) -> list[str]:
+    issues: list[str] = []
+    try:
+        from ab_harness.trajectory.validate import (  # type: ignore[import-not-found]
+            validate as harness_validate,
+        )
+    except ImportError:
+        harness_validate = None  # type: ignore[assignment]
+
+    if harness_validate is not None:
+        try:
+            return list(harness_validate(traj_path))
+        except Exception as exc:
+            issues.append(f"trajectory.jsonl: harness validate raised ({exc})")
+
+    run_start_count = 0
+    run_end_count = 0
+    last_turn_idx = -1
+    with traj_path.open("r", encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError as exc:
+                issues.append(f"trajectory.jsonl line {lineno}: invalid JSON ({exc.msg})")
+                continue
+            kind = ev.get("event")
+            if kind == "run_start":
+                run_start_count += 1
+            elif kind == "run_end":
+                run_end_count += 1
+            elif kind == "turn":
+                idx = ev.get("idx")
+                if not isinstance(idx, int) or idx != last_turn_idx + 1:
+                    issues.append(
+                        f"trajectory.jsonl line {lineno}: turn idx {idx!r} not monotonic"
+                    )
+                if isinstance(idx, int):
+                    last_turn_idx = idx
+    if run_start_count != 1:
+        issues.append(
+            f"trajectory.jsonl must have exactly one run_start (got {run_start_count})"
+        )
+    if run_end_count != 1:
+        issues.append(
+            f"trajectory.jsonl must have exactly one run_end (got {run_end_count})"
+        )
     return issues
 
 
@@ -251,7 +364,9 @@ __all__ = [
     "TRAJECTORY_FILE",
     "RunDir",
     "ScorerVerdict",
+    "ScoresFile",
     "read_run_dir",
+    "read_scores",
     "read_trajectory",
     "validate",
     "write_run_dir",

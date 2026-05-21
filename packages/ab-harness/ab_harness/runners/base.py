@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -25,8 +26,13 @@ class BaseRunner(abc.ABC):
         """Materialize tier config and warm up the runner."""
 
     @abc.abstractmethod
-    def run_task(self, task: Any, trajectory_writer: TrajectoryWriter) -> Any:
-        """Execute a task; return a RunStatus."""
+    def run_task(
+        self,
+        task: Any,
+        trajectory_writer: TrajectoryWriter,
+        workdir: Path,
+    ) -> Any:
+        """Execute a task in `workdir`; return a RunStatus."""
 
     @abc.abstractmethod
     def cleanup(self) -> None:

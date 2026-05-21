@@ -1,0 +1,7 @@
+tier: T0
+description: "Vanilla - no CLAUDE.md, no skills, no MCPs, no vault state."
+claude_md: null
+claude_local_md: null
+skills: []
+mcps: []
+vault_state: null

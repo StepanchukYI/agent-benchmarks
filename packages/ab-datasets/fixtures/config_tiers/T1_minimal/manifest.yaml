@@ -1,0 +1,9 @@
+tier: T1
+description: "Minimal - generic CLAUDE.md, no skills, no MCPs, no vault state."
+claude_md:
+  path: CLAUDE.md
+  sha256: 09c61f6641a47847ac9257e1e5a1e5e69f33febb41720e6fd87fb8f11efedcdc
+claude_local_md: null
+skills: []
+mcps: []
+vault_state: null

@@ -1,0 +1,7 @@
+tier: T3
+description: "Full operator config - populated by community / Phase 7. Not used in M1 tests."
+claude_md: null
+claude_local_md: null
+skills: []
+mcps: []
+vault_state: null
