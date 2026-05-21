@@ -101,38 +101,103 @@ def device_poll(
     client_id: str,
     device_code: str,
 ) -> dict[str, Any]:
+    """Exchange device_code for an access token, then mint a server session.
+
+    Each external step is wrapped so a failure surfaces a *specific* 503 with
+    the upstream reason in the detail string. The previous version let a
+    bare exception bubble up as 500 with no detail, leaving the FE error
+    banner with nothing to render but "Internal Server Error".
+    """
+    import logging
+
+    from fastapi import HTTPException, status as http_status
+
+    log = logging.getLogger(__name__)
+
     settings = Settings()
+
+    # --- Step 1: exchange device_code for access_token ---
     token_url = f"{settings.github_device_base}{_ACCESS_TOKEN_PATH}"
-    token_resp = get_github_client().post(
-        token_url,
-        data={
-            "client_id": client_id,
-            "device_code": device_code,
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-        },
-        headers={"Accept": "application/json"},
-    )
-    token_resp.raise_for_status()
-    token_data = token_resp.json()
+    try:
+        token_resp = get_github_client().post(
+            token_url,
+            data={
+                "client_id": client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+            headers={"Accept": "application/json"},
+        )
+    except httpx.HTTPError as exc:
+        log.exception("device-poll token-exchange network failure")
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub token exchange network error: {exc}",
+        ) from exc
+    if token_resp.status_code >= 500:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub token endpoint returned {token_resp.status_code}",
+        )
+    try:
+        token_data = token_resp.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub token response not JSON: {token_resp.text[:200]}",
+        ) from exc
+    # Pending / slow_down / expired_token: pass through unchanged, FE polls again.
     if "error" in token_data:
         return token_data
     access_token = token_data.get("access_token")
     if not access_token:
         return token_data
 
+    # --- Step 2: fetch user profile from GitHub /user ---
     user_url = f"{settings.github_api_base}{_USER_PATH}"
-    user_resp = get_github_client().get(
-        user_url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-        },
-    )
-    user_resp.raise_for_status()
-    profile = user_resp.json()
+    try:
+        user_resp = get_github_client().get(
+            user_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {access_token}",
+            },
+        )
+    except httpx.HTTPError as exc:
+        log.exception("device-poll user-fetch network failure")
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub /user fetch network error: {exc}",
+        ) from exc
+    if user_resp.status_code != 200:
+        log.error("device-poll /user returned %s: %s", user_resp.status_code, user_resp.text[:200])
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub /user returned HTTP {user_resp.status_code}: {user_resp.text[:200]}",
+        )
+    try:
+        profile = user_resp.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub /user response not JSON: {user_resp.text[:200]}",
+        ) from exc
 
-    user = _upsert_user(session, profile)
-    session_token, expires_at = _mint_session(session, user, ttl_seconds=settings.session_ttl_seconds)
+    # --- Step 3: upsert user + mint session ---
+    try:
+        user = _upsert_user(session, profile)
+        session_token, expires_at = _mint_session(
+            session, user, ttl_seconds=settings.session_ttl_seconds,
+        )
+    except Exception as exc:
+        log.exception(
+            "device-poll DB write failure for gh_id=%s login=%s",
+            profile.get("id"), profile.get("login"),
+        )
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Server failed to mint session (DB write): {type(exc).__name__}: {exc}",
+        ) from exc
 
     return {
         "access_token": session_token,
