@@ -37,6 +37,12 @@ uv run ab publish --server http://localhost:8000
 
 ---
 
+## Self-hosting
+
+Want to run the server + leaderboard on your own box behind a reverse proxy? See [`docs/deploy-homelab.md`](docs/deploy-homelab.md) — single-host `docker compose` deploy with Caddy auto-TLS, GitHub OAuth, and a `pg_dump` cron. Restore runbook in [`docs/restore-from-backup.md`](docs/restore-from-backup.md); helpers in `scripts/db-backup.sh` and `scripts/db-restore.sh`.
+
+---
+
 ## What ships today
 
 | Layer | Coverage | Tier support |

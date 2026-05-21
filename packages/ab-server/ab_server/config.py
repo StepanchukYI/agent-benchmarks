@@ -26,3 +26,15 @@ class Settings(BaseSettings):
     fetcher_cache_dir: str = str(Path.home() / ".cache" / "agent-benchmarks" / "fetcher")
     datasets_root: str = ""
     ab_test_auth: bool = False
+
+    # Production hardening knobs (see ab_server/main.py:create_app).
+    # Comma-separated origins for CORS. Default preserves local dev (Vite on 5173).
+    allowed_origins: str = "http://localhost:5173"
+    # Trust X-Forwarded-* headers (only enable when behind a reverse proxy you control).
+    # Env var: AB_TRUST_PROXY (matches infra/.env.example and the codebase's AB_ convention).
+    ab_trust_proxy: bool = False
+    # Token-bucket per-IP, in-memory. 0 disables. Single-instance only —
+    # multi-instance deployments need a shared store (Redis), out of scope here.
+    rate_limit_per_minute: int = 120
+    # "text" (human-friendly) or "json" (one-line JSON per record).
+    log_format: str = "text"

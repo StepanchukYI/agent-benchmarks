@@ -1,0 +1,64 @@
+# Caddy reverse proxy for agent-benchmarks.
+#
+# Behavior:
+#   - Public AB_DOMAIN (resolvable on the internet): Caddy provisions a
+#     Let's Encrypt certificate automatically via ACME HTTP-01/TLS-ALPN.
+#   - Private AB_DOMAIN (e.g. ab.local, *.lan): Caddy issues an internal
+#     self-signed cert via its local CA. Trust Caddy's root in your devices
+#     (cat /data/caddy/pki/authorities/local/root.crt inside the container).
+#
+# Routing:
+#   /api/*    -> ab-server:8000   (FastAPI)
+#   /healthz  -> ab-server:8000   (server liveness, exposed for monitoring)
+#   *         -> ab-leaderboard:80 (nginx serving the Vite bundle)
+
+{
+	# Global options.
+	# email — uncomment and set for production ACME (recommended for renewal notices).
+	# email ops@example.com
+
+	# Reasonable defaults for a single-node homelab.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+{$AB_DOMAIN} {
+	encode zstd gzip
+
+	# Forward real client info to the app servers.
+	header_up X-Real-IP {remote_host}
+
+	# Backend API. Everything under /api/* is proxied to FastAPI.
+	handle /api/* {
+		reverse_proxy ab-server:8000 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	# Server health probe (for external monitoring / uptime checks).
+	handle /healthz {
+		reverse_proxy ab-server:8000
+	}
+
+	# Everything else is the SPA.
+	handle {
+		reverse_proxy ab-leaderboard:80
+	}
+
+	# Hide server identity at the edge.
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+}

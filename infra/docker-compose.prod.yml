@@ -1,0 +1,105 @@
+# Production compose for agent-benchmarks.
+# Usage:
+#   cp infra/.env.example infra/.env
+#   # edit infra/.env to set POSTGRES_PASSWORD, GITHUB_CLIENT_*, SESSION_SECRET, AB_DOMAIN
+#   docker compose -f infra/docker-compose.prod.yml up -d
+#
+# Notes:
+# - Postgres has no published port — it is reachable only over the ab_net bridge.
+# - ab-server has no published port — Caddy terminates TLS and proxies to it.
+# - ab-leaderboard has no published port — Caddy serves the SPA via nginx upstream.
+# - Caddy auto-provisions Let's Encrypt for any public domain in $AB_DOMAIN.
+#   Set AB_DOMAIN=ab.local (or any non-public name) to get a Caddy-signed cert
+#   suitable for a homelab; clients then need to trust the Caddy root CA.
+
+name: ab-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_USER: ab
+      POSTGRES_DB: ab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in infra/.env}
+    volumes:
+      - ab_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ab -d ab"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - ab_net
+
+  ab-server:
+    build:
+      context: ..
+      dockerfile: infra/ab-server.prod.Dockerfile
+    image: ab-server-prod:latest
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Compose-injected overrides win over .env. Pin DATABASE_URL here so the
+      # operator can't accidentally point production at SQLite.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ab:${POSTGRES_PASSWORD}@postgres:5432/ab}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${AB_DOMAIN}}
+      TRUST_PROXY: ${AB_TRUST_PROXY:-1}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      FETCHER_CACHE_DIR: /app/.cache/agent-benchmarks/fetcher
+    volumes:
+      - ab_fetcher_cache:/app/.cache
+    networks:
+      - ab_net
+
+  ab-leaderboard:
+    build:
+      context: ..
+      dockerfile: infra/ab-leaderboard.prod.Dockerfile
+      args:
+        AB_API_BASE_URL: ${AB_API_BASE_URL:-https://${AB_DOMAIN}/api/v1}
+    image: ab-leaderboard-prod:latest
+    <<: *restart
+    depends_on:
+      - ab-server
+    networks:
+      - ab_net
+
+  caddy:
+    image: caddy:2-alpine
+    <<: *restart
+    depends_on:
+      - ab-server
+      - ab-leaderboard
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      AB_DOMAIN: ${AB_DOMAIN:?AB_DOMAIN must be set in infra/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ab_net
+
+volumes:
+  ab_pgdata:
+  ab_fetcher_cache:
+  caddy_data:
+  caddy_config:
+
+networks:
+  ab_net:
+    driver: bridge

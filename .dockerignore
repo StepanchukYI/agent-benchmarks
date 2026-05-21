@@ -1,0 +1,68 @@
+# Keep build contexts small and predictable.
+# This applies to every `docker build` and `docker compose build` that uses
+# this repo as its context (both dev and prod compose).
+
+# Version control & meta
+.git
+.gitignore
+.gitattributes
+.github
+.claude
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Python build artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.tox
+.venv
+venv
+
+# Node — pnpm uses symlinks that break when copied between host/container.
+# Always reinstall inside the image.
+node_modules
+.pnpm-store
+**/node_modules
+**/.pnpm-store
+**/.next
+**/.turbo
+**/dist
+**/build
+**/coverage
+
+# Local runtime artifacts
+results
+.cache
+.tmp
+*.sqlite
+*.sqlite3
+*.db
+ab.db
+ab.db-journal
+
+# Local env files. Each Dockerfile bakes its own env at build time;
+# never let a developer's .env leak into an image.
+.env
+.env.*
+!.env.example
+infra/.env
+infra/.env.bak
+infra/.env.test
+infra/.env.test.bak
+
+# Docs / examples that aren't needed at runtime
+docs
+*.md
+!README.md
+!packages/**/README.md
