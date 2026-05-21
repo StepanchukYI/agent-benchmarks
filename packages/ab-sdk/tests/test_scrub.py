@@ -198,7 +198,7 @@ def test_real_patterns_yaml_loads(tmp_path: Path) -> None:
     ids = {p.id for p in loaded}
     # Patterns that ship with replacements (auto-fixable).
     assert "email-real" in ids
-    assert "maintainer-home-path" in ids
+    assert "operator-home-path" in ids
     # Detect-only (no replacement) — must NOT load.
     assert "aws-access-key-id" not in ids
     assert "github-token" not in ids

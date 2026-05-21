@@ -452,11 +452,20 @@ class ClaudeCodeRunner(BaseRunner):
         # = /dev/null fully replaces the user config). Adding regardless
         # of hide-flag is fine: benchmark agents never need the operator's
         # git identity.
+        #
+        # Honeypot strategy: instead of a generic placeholder address,
+        # set EMAIL to a unique sentinel string.
+        # If a future isolation bug lets the agent see EMAIL and that
+        # sentinel lands in the trajectory, the matching privacy-patterns
+        # entry (id: isolation-honeypot-email) flags it as a HIGH-severity
+        # privacy hit — turning silent isolation regressions into loud
+        # benchmark failures. The literal value below is kept in sync
+        # with docs/privacy-patterns.yaml.
         git_isolation = {
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_SYSTEM": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
-            "EMAIL": "anonymous@bench.local",
+            "EMAIL": "AB_LEAK_DETECTOR_DO_NOT_USE@ab-isolation.invalid",
         }
         env_with_git_iso: dict[str, str] = {**git_isolation, **self._env_overrides}
         self._isolated_env = IsolatedEnv.build(

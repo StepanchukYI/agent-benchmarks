@@ -6,7 +6,7 @@
 patterns:
   - id: email-real
     description: "Real email address outside @example.com / @(users.)noreply.github.com / git@github.com ssh url"
-    regex: "(?i)\\b(?!git@github\\.com\\b)[a-z0-9._%+-]+@(?!example\\.com\\b)(?!(?:users\\.)?noreply\\.github\\.com\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
+    regex: "(?i)\\b(?!git@github\\.com\\b)[a-z0-9._%+-]+@(?!example\\.com\\b)(?!(?:users\\.)?noreply\\.github\\.com\\b)(?!ab-isolation\\.invalid\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
     severity: medium
     scrub_replacement: "scrubbed@example.com"
     exclude_paths:
@@ -14,11 +14,31 @@ patterns:
       - "uv.lock"
       - "package-lock.json"
 
-  - id: maintainer-home-path
-    description: "Maintainer home directory path leaked into tree"
-    regex: "/Users/evgeniystepanchuk"
+  - id: operator-home-path
+    description: "Operator home directory path leak (macOS or Linux). Catches /Users/<any> and /home/<any> except scrub sentinels. The literal operator handle is NEVER baked into this pattern — that would defeat the privacy boundary by storing the very value it's meant to detect."
+    regex: "(?:/Users/(?!scrubbed\\b|Shared\\b)[A-Za-z0-9._-]+|/home/(?!scrubbed\\b)[a-z0-9._-]+)(?=/|\\b)"
     severity: high
     scrub_replacement: "/home/scrubbed"
+    # These files INTENTIONALLY contain example home paths (test fixtures
+    # for the scrubber, isolation pattern docs in source comments). Real
+    # leaks land in user-published trajectories, NOT in repo source.
+    exclude_paths:
+      - "pnpm-lock.yaml"
+      - "uv.lock"
+      - "package-lock.json"
+      - "/tests/"
+      - "ab_harness/runners/_isolation.py"
+      - "ab_harness/runners/claude_code.py"
+
+  - id: isolation-honeypot-email
+    description: "Honeypot sentinel set by ab-harness IsolatedEnv as EMAIL. If this lands in a trajectory, isolation broke: the agent saw the operator's environment and echoed our planted value back. DETECT-ONLY — do NOT scrub; the hit is the signal."
+    regex: "AB_LEAK_DETECTOR_DO_NOT_USE@ab-isolation\\.invalid"
+    severity: high
+    # The literal lives in source by design — that's where IsolatedEnv
+    # injects it. Hits should fire only in trajectory artifacts.
+    exclude_paths:
+      - "ab_harness/runners/claude_code.py"
+      - "docs/privacy-patterns.yaml"
 
   - id: aws-access-key-id
     description: "AWS access key id (DETECT-ONLY — rotate, don't redact)"
