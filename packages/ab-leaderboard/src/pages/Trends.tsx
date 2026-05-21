@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Bell, Check, Clock, Network, TrendingUp } from "lucide-react";
+import { AlertTriangle, Bell, Check, Clock, Network, Plus, Trash2, TrendingUp } from "lucide-react";
 import { SubNav } from "../components/shell/SubNav";
 import { PageHero } from "../components/shell/PageHero";
 import { StatStrip, type Stat } from "../components/shell/StatStrip";
@@ -14,18 +14,31 @@ import { ParetoTrail } from "../components/charts/ParetoTrail";
 import { ScoreHeatmap } from "../components/charts/ScoreHeatmap";
 import { HotList } from "../components/trends/HotList";
 import { AlertRulesPanel } from "../components/trends/AlertRulesPanel";
-import { useOperators, useTrendsOverview, useTrendsRegressions } from "../api/hooks";
+import {
+  useAlertRules,
+  useCreateAlert,
+  useDeleteAlert,
+  useOperators,
+  useTrendsCiGate,
+  useTrendsOverview,
+  useTrendsRegressions,
+  useTrendsSeries,
+} from "../api/hooks";
 import { toState } from "../lib/ui-state";
 
 type Range = "7d" | "30d" | "90d" | "custom";
+type TrendsTab = "overview" | "by_suite" | "by_model" | "alerts" | "ci_gate";
 
 export default function Trends(): JSX.Element {
   const [range, setRange] = useState<Range>("30d");
+  const [activeTab, setActiveTab] = useState<TrendsTab>("overview");
   const [showOperators, setShowOperators] = useState(false);
   const overviewQuery = useTrendsOverview();
   const regressionsQuery = useTrendsRegressions("down");
   const improvementsQuery = useTrendsRegressions("up");
   const operatorsQuery = useOperators();
+  const alertRulesQuery = useAlertRules();
+  const alertCount = alertRulesQuery.data?.length;
 
   const overviewState = toState(overviewQuery, () => false);
   const regressionsState = toState(regressionsQuery);
@@ -56,11 +69,11 @@ export default function Trends(): JSX.Element {
       <SubNav
         crumbs={[{ label: "Trends" }]}
         tabs={[
-          { id: "overview", label: "Overview", active: true },
-          { id: "suite", label: "By suite" },
-          { id: "model", label: "By model" },
-          { id: "alerts", label: "Alerts", count: 12 },
-          { id: "ci", label: "CI gate" },
+          { id: "overview", label: "Overview", active: activeTab === "overview", onSelect: () => setActiveTab("overview") },
+          { id: "by_suite", label: "By suite", active: activeTab === "by_suite", onSelect: () => setActiveTab("by_suite") },
+          { id: "by_model", label: "By model", active: activeTab === "by_model", onSelect: () => setActiveTab("by_model") },
+          { id: "alerts", label: "Alerts", count: alertCount, active: activeTab === "alerts", onSelect: () => setActiveTab("alerts") },
+          { id: "ci_gate", label: "CI gate", active: activeTab === "ci_gate", onSelect: () => setActiveTab("ci_gate") },
         ]}
       />
 
@@ -91,6 +104,8 @@ export default function Trends(): JSX.Element {
           }
         />
 
+        {activeTab === "overview" && (
+        <>
         {overviewState.kind === "error" && (
           <div className="px-5 pt-3">
             <ErrorBanner
@@ -202,7 +217,232 @@ export default function Trends(): JSX.Element {
             <ScoreHeatmap />
           </Panel>
         </div>
+        </>
+        )}
+
+        {activeTab === "by_suite" && <BySuitePanel range={range === "custom" ? "30d" : range} />}
+        {activeTab === "by_model" && <ByModelPanel range={range === "custom" ? "30d" : range} />}
+        {activeTab === "alerts" && <AlertsTabPanel />}
+        {activeTab === "ci_gate" && <CiGateTabPanel />}
       </div>
     </>
+  );
+}
+
+function seriesSummary(values: number[]): { last: number; delta: number } {
+  if (!values.length) return { last: 0, delta: 0 };
+  const last = values[values.length - 1] ?? 0;
+  const first = values[0] ?? last;
+  return { last, delta: last - first };
+}
+
+function BySuitePanel({ range }: { range: "7d" | "30d" | "90d" }): JSX.Element {
+  const query = useTrendsSeries(range, false);
+  const state = toState(query);
+  return (
+    <div className="p-5">
+      <Panel>
+        <PanelHeader title={<>By suite <span className="text-muted-foreground font-normal">· {range}</span></>} />
+        <div className="p-3.5">
+          {state.kind === "loading" && <LoadingSkeleton rows={4} columns={1} />}
+          {state.kind === "error" && (
+            <ErrorBanner message={state.message} retry={() => query.refetch()} />
+          )}
+          {state.kind === "empty" && <EmptyState title="No suite series yet." />}
+          {state.kind === "ok" && (
+            <table className="w-full text-[12px]">
+              <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr><th className="text-left py-1.5">Suite</th><th className="text-right">Last</th><th className="text-right">Δ {range}</th></tr>
+              </thead>
+              <tbody>
+                {Object.entries(state.value.per_model).map(([suite, values]) => {
+                  const { last, delta } = seriesSummary(values);
+                  return (
+                    <tr key={suite} className="border-t border-border">
+                      <td className="py-1.5 font-mono">{suite}</td>
+                      <td className="text-right tnum">{last.toFixed(1)}</td>
+                      <td className={`text-right tnum ${delta >= 0 ? "text-pass" : "text-fail"}`}>{delta >= 0 ? "+" : ""}{delta.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ByModelPanel({ range }: { range: "7d" | "30d" | "90d" }): JSX.Element {
+  const query = useTrendsSeries(range, false);
+  const state = toState(query);
+  return (
+    <div className="p-5">
+      <Panel>
+        <PanelHeader title={<>By model <span className="text-muted-foreground font-normal">· {range}</span></>} />
+        <div className="p-3.5">
+          {state.kind === "loading" && <LoadingSkeleton rows={4} columns={1} />}
+          {state.kind === "error" && (
+            <ErrorBanner message={state.message} retry={() => query.refetch()} />
+          )}
+          {state.kind === "empty" && <EmptyState title="No model series yet." />}
+          {state.kind === "ok" && (
+            <table className="w-full text-[12px]">
+              <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr><th className="text-left py-1.5">Model</th><th className="text-right">Last</th><th className="text-right">Δ {range}</th></tr>
+              </thead>
+              <tbody>
+                {Object.entries(state.value.per_model).map(([model, values]) => {
+                  const { last, delta } = seriesSummary(values);
+                  return (
+                    <tr key={model} className="border-t border-border">
+                      <td className="py-1.5 font-mono">{model}</td>
+                      <td className="text-right tnum">{last.toFixed(1)}</td>
+                      <td className={`text-right tnum ${delta >= 0 ? "text-pass" : "text-fail"}`}>{delta >= 0 ? "+" : ""}{delta.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function AlertsTabPanel(): JSX.Element {
+  const query = useAlertRules();
+  const state = toState(query);
+  const createAlert = useCreateAlert();
+  const deleteAlert = useDeleteAlert();
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [threshold, setThreshold] = useState("5");
+
+  const submit = (): void => {
+    if (!name.trim()) return;
+    createAlert.mutate(
+      { name: name.trim(), threshold_pct: Number(threshold) || 5 },
+      {
+        onSuccess: () => {
+          setName("");
+          setThreshold("5");
+          setShowForm(false);
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="p-5">
+      <Panel>
+        <PanelHeader
+          title="Alert rules"
+          actions={
+            <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="size-3" /> {showForm ? "Cancel" : "Create alert"}
+            </Button>
+          }
+        />
+        <div className="p-3.5 flex flex-col gap-3">
+          {showForm && (
+            <div className="flex items-end gap-2 p-3 border border-border rounded-md bg-panel-2">
+              <label className="flex flex-col gap-1 text-[11px]">
+                <span className="text-muted-foreground">Name</span>
+                <input
+                  className="h-7 px-2 rounded border border-border bg-background text-[12px]"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px]">
+                <span className="text-muted-foreground">Threshold %</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  className="h-7 px-2 rounded border border-border bg-background text-[12px] w-24"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                />
+              </label>
+              <Button size="sm" onClick={submit} disabled={createAlert.isPending || !name.trim()}>
+                {createAlert.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          )}
+
+          {state.kind === "loading" && <LoadingSkeleton rows={3} columns={1} />}
+          {state.kind === "error" && (
+            <ErrorBanner message={state.message} retry={() => query.refetch()} />
+          )}
+          {state.kind === "empty" && <EmptyState title="No alert rules configured." />}
+          {state.kind === "ok" && (
+            <table className="w-full text-[12px]">
+              <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="text-left py-1.5">Name</th>
+                  <th className="text-left">Condition</th>
+                  <th className="text-left">Status</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.value.map((rule) => {
+                  const r = rule as unknown as { id?: string; name: string; condition?: string; status?: string };
+                  return (
+                    <tr key={r.id ?? r.name} className="border-t border-border">
+                      <td className="py-1.5 font-semibold">{r.name}</td>
+                      <td className="font-mono text-[11px] text-foreground-2">{r.condition ?? "—"}</td>
+                      <td className="text-muted-foreground">{r.status ?? "idle"}</td>
+                      <td className="text-right">
+                        {r.id && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteAlert.mutate(r.id!)}
+                            disabled={deleteAlert.isPending}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function CiGateTabPanel(): JSX.Element {
+  const query = useTrendsCiGate();
+  const state = toState(query);
+  return (
+    <div className="p-5">
+      <Panel>
+        <PanelHeader title="CI gate" />
+        <div className="p-3.5">
+          {state.kind === "loading" && <LoadingSkeleton rows={2} columns={1} />}
+          {state.kind === "error" && (
+            <ErrorBanner message={state.message} retry={() => query.refetch()} />
+          )}
+          {state.kind === "empty" && <EmptyState title="CI gate has no data yet." />}
+          {state.kind === "ok" && (
+            <dl className="grid grid-cols-2 gap-3 text-[12px]">
+              <div><dt className="text-muted-foreground text-[10.5px] uppercase tracking-wider">Status</dt><dd className="font-semibold">{state.value.status}</dd></div>
+              <div><dt className="text-muted-foreground text-[10.5px] uppercase tracking-wider">Blocked merges (48h)</dt><dd className="tnum">{state.value.blocked_merges_48h}</dd></div>
+              <div><dt className="text-muted-foreground text-[10.5px] uppercase tracking-wider">Threshold</dt><dd className="tnum">{(state.value.threshold_pct * 100).toFixed(1)}%</dd></div>
+              <div><dt className="text-muted-foreground text-[10.5px] uppercase tracking-wider">Computed at</dt><dd className="font-mono text-[11px]">{state.value.computed_at}</dd></div>
+            </dl>
+          )}
+        </div>
+      </Panel>
+    </div>
   );
 }

@@ -42,6 +42,7 @@ export const endpoints = {
   authDeviceStart: () => "/auth/github/device-start",
   authDevicePoll: () => "/auth/github/device-poll",
   me: () => "/me",
+  meVisibility: () => "/me/visibility",
 
   /* ─── Leaderboard ─── */
   leaderboard: (q?: {
@@ -51,6 +52,7 @@ export const endpoints = {
     trust_tiers?: string[];
     dataset_current_only?: boolean;
     range?: "24h" | "7d" | "30d" | "90d";
+    pillar?: "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
   }) => withQuery("/leaderboard", q),
   leaderboardPareto: () => "/leaderboard/pareto",
 
@@ -73,6 +75,7 @@ export const endpoints = {
     `/runs/${encodeURIComponent(runId)}/trajectories/${encodeURIComponent(taskId)}`,
 
   /* ─── Submissions ─── */
+  submissionsList: () => "/submissions",
   submission: (id: string) => `/submissions/${encodeURIComponent(id)}`,
   submissionTrajectory: (id: string) => `/submissions/${encodeURIComponent(id)}/trajectory`,
   submissionPrivacyScan: (id: string) =>
@@ -92,6 +95,9 @@ export const endpoints = {
   /* ─── Alerts ─── */
   alertsList: () => "/alerts",
   alertDetail: (id: string) => `/alerts/${encodeURIComponent(id)}`,
+  alertCreate: () => "/alerts",
+  alertUpdate: (id: string) => `/alerts/${encodeURIComponent(id)}`,
+  alertDelete: (id: string) => `/alerts/${encodeURIComponent(id)}`,
   alertsEvaluate: () => "/alerts/evaluate",
 
   /* ─── Catalog ─── */
@@ -101,6 +107,9 @@ export const endpoints = {
   /* ─── Account ─── */
   accountRepos: () => "/account/repos",
   accountPrivacyRules: () => "/account/privacy-rules",
+  tokensList: () => "/account/tokens",
+  tokenCreate: () => "/account/tokens",
+  tokenDelete: (id: string) => `/account/tokens/${encodeURIComponent(id)}`,
 } as const;
 
 function withQuery(

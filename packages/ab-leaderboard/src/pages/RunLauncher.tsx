@@ -10,11 +10,12 @@ import { TaskTree } from "../components/launcher/TaskTree";
 import { RunConfigurator } from "../components/launcher/RunConfigurator";
 import { ReplayMode } from "../components/launcher/ReplayMode";
 import { LiveRunBanner } from "../components/launcher/LiveRunBanner";
-import { useTasksList } from "../api/hooks";
+import { useRunsList, useTasksList } from "../api/hooks";
 import { toState } from "../lib/ui-state";
-import type { Task } from "../lib/types";
+import type { RunSummary, Task } from "../lib/types";
 
 type Mode = "new" | "replay";
+type Tab = "launcher" | "in_progress" | "recent" | "scheduled";
 
 export default function RunLauncher(): JSX.Element {
   const tasksQuery = useTasksList();
@@ -23,16 +24,57 @@ export default function RunLauncher(): JSX.Element {
   const defaultTask = tasks.find((t) => t.id === "L1_001") ?? null;
   const [task, setTask] = useState<Task | null>(defaultTask);
   const [mode, setMode] = useState<Mode>("new");
+  const [activeTab, setActiveTab] = useState<Tab>("launcher");
+
+  const inProgressQuery = useRunsList("in_progress");
+  const recentQuery = useRunsList("recent");
+  const scheduledQuery = useRunsList("scheduled");
+
+  const inProgressCount = inProgressQuery.data?.length ?? 0;
+  const recentCount = recentQuery.data?.length ?? 0;
+  const scheduledCount = scheduledQuery.data?.length ?? 0;
+
+  const activeQuery =
+    activeTab === "in_progress"
+      ? inProgressQuery
+      : activeTab === "recent"
+        ? recentQuery
+        : activeTab === "scheduled"
+          ? scheduledQuery
+          : null;
 
   return (
     <>
       <SubNav
         crumbs={[{ label: "Runs" }, { label: "New run", current: true }]}
         tabs={[
-          { id: "launcher", label: "Launcher", active: true },
-          { id: "running", label: "In progress", count: 1 },
-          { id: "recent", label: "Recent", count: 8 },
-          { id: "scheduled", label: "Scheduled", count: 3 },
+          {
+            id: "launcher",
+            label: "Launcher",
+            active: activeTab === "launcher",
+            onSelect: () => setActiveTab("launcher"),
+          },
+          {
+            id: "in_progress",
+            label: "In progress",
+            count: inProgressCount,
+            active: activeTab === "in_progress",
+            onSelect: () => setActiveTab("in_progress"),
+          },
+          {
+            id: "recent",
+            label: "Recent",
+            count: recentCount,
+            active: activeTab === "recent",
+            onSelect: () => setActiveTab("recent"),
+          },
+          {
+            id: "scheduled",
+            label: "Scheduled",
+            count: scheduledCount,
+            active: activeTab === "scheduled",
+            onSelect: () => setActiveTab("scheduled"),
+          },
         ]}
         trailing={
           <Button size="sm">
@@ -43,63 +85,101 @@ export default function RunLauncher(): JSX.Element {
       <LiveRunBanner />
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-[340px] shrink-0 border-r border-border bg-background-2 overflow-hidden flex">
-          <TaskTree selected={task} onSelect={setTask} />
-        </div>
+        {activeTab === "launcher" ? (
+          <>
+            <div className="w-[340px] shrink-0 border-r border-border bg-background-2 overflow-hidden flex">
+              <TaskTree selected={task} onSelect={setTask} />
+            </div>
 
-        <div className="flex-1 min-w-0 p-6 overflow-y-auto flex flex-col">
-          <PageHero
-            className="px-0 pt-0 pb-3.5 mb-5"
-            title="Run launcher"
-            subtitle="Configure once, launch across models. Cost estimate updates live."
-            actions={
-              <>
-                <div className="flex border border-border rounded-md overflow-hidden">
-                  <Button
-                    size="sm"
-                    variant={mode === "new" ? "primary" : "ghost"}
-                    className="rounded-none border-0"
-                    onClick={() => setMode("new")}
-                  >
-                    <Play className="size-3" fill="currentColor" /> New run
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={mode === "replay" ? "primary" : "ghost"}
-                    className="rounded-none border-0"
-                    onClick={() => setMode("replay")}
-                  >
-                    <RotateCcw className="size-3" /> Replay from commit
-                  </Button>
-                </div>
-                <Button><History className="size-3" /> History</Button>
-              </>
-            }
-          />
+            <div className="flex-1 min-w-0 p-6 overflow-y-auto flex flex-col">
+              <PageHero
+                className="px-0 pt-0 pb-3.5 mb-5"
+                title="Run launcher"
+                subtitle="Configure once, launch across models. Cost estimate updates live."
+                actions={
+                  <>
+                    <div className="flex border border-border rounded-md overflow-hidden">
+                      <Button
+                        size="sm"
+                        variant={mode === "new" ? "primary" : "ghost"}
+                        className="rounded-none border-0"
+                        onClick={() => setMode("new")}
+                      >
+                        <Play className="size-3" fill="currentColor" /> New run
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={mode === "replay" ? "primary" : "ghost"}
+                        className="rounded-none border-0"
+                        onClick={() => setMode("replay")}
+                      >
+                        <RotateCcw className="size-3" /> Replay from commit
+                      </Button>
+                    </div>
+                    <Button><History className="size-3" /> History</Button>
+                  </>
+                }
+              />
 
-          {tasksState.kind === "loading" && <LoadingSkeleton rows={5} columns={2} />}
-          {tasksState.kind === "error" && (
-            <ErrorBanner
-              message={tasksState.message}
-              retry={() => tasksQuery.refetch()}
-            />
-          )}
-          {tasksState.kind === "empty" && (
-            <EmptyState
-              title="No tasks registered yet."
-              hint={
-                <>
-                  Run <span className="font-mono text-foreground-2">make schema-export</span> then drop a YAML under {" "}
-                  <span className="font-mono text-foreground-2">packages/ab-datasets/ab_datasets/L&lt;N&gt;_&lt;theme&gt;/</span>.
-                </>
-              }
-            />
-          )}
-          {tasksState.kind === "ok" && (
-            mode === "new" ? <RunConfigurator task={task} /> : <ReplayMode />
-          )}
-        </div>
+              {tasksState.kind === "loading" && <LoadingSkeleton rows={5} columns={2} />}
+              {tasksState.kind === "error" && (
+                <ErrorBanner
+                  message={tasksState.message}
+                  retry={() => tasksQuery.refetch()}
+                />
+              )}
+              {tasksState.kind === "empty" && (
+                <EmptyState
+                  title="No tasks registered yet."
+                  hint={
+                    <>
+                      Run <span className="font-mono text-foreground-2">make schema-export</span> then drop a YAML under {" "}
+                      <span className="font-mono text-foreground-2">packages/ab-datasets/ab_datasets/L&lt;N&gt;_&lt;theme&gt;/</span>.
+                    </>
+                  }
+                />
+              )}
+              {tasksState.kind === "ok" && (
+                mode === "new" ? <RunConfigurator task={task} /> : <ReplayMode />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-w-0 p-6 overflow-y-auto flex flex-col">
+            <RunsListView query={activeQuery!} />
+          </div>
+        )}
       </div>
     </>
+  );
+}
+
+interface RunsListViewProps {
+  query: ReturnType<typeof useRunsList>;
+}
+
+function RunsListView({ query }: RunsListViewProps): JSX.Element {
+  if (query.isPending) {
+    return <div className="text-[12px] text-muted-foreground">Loading…</div>;
+  }
+  const runs: RunSummary[] = Array.isArray(query.data) ? query.data : [];
+  if (runs.length === 0) {
+    return <div className="text-[12px] text-muted-foreground">No runs in this bucket.</div>;
+  }
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {runs.map((r) => (
+        <li
+          key={r.run_id}
+          className="flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-panel-2 text-[12px]"
+        >
+          <span className="font-mono text-foreground-2">{r.run_id}</span>
+          <span className="text-muted-foreground">{r.suite}</span>
+          <span className="text-muted-foreground">{r.model_count} model(s)</span>
+          <span className="text-foreground">{r.status}</span>
+          <span className="ml-auto text-muted-foreground">{r.started_at}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

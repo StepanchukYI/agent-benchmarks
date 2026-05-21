@@ -1,9 +1,9 @@
-import { Bell, Box, Cog, Folder, Github, KeyRound, Network, ShieldCheck, Zap } from "lucide-react";
+import { Bell, Box, Cog, Folder, Github, Key, KeyRound, Network, ShieldCheck, Zap } from "lucide-react";
 import { type ElementType } from "react";
 import { cn } from "../../lib/utils";
-import { useConnectedRepos, useModels } from "../../api/hooks";
+import { useConnectedRepos, useModels, useTokensList } from "../../api/hooks";
 
-export type SettingsTab = "account" | "repos" | "privacy" | "models" | "mcp" | "skills" | "vaults" | "ci" | "alerts";
+export type SettingsTab = "account" | "repos" | "tokens" | "privacy" | "models" | "mcp" | "skills" | "vaults" | "ci" | "alerts";
 
 interface SettingsSidebarProps {
   active: SettingsTab;
@@ -20,9 +20,12 @@ interface SidebarItem {
 export function SettingsSidebar({ active, onSelect }: SettingsSidebarProps): JSX.Element {
   const { data: connectedRepos } = useConnectedRepos();
   const { data: models } = useModels();
+  const { data: tokens } = useTokensList();
+  const activeTokenCount = (tokens ?? []).filter((t) => t.revoked_at == null).length;
   const items: SidebarItem[] = [
     { id: "account",  label: "Account",         icon: Github },
     { id: "repos",    label: "Connected repos", icon: KeyRound, count: (connectedRepos ?? []).length },
+    { id: "tokens",   label: "API tokens",      icon: Key,      count: activeTokenCount },
     { id: "privacy",  label: "Privacy",         icon: ShieldCheck },
     { id: "models",   label: "Models",          icon: Box,      count: (models ?? []).length },
     { id: "mcp",      label: "MCP servers",     icon: Network,  count: 11 },

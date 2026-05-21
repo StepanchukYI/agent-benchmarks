@@ -1,29 +1,39 @@
 import { Eye, Github } from "lucide-react";
 import { useState } from "react";
 
-import { useMe, useSignOut } from "../../api/hooks";
+import { useMe, useSignOut, useUpdateMeVisibility } from "../../api/hooks";
 import { Button } from "../ui/Button";
+import { ErrorBanner } from "../ui/ErrorBanner";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { PageHero } from "../shell/PageHero";
 import { PostLoginGuide } from "./PostLoginGuide";
 import { SignInModal } from "./SignInModal";
 
-interface Toggle {
+type VisibilityField = "public_profile" | "share_runs";
+
+interface ToggleSpec {
+  field: VisibilityField;
   label: string;
   sub: string;
-  on: boolean;
 }
 
-const TOGGLES: Toggle[] = [
-  { label: "Show my runs on the public leaderboard", sub: "Only runs published via `ab publish` (after scrubber).",                on: true },
-  { label: "Show my regressions in the friends feed", sub: "Only connected friends can see these.",                                on: true },
-  { label: "Allow others to replay my commits",       sub: "Anyone with the commit URL can re-run.",                              on: true },
-  { label: "Auto-scrub vault paths before publishing", sub: "Recommended. Disable only if you publish from a non-personal vault.", on: true },
+const VISIBILITY_TOGGLES: ToggleSpec[] = [
+  {
+    field: "public_profile",
+    label: "Show my profile on the public leaderboard",
+    sub: "When off, rows attributed to your handle are hidden from anonymous viewers.",
+  },
+  {
+    field: "share_runs",
+    label: "Share my published runs with friends",
+    sub: "Only runs published via `ab publish` (after scrubber).",
+  },
 ];
 
 export function AccountTab(): JSX.Element {
   const meQuery = useMe();
   const signOut = useSignOut();
+  const updateVisibility = useUpdateMeVisibility();
   const [signInOpen, setSignInOpen] = useState(false);
 
   const me = meQuery.data;
@@ -81,42 +91,88 @@ export function AccountTab(): JSX.Element {
 
       {me && <PostLoginGuide />}
 
-      <Panel>
-        <PanelHeader title={<span className="inline-flex items-center gap-2"><Eye className="size-3.5" /> Visibility</span>} />
-        <div className="p-4 flex flex-col gap-3">
-          {TOGGLES.map((t, i) => (
-            <div
-              key={t.label}
-              className={
-                "flex items-center gap-3.5 py-2 " +
-                (i < TOGGLES.length - 1 ? "border-b border-border-soft" : "")
-              }
-            >
-              <div className="flex-1">
-                <div className="text-[12.5px] font-medium">{t.label}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</div>
-              </div>
-              <Switch on={t.on} />
+      {me && (
+        <Panel>
+          <PanelHeader title={<span className="inline-flex items-center gap-2"><Eye className="size-3.5" /> Visibility</span>} />
+          {updateVisibility.isError && (
+            <div className="px-4 pt-3">
+              <ErrorBanner
+                message={
+                  updateVisibility.error instanceof Error
+                    ? updateVisibility.error.message
+                    : "Failed to update visibility."
+                }
+                retry={() => updateVisibility.reset()}
+              />
             </div>
-          ))}
-        </div>
-      </Panel>
+          )}
+          <div className="p-4 flex flex-col gap-3">
+            {VISIBILITY_TOGGLES.map((t, i) => {
+              const checked = me[t.field];
+              const pendingField =
+                updateVisibility.isPending
+                  ? Object.keys(updateVisibility.variables ?? {})[0]
+                  : null;
+              const isPendingHere = pendingField === t.field;
+              return (
+                <div
+                  key={t.field}
+                  className={
+                    "flex items-center gap-3.5 py-2 " +
+                    (i < VISIBILITY_TOGGLES.length - 1 ? "border-b border-border-soft" : "")
+                  }
+                >
+                  <div className="flex-1">
+                    <div className="text-[12.5px] font-medium">{t.label}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</div>
+                  </div>
+                  <Switch
+                    on={checked}
+                    disabled={updateVisibility.isPending}
+                    busy={isPendingHere}
+                    onToggle={() =>
+                      updateVisibility.mutate({ [t.field]: !checked })
+                    }
+                    ariaLabel={t.label}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} />
     </>
   );
 }
 
-function Switch({ on }: { on: boolean }): JSX.Element {
+interface SwitchProps {
+  on: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  onToggle?: () => void;
+  ariaLabel?: string;
+}
+
+function Switch({ on, disabled, busy, onToggle, ariaLabel }: SwitchProps): JSX.Element {
   return (
-    <div
-      className={`w-8 h-[18px] rounded-full p-[2px] transition-colors ${on ? "bg-accent" : "bg-panel-3"}`}
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled || !onToggle}
+      aria-label={ariaLabel}
+      className={
+        `w-8 h-[18px] rounded-full p-[2px] transition-colors ${on ? "bg-accent" : "bg-panel-3"} ` +
+        `${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ` +
+        `${busy ? "ring-2 ring-accent/40" : ""}`
+      }
       role="switch"
       aria-checked={on}
     >
       <div
         className={`size-3.5 rounded-full bg-white transition-transform ${on ? "translate-x-[14px]" : "translate-x-0"}`}
       />
-    </div>
+    </button>
   );
 }

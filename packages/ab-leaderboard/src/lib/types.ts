@@ -176,6 +176,29 @@ export interface Trajectory {
   turns: TurnEvent[];
 }
 
+/**
+ * Server response shape from `GET /submissions` (see
+ * `packages/ab-server/ab_server/api/submissions.py::_serialize_submission`).
+ * Some fields (`suite`, `task_id`, `score_total`) come from the joined
+ * `TaskResult` and may be null when no task result row exists.
+ */
+export interface SubmissionSummary {
+  id: string;
+  registered_repo_id: string;
+  source_commit_sha: string;
+  source_path: string;
+  trust_tier: TrustTier;
+  model: string;
+  tier: Tier;
+  dataset_version: string;
+  discrepancy_pct: number | null;
+  ingested_at: string;
+  re_scored_at: string | null;
+  suite: string | null;
+  task_id: string | null;
+  score_total: number | null;
+}
+
 export interface RegistryRepo {
   id: string;
   repo: string;
@@ -185,6 +208,24 @@ export interface RegistryRepo {
   last_synced: string;
   status: "ok" | "pending" | "failed";
   error?: string;
+}
+
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  revoked: boolean;
+}
+
+export interface ApiTokenCreated {
+  id: string;
+  name: string;
+  prefix: string;
+  /** Plaintext token — server returns this exactly once on creation. */
+  token: string;
 }
 
 export interface RegressionItem {

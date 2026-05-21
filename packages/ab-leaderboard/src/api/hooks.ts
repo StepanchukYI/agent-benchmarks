@@ -41,12 +41,15 @@ import {
 } from "../lib/mock-data";
 import type {
   AlertRule,
+  ApiTokenCreated,
+  ApiTokenSummary,
   LeaderboardRow,
   Operator,
   RegistryRepo,
   RegressionItem,
   RunSummary,
   ScrubberFinding,
+  SubmissionSummary,
   Suite,
   Task,
   Trajectory,
@@ -108,6 +111,7 @@ export function useLeaderboard(filters: {
   trust_tiers?: string[];
   dataset_current_only?: boolean;
   range?: "24h" | "7d" | "30d" | "90d";
+  pillar?: "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
 }) {
   const mock: LeaderboardResponse = {
     rows: LEADERBOARD,
@@ -344,6 +348,26 @@ export function useTrajectory(runId: string | undefined, taskId: string | undefi
   });
 }
 
+/**
+ * Lists public submissions from `GET /submissions`. Server wraps rows in
+ * `{ items, limit, offset, count }`; we unwrap to a bare array for callers.
+ * Empty array is the honest empty-state; no mock fallback in prod.
+ */
+export function useSubmissionsList() {
+  const mock: SubmissionSummary[] = [];
+  return useQuery<SubmissionSummary[]>({
+    queryKey: ["submissions", "list"],
+    queryFn: async () => {
+      const resp = await fetchOrMock<
+        SubmissionSummary[] | { items: SubmissionSummary[] }
+      >(endpoints.submissionsList(), mock);
+      if (Array.isArray(resp)) return resp;
+      return (resp?.items ?? []) as SubmissionSummary[];
+    },
+    ...mockSeed(mock),
+  });
+}
+
 export function useSubmissionPrivacyScan(submissionId: string | undefined) {
   const mock: ScrubberFinding[] = SCRUBBER_FINDS;
   return useQuery<ScrubberFinding[]>({
@@ -401,6 +425,38 @@ export function useDeleteRepo() {
   });
 }
 
+/* ─── API tokens ─────────────────────────────────────────────────────────── */
+
+export function useTokensList() {
+  const mock: ApiTokenSummary[] = [];
+  return useQuery<ApiTokenSummary[]>({
+    queryKey: ["tokens"],
+    queryFn: () => fetchOrMock(endpoints.tokensList(), mock),
+    ...mockSeed(mock),
+  });
+}
+
+export function useCreateToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string }) =>
+      apiFetch<ApiTokenCreated>(endpoints.tokenCreate(), {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tokens"] }),
+  });
+}
+
+export function useRevokeToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(endpoints.tokenDelete(id), { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tokens"] }),
+  });
+}
+
 export function useOperators() {
   const mock: Operator[] = OPERATORS;
   return useQuery({
@@ -444,6 +500,74 @@ export function useAlertRules() {
 export function useEvaluateAlerts() {
   return useMutation({
     mutationFn: () => apiFetch<{ fired: string[] }>(endpoints.alertsEvaluate(), { method: "POST" }),
+  });
+}
+
+export interface AlertCreateBody {
+  name: string;
+  metric?: string;
+  suite?: string | null;
+  model?: string | null;
+  tier?: string | null;
+  direction?: "down" | "up";
+  threshold_pct?: number;
+  window_days?: number;
+  enabled?: boolean;
+}
+
+export function useCreateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AlertCreateBody) =>
+      apiFetch<Record<string, unknown>>(endpoints.alertCreate(), {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts", "rules"] }),
+  });
+}
+
+export function useUpdateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<AlertCreateBody> }) =>
+      apiFetch<Record<string, unknown>>(endpoints.alertUpdate(id), {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts", "rules"] }),
+  });
+}
+
+export function useDeleteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(endpoints.alertDelete(id), { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts", "rules"] }),
+  });
+}
+
+/* ─── Trends CI gate ─────────────────────────────────────────────────────── */
+
+export interface TrendsCiGate {
+  status: string;
+  blocked_merges_48h: number;
+  threshold_pct: number;
+  computed_at: string;
+}
+
+export function useTrendsCiGate() {
+  const mock: TrendsCiGate = {
+    status: "passing",
+    blocked_merges_48h: 0,
+    threshold_pct: 0.05,
+    computed_at: new Date().toISOString(),
+  };
+  return useQuery<TrendsCiGate>({
+    queryKey: ["trends", "ci-gate"],
+    queryFn: () => fetchOrMock(endpoints.trendsCiGate(), mock),
+    ...mockSeed(mock),
   });
 }
 
@@ -511,6 +635,28 @@ export function useSignOut() {
     onSuccess: () => {
       qc.setQueryData(["auth", "me"], null);
       qc.invalidateQueries();
+    },
+  });
+}
+
+/**
+ * Partial update of viewer visibility toggles (`public_profile`, `share_runs`).
+ * Server returns the refreshed user; we seed it into the `["auth", "me"]`
+ * cache so UI reflects the change without a refetch round-trip.
+ */
+export function useUpdateMeVisibility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      public_profile?: boolean;
+      share_runs?: boolean;
+    }): Promise<MeResponse> =>
+      apiFetch<MeResponse>(endpoints.meVisibility(), {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(["auth", "me"], data);
     },
   });
 }

@@ -16,20 +16,28 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
 import { PillarRadar } from "../components/charts/PillarRadar";
 import { CostLedger } from "../components/charts/CostLedger";
-import { useDefaultTrajectory } from "../api/hooks";
+import { useDefaultTrajectory, useSubmissionsList, useTasksList } from "../api/hooks";
 import { toState } from "../lib/ui-state";
 import { useTheme } from "../lib/theme";
-import type { Trajectory } from "../lib/types";
+import type { Task, Trajectory } from "../lib/types";
+
+type TabId = "overview" | "tasks" | "trajectories" | "cost" | "diff" | "export";
 
 export default function TrajectoryViewer(): JSX.Element {
   const { trajectoryLayout, setTrajectoryLayout } = useTheme();
   const [active, setActive] = useState<number>(6);
+  const [activeTab, setActiveTab] = useState<TabId>("trajectories");
   const [compareOn, setCompareOn] = useState(false);
   const trajectoryQuery = useDefaultTrajectory();
+  const tasksQuery = useTasksList();
+  const submissionsQuery = useSubmissionsList();
   const trajectoryState = toState(
     trajectoryQuery,
     (t: Trajectory) => !t || t.turns.length === 0,
   );
+
+  const tasksCount = tasksQuery.data?.length ?? 0;
+  const submissionsCount = submissionsQuery.data?.length ?? 0;
 
   return (
     <>
@@ -41,73 +49,161 @@ export default function TrajectoryViewer(): JSX.Element {
           { label: "L1_001 · claude-sonnet-4-5", mono: true, current: true },
         ]}
         tabs={[
-          { id: "overview", label: "Overview" },
-          { id: "tasks", label: "Tasks", count: 80 },
-          { id: "trajectories", label: "Trajectories", count: 240, active: true },
-          { id: "cost", label: "Cost & Latency" },
-          { id: "diff", label: "Diff vs prev" },
-          { id: "export", label: "Export" },
+          { id: "overview", label: "Overview", active: activeTab === "overview", onSelect: () => setActiveTab("overview") },
+          { id: "tasks", label: "Tasks", count: tasksCount, active: activeTab === "tasks", onSelect: () => setActiveTab("tasks") },
+          { id: "trajectories", label: "Trajectories", count: submissionsCount, active: activeTab === "trajectories", onSelect: () => setActiveTab("trajectories") },
+          { id: "cost", label: "Cost & Latency", active: activeTab === "cost", onSelect: () => setActiveTab("cost") },
+          { id: "diff", label: "Diff vs prev", active: activeTab === "diff", onSelect: () => setActiveTab("diff") },
+          { id: "export", label: "Export", active: activeTab === "export", onSelect: () => setActiveTab("export") },
         ]}
         trailing={
-          <div className="flex items-center gap-1.5">
-            <div className="flex border border-border rounded-md overflow-hidden">
-              <Button
-                size="sm"
-                variant={trajectoryLayout === "three-pane" ? "primary" : "ghost"}
-                className="rounded-none border-0"
-                onClick={() => setTrajectoryLayout("three-pane")}
-              >
-                3-pane
-              </Button>
-              <Button
-                size="sm"
-                variant={trajectoryLayout === "stacked" ? "primary" : "ghost"}
-                className="rounded-none border-0"
-                onClick={() => setTrajectoryLayout("stacked")}
-              >
-                Stacked
-              </Button>
+          activeTab === "trajectories" ? (
+            <div className="flex items-center gap-1.5">
+              <div className="flex border border-border rounded-md overflow-hidden">
+                <Button
+                  size="sm"
+                  variant={trajectoryLayout === "three-pane" ? "primary" : "ghost"}
+                  className="rounded-none border-0"
+                  onClick={() => setTrajectoryLayout("three-pane")}
+                >
+                  3-pane
+                </Button>
+                <Button
+                  size="sm"
+                  variant={trajectoryLayout === "stacked" ? "primary" : "ghost"}
+                  className="rounded-none border-0"
+                  onClick={() => setTrajectoryLayout("stacked")}
+                >
+                  Stacked
+                </Button>
+              </div>
+              <div className="flex gap-1 ml-2">
+                <Button size="icon-sm"><ChevronLeft className="size-3" /></Button>
+                <span className="text-muted-foreground font-mono tnum text-[11px] self-center px-1">14 / 80</span>
+                <Button size="icon-sm"><ChevronRight className="size-3" /></Button>
+              </div>
             </div>
-            <div className="flex gap-1 ml-2">
-              <Button size="icon-sm"><ChevronLeft className="size-3" /></Button>
-              <span className="text-muted-foreground font-mono tnum text-[11px] self-center px-1">14 / 80</span>
-              <Button size="icon-sm"><ChevronRight className="size-3" /></Button>
-            </div>
-          </div>
+          ) : undefined
         }
       />
 
-      <CommitBreadcrumb />
-      <TrajectoryToolbar compareOn={compareOn} onToggleCompare={() => setCompareOn((v) => !v)} />
-
-      {trajectoryState.kind === "loading" && (
-        <div className="p-5"><LoadingSkeleton rows={6} columns={3} /></div>
-      )}
-      {trajectoryState.kind === "error" && (
-        <div className="p-5">
-          <ErrorBanner
-            message={trajectoryState.message}
-            retry={() => trajectoryQuery.refetch()}
-          />
-        </div>
-      )}
-      {trajectoryState.kind === "empty" && (
-        <div className="p-5">
-          <EmptyState
-            title="Pick a run from Runs to inspect its trajectory."
-            hint="Trajectories appear once a run finishes and the trajectory.jsonl is committed."
-          />
-        </div>
-      )}
-      {trajectoryState.kind === "ok" && (
-        <TrajectoryBody
-          trajectory={trajectoryState.value}
-          layout={trajectoryLayout}
-          active={active}
-          setActive={setActive}
+      {activeTab === "overview" && (
+        <OverviewTab
+          tasksCount={tasksCount}
+          submissionsCount={submissionsCount}
+          lastUpdated={submissionsQuery.data?.[0]?.ingested_at}
         />
       )}
+
+      {activeTab === "tasks" && <TasksTab tasks={tasksQuery.data ?? []} />}
+
+      {activeTab === "trajectories" && (
+        <>
+          <CommitBreadcrumb />
+          <TrajectoryToolbar compareOn={compareOn} onToggleCompare={() => setCompareOn((v) => !v)} />
+
+          {trajectoryState.kind === "loading" && (
+            <div className="p-5"><LoadingSkeleton rows={6} columns={3} /></div>
+          )}
+          {trajectoryState.kind === "error" && (
+            <div className="p-5">
+              <ErrorBanner
+                message={trajectoryState.message}
+                retry={() => trajectoryQuery.refetch()}
+              />
+            </div>
+          )}
+          {trajectoryState.kind === "empty" && (
+            <div className="p-5">
+              <EmptyState
+                title="Pick a run from Runs to inspect its trajectory."
+                hint="Trajectories appear once a run finishes and the trajectory.jsonl is committed."
+              />
+            </div>
+          )}
+          {trajectoryState.kind === "ok" && (
+            <TrajectoryBody
+              trajectory={trajectoryState.value}
+              layout={trajectoryLayout}
+              active={active}
+              setActive={setActive}
+            />
+          )}
+        </>
+      )}
+
+      {(activeTab === "cost" || activeTab === "diff" || activeTab === "export") && (
+        <div className="p-5">
+          <EmptyState
+            title="Coming soon"
+            hint="Cost/Diff/Export tabs require additional backend endpoints."
+          />
+        </div>
+      )}
     </>
+  );
+}
+
+interface OverviewTabProps {
+  tasksCount: number;
+  submissionsCount: number;
+  lastUpdated: string | undefined;
+}
+
+function OverviewTab({ tasksCount, submissionsCount, lastUpdated }: OverviewTabProps): JSX.Element {
+  return (
+    <div className="p-5">
+      <Panel>
+        <PanelHeader title="Overview" />
+        <div className="p-4 grid grid-cols-3 gap-4 text-[12px]">
+          <div>
+            <div className="text-muted-foreground text-[11px] uppercase tracking-wider">Tasks</div>
+            <div className="font-mono tnum text-[18px] mt-1">{tasksCount}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-[11px] uppercase tracking-wider">Submissions</div>
+            <div className="font-mono tnum text-[18px] mt-1">{submissionsCount}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-[11px] uppercase tracking-wider">Last updated</div>
+            <div className="font-mono tnum text-[12px] mt-2">{lastUpdated ?? "—"}</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+interface TasksTabProps {
+  tasks: Task[];
+}
+
+function TasksTab({ tasks }: TasksTabProps): JSX.Element {
+  if (tasks.length === 0) {
+    return (
+      <div className="p-5">
+        <EmptyState
+          title="No tasks loaded"
+          hint="Tasks appear once the server returns a populated `/tasks` payload."
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 overflow-y-auto p-5">
+      <Panel>
+        <PanelHeader title={`Tasks · ${tasks.length}`} />
+        <ul className="divide-y divide-border-soft">
+          {tasks.map((t) => (
+            <li key={t.id} className="px-4 py-2 flex items-center gap-3 text-[12px]">
+              <span className="font-mono text-muted-foreground tnum w-[120px] shrink-0">{t.id}</span>
+              <span className="flex-1 truncate">{t.title}</span>
+              <span className="text-muted-foreground text-[11px]">{t.layer}</span>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+    </div>
   );
 }
 

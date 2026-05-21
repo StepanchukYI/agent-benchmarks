@@ -16,17 +16,20 @@ import { useTheme } from "../lib/theme";
 import { useLeaderboard, useModels, useSuites } from "../api/hooks";
 import { toState } from "../lib/ui-state";
 
+type PillarFilter = "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
+
 export default function Leaderboard(): JSX.Element {
   const { leaderboardView, setLeaderboardView } = useTheme();
   const modelsQuery = useModels();
   const suitesQuery = useSuites();
-  const leaderboardQuery = useLeaderboard({});
   const modelList = modelsQuery.data ?? [];
   const suiteList = suitesQuery.data ?? [];
+  const [activePillar, setActivePillar] = useState<PillarFilter | null>(null);
+  const leaderboardQuery = useLeaderboard({ pillar: activePillar ?? undefined });
   const leaderboardState = toState(leaderboardQuery, (r) => r.rows.length === 0);
   const rows = leaderboardState.kind === "ok" ? leaderboardState.value.rows : [];
   const [filters, setFilters] = useState<LeaderboardFilters>({
-    suites: ["L0_smoke", "L1_memory_write", "L1_retrieval", "L2_mcp"],
+    suites: suiteList.map((s) => s.id),
     models: modelList.map((m) => m.id),
     operators: ["evgeniy"],
     trustTiers: ["official", "verified"],
@@ -53,11 +56,11 @@ export default function Leaderboard(): JSX.Element {
           { label: "Default view", current: true },
         ]}
         tabs={[
-          { id: "all", label: "All pillars", active: true },
-          { id: "correctness", label: "Correctness" },
-          { id: "memory", label: "Memory" },
-          { id: "skill", label: "Skill router" },
-          { id: "cost", label: "$ Efficiency" },
+          { id: "all", label: "All pillars", active: activePillar === null, onSelect: () => setActivePillar(null) },
+          { id: "correctness", label: "Correctness", active: activePillar === "correctness", onSelect: () => setActivePillar("correctness") },
+          { id: "memory", label: "Memory", active: activePillar === "memory_specific", onSelect: () => setActivePillar("memory_specific") },
+          { id: "skill", label: "Skill router", active: activePillar === "tool_skill", onSelect: () => setActivePillar("tool_skill") },
+          { id: "cost", label: "$ Efficiency", active: activePillar === "latency_cost", onSelect: () => setActivePillar("latency_cost") },
         ]}
         trailing={<span className="text-muted-foreground text-[11px]">Updated 4m ago</span>}
       />

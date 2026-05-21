@@ -43,6 +43,8 @@ export interface MeResponse {
   github_id: string;
   handle: string;
   avatar_url: string | null;
+  public_profile: boolean;
+  share_runs: boolean;
 }
 
 export async function fetchClientId(): Promise<string> {
