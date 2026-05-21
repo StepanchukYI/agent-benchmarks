@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # with 50+ new submissions parks a worker for the duration. The leftover
     # submissions get picked up on subsequent syncs (eventually consistent).
     sync_rescore_batch_size: int = 5
+    # Background fetcher queue poller. 0 disables the poller entirely
+    # (jobs still enqueue, just don't drain until something else calls
+    # ab_server.fetcher.queue.run_one). Single-leader: do not enable on
+    # more than one instance until claim is moved to a row-leased model.
+    fetch_queue_poll_interval_sec: int = 30
+    fetch_queue_enabled: bool = True
     # "text" (human-friendly) or "json" (one-line JSON per record).
     log_format: str = "text"
 

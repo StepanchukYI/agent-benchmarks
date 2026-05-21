@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,9 +15,62 @@ from ab_server.config import Settings
 from ab_server.logging_setup import configure_logging
 from ab_server.middleware.rate_limit import RateLimitMiddleware
 
+_log = logging.getLogger(__name__)
+
 
 def _parse_origins(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+async def _fetch_queue_poller(poll_interval_sec: int) -> None:
+    """Background loop: drain one fetch job per tick.
+
+    Stops on asyncio.CancelledError (fired by the lifespan teardown).
+    Per-iteration exceptions are caught and logged so a transient DB
+    failure doesn't kill the whole poller.
+    """
+    from sqlmodel import Session
+
+    from ab_server.db import get_engine
+    from ab_server.fetcher.queue import run_one
+
+    _log.info("fetch_queue poller starting (interval=%ss)", poll_interval_sec)
+    try:
+        while True:
+            try:
+                with Session(get_engine()) as session:
+                    job = run_one(session)
+                if job is not None:
+                    _log.info(
+                        "fetch_queue: job %s finished status=%s",
+                        job.id,
+                        job.status,
+                    )
+            except Exception:
+                _log.exception("fetch_queue poll iteration raised")
+            await asyncio.sleep(poll_interval_sec)
+    except asyncio.CancelledError:
+        _log.info("fetch_queue poller cancelled")
+        raise
+
+
+def _make_lifespan(settings: Settings):
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        task: asyncio.Task[None] | None = None
+        if settings.fetch_queue_enabled and settings.fetch_queue_poll_interval_sec > 0:
+            task = asyncio.create_task(
+                _fetch_queue_poller(settings.fetch_queue_poll_interval_sec)
+            )
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    return lifespan
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "and /api/v1/version are live. All other endpoints from Build Spec "
             "§10 return 501 with an explanatory body."
         ),
+        lifespan=_make_lifespan(settings),
     )
 
     # Middleware registration order is the REVERSE of execution order in

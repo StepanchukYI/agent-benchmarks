@@ -8,6 +8,7 @@ from ab_server.api import (
     auth,
     catalog,
     datasets,
+    jobs,
     leaderboard,
     presets,
     repos,
@@ -29,6 +30,7 @@ v1_routers: list[APIRouter] = [
     alerts.router,
     catalog.router,
     account.router,
+    jobs.router,
 ]
 
 __all__ = ["system", "v1_routers"]

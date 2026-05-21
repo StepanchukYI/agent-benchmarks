@@ -161,12 +161,17 @@ def test_end_to_end_sync_creates_verified_submission(
     assert register.status_code == 201, register.text
     repo_id = register.json()["id"]
 
+    # `inline=true` runs sync synchronously inside the request (legacy mode)
+    # so this end-to-end test can assert the result inline. Default behavior
+    # is now `inline=false` → 202 + job_id; that path is covered separately
+    # in test_fetch_queue_*.py.
     sync = client.post(
-        f"/api/v1/repos/{repo_id}/sync",
+        f"/api/v1/repos/{repo_id}/sync?inline=true",
         headers={"X-Test-User": "alice"},
     )
     assert sync.status_code == 200, sync.text
     body = sync.json()
+    assert body["mode"] == "inline"
     assert body["inserted"] == 1
     assert body["rescored"] == 1
     assert body["errors"] == []
@@ -192,7 +197,7 @@ def test_end_to_end_sync_creates_verified_submission(
     assert len(body["verdicts"]) >= 1
 
     second = client.post(
-        f"/api/v1/repos/{repo_id}/sync",
+        f"/api/v1/repos/{repo_id}/sync?inline=true",
         headers={"X-Test-User": "alice"},
     )
     assert second.status_code == 200

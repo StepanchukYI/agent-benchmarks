@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ab_server.models.alert import AlertRule
+from ab_server.models.fetch_job import FetchJob
 from ab_server.models.preset import RunPreset
 from ab_server.models.repo import RegisteredRepo
 from ab_server.models.run import Run
@@ -12,6 +13,7 @@ from ab_server.models.user import User
 
 __all__ = [
     "AlertRule",
+    "FetchJob",
     "RegisteredRepo",
     "Run",
     "RunPreset",
