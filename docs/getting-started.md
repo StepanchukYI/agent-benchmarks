@@ -24,10 +24,12 @@ Either path emits `<results_root>/<utc>-<runid>/` with a valid `trajectory.jsonl
 | `uv` | workspace + venv manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | Node 20+, `pnpm` 9+ | runs ab-leaderboard SPA | `brew install node pnpm` |
 | `git` | obvious | `xcode-select --install` on macOS |
-| `claude` CLI | only for `--runner claude-code` | https://docs.claude.com/claude-code (TBC) |
+| `claude` CLI | only for `--runner claude-code` | https://docs.claude.com/claude-code |
 | `ANTHROPIC_API_KEY` | only for `--runner claude-code` | `export ANTHROPIC_API_KEY=sk-ant-...` |
-| `codex` CLI | only for `--runner codex-cli` (P1.7) | https://github.com/openai/codex |
-| `opencode` CLI | only for `--runner opencode` (P1.8) | https://github.com/sst/opencode |
+| `codex` CLI | only for `--runner codex-cli` | https://github.com/openai/codex |
+| `gemini` CLI | only for `--runner gemini-cli` | https://github.com/google-gemini/gemini-cli |
+| `opencode` CLI | only for `--runner opencode` | https://opencode.ai/ |
+| `pi` CLI | only for `--runner pi-agent` | `npm install -g @earendil-works/pi-coding-agent` or https://pi.dev/install.sh |
 | Docker (optional) | needed if you want sandboxed runs (P4) | https://docs.docker.com/get-docker/ |
 
 `make install` runs `uv sync` (Python workspace) + `pnpm install` (TypeScript workspace).
@@ -37,7 +39,8 @@ Either path emits `<results_root>/<utc>-<runid>/` with a valid `trajectory.jsonl
 Use this to verify the harness works end-to-end without spending any money.
 
 ```bash
-uv run ab task list                                  # 5+ L0 tasks visible
+uv run ab task list                                  # ~80+ L0 tasks visible
+uv run ab wizard                                     # interactive picker (optional)
 uv run ab task validate packages/ab-datasets/ab_datasets/L0_foundation/
 uv run ab task dry-run L0_001                        # loads task + checks fixtures
 

@@ -4,7 +4,7 @@ vault_hub: Projects/agent-benchmarks
 
 ## Identity (L0)
 
-Multi-layer benchmark harness for coding agents (Claude Code, Codex CLI, Gemini CLI, GLM, MiniMax) across foundation skills, memory write-in-flight, MCP/skill triggering, and domain integrations. Modular monorepo, 6 packages. OSS Apache-2.0, friends-first.
+Multi-layer benchmark harness for coding agents (Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, plus Anthropic-compat for GLM/MiniMax/Moonshot/DeepSeek and OpenAI-compat for OpenAI/local) across foundation skills, memory write-in-flight, MCP/skill triggering, and domain integrations. Modular monorepo, 6 packages. OSS Apache-2.0, friends-first.
 
 **Authoritative spec**: `agent_benchmarks_build_spec.md` in this repo root. If anything in this file contradicts the build spec, the build spec wins.
 
@@ -17,7 +17,7 @@ When you start a session on this repo:
 1. Load vault via `memory:memory-session` (the global CLAUDE.md already mandates it).
 2. Skim `agent_benchmarks_build_spec.md` §5 for phase/row status.
 3. `git log --oneline -10` to see recent commits.
-4. `uv run pytest -q` to confirm baseline (current count = 100s, all passing).
+4. `uv run pytest -q` to confirm baseline (current count = 1000s, all passing).
 5. `uv run ab task list` to see shipped tasks.
 
 ## Active ADRs (full text in vault)
@@ -30,16 +30,20 @@ Active lessons that bite back: LSN-004 (LLM-judge alone is not a scorer), LSN-00
 
 - Phase 0 scaffold: done.
 - Phase 1 M1 (local run path): done.
-- Phase 1 M2 (publish + server): in progress.
-- Phase 1 M3 (frontend): handed to `claude-designer` agent. Don't touch `packages/ab-leaderboard/src/` unless explicitly asked.
+- Phase 1 M2 (publish + server): done — `ab register` / `ab publish` / fetcher worker / re-scoring engine / `/leaderboard` endpoint.
+- Phase 1 M3 (frontend): integrated into main, all 5 pages live. `claude-designer` agent owns visual changes; we own data wiring + hooks + endpoints.
+- Phase 2 runners: `claude-code`, `codex-cli`, `gemini-cli`, `opencode`, `pi-agent`, `anthropic-compat`, `openai-compat`, `local`, `mock` — all real impls. Stubs remain for `hermes-agent` / `nanobot` / `cursor`.
+- `ab wizard` interactive picker shipped (runner / model / effort / suite / tier).
+- Friend-onboarding flow shipped: GitHub device-flow OAuth → connect repo (Settings UI + `ab register`) → run + publish → server pulls + re-scores. See `docs/friend-onboarding.md`.
 
 ## Codebase map (where to look)
 
 | What | Where |
 |---|---|
 | Task YAMLs | `packages/ab-datasets/ab_datasets/L0_foundation/`, `L1_memory/`, … |
-| Pydantic schemas (Task, Trajectory, Tier, ScorerVerdict, …) | `packages/ab-datasets/ab_datasets/schemas/` |
-| Runners (ClaudeCodeRunner, MockRunner, BaseRunner ABC) | `packages/ab-harness/ab_harness/runners/` |
+| Pydantic schemas (Task, Trajectory, Tier, ScorerVerdict, Submission, AgentConfig) | `packages/ab-datasets/ab_datasets/schemas/` |
+| Runners (Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, Anthropic/OpenAI-compat, mock) | `packages/ab-harness/ab_harness/runners/` |
+| Model registry (32+ hosted + 19+ local, vendor base URLs) | `packages/ab-harness/ab_harness/models.py` |
 | Trajectory writer/reader/validate | `packages/ab-harness/ab_harness/trajectory/` |
 | Scorers + registry + chain runner | `packages/ab-harness/ab_harness/scorers/` |
 | Sandbox tier materialize | `packages/ab-harness/ab_harness/sandbox/` |
@@ -48,10 +52,14 @@ Active lessons that bite back: LSN-004 (LLM-judge alone is not a scorer), LSN-00
 | Run dir spec (read/write/validate) | `packages/ab-sdk/ab_sdk/results.py` |
 | Publish gate (privacy + schema) | `packages/ab-sdk/ab_sdk/publish_gate.py` |
 | FastAPI app, routes, models, alembic | `packages/ab-server/ab_server/` |
-| React SPA | `packages/ab-leaderboard/src/` (designer-owned) |
-| CLI commands | `packages/ab-cli/ab_cli/commands/{register,run,publish,replay,submit,evolve,task}.py` |
+| Fetcher queue + worker + re-scoring | `packages/ab-server/ab_server/{fetcher,rescoring}/` |
+| React SPA + settings/repos wiring | `packages/ab-leaderboard/src/` (designer-owned visuals; we own data hooks) |
+| CLI commands | `packages/ab-cli/ab_cli/commands/{register,run,publish,replay,submit,evolve,wizard,task}.py` |
 | End-to-end CLI test | `packages/ab-cli/tests/test_run_end_to_end.py` |
 | Cross-package smoke | `tests-e2e/test_phase0_smoke.py` |
+| Helper scripts | `scripts/run_quick.sh`, `scripts/run_matrix.sh`, `scripts/serve_local.sh`, `scripts/ingest_local_runs.py` |
+| Friend onboarding doc | `docs/friend-onboarding.md` |
+| Public deploy doc | `docs/leaderboard-public-deploy.md`, `docs/deploy-homelab.md` |
 
 ## Conventions to honor
 
@@ -107,11 +115,26 @@ Active lessons that bite back: LSN-004 (LLM-judge alone is not a scorer), LSN-00
 - Don't break the trajectory protocol. Runners normalize INTO the protocol; the protocol does not bend to a model.
 - Don't commit anything that fails `privacy_check`. Even in tests.
 - Don't introduce a new dependency without checking it appears in build spec §2.
-- Don't touch `packages/ab-leaderboard/src/` unless explicitly asked (designer agent owns it).
+- Designer agent owns VISUAL changes in `packages/ab-leaderboard/src/` (layout, theme, components). You own DATA WIRING (hooks, endpoints, shape normalization). When in doubt, ask before editing visuals.
+- Don't author benchmark task content yourself. Track B agents own task YAMLs + task-specific scorers. You own the runner/scorer/server/CLI plumbing.
 
 ## Useful one-liners
 
 ```bash
+# Interactive picker (runner / model / effort / suite / tier)
+uv run ab wizard
+
+# One-shot bench (defaults: claude-sonnet × low × L0_smoke)
+scripts/run_quick.sh
+MODEL=claude-haiku-4-5 EFFORT=high scripts/run_quick.sh L0_001
+
+# Matrix → /tmp/ab-matrix-<utc>/
+MODELS="claude-sonnet-4-5 claude-haiku-4-5" EFFORTS="low high" \
+TASKS="L0_001 L0_002 L0_003 L0_004 L0_005" scripts/run_matrix.sh
+
+# Local backend + leaderboard FE (API :8000, FE :5173)
+scripts/serve_local.sh
+
 # Add a tier, regenerate hashes
 uv run python scripts/build_t2_seed.py
 
@@ -126,6 +149,15 @@ jq -c . results/<utc>-<runid>/trajectory.jsonl | head
 
 # Re-score a fetched submission (server-side helper, after M2.9)
 uv run python -m ab_server.rescoring.engine --submission-id <uuid>
+
+# Ingest local runs into a server DB (solo + small-team path)
+uv run python scripts/ingest_local_runs.py --results-root ~/.ab/results \
+    --repo-handle <handle> --repo-url <url> --visibility public
+
+# Vendor-routed claude-code (Chinese vendors via ANTHROPIC_BASE_URL)
+uv run ab run --suite L0_smoke --task L0_001 --runner claude-code \
+       --model GLM-5.1 --tier T0 \
+       --vendor zhipu --env ANTHROPIC_AUTH_TOKEN=$GLM_API_KEY
 ```
 
 ## When in doubt

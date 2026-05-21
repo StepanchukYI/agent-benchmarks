@@ -102,18 +102,32 @@ Want to run the server + leaderboard on your own box behind a reverse proxy? See
 
 | Layer | Coverage | Tier support |
 |---|---|---|
-| L0 foundation | 5 tasks (file ops, schema fill, exec, extract) | T0 + T2 |
-| L1 memory | 1 pilot YAML | T2 |
-| L2 skill router | 1 pilot YAML | T2 |
-| L3 domains (obsidian, lantern, backstage, gitnexus, graphify) | 1 pilot YAML (obsidian) | T2 |
-| L4 composite | 1 pilot YAML | T2 |
+| L0 foundation | ~80 tasks (file ops, schema fill, exec, extract, niah/ruler, instruction follow, tool use, faithfulness, reasoning) | T0 + T2 + T3 |
+| L1 memory | growing pilot | T2 |
+| L2 skill router | growing pilot | T2 |
+| L3 domains (obsidian, lantern, backstage, gitnexus, graphify) | obsidian pilot | T2 |
+| L4 composite | pilot | T2 |
 | L5 evolved | not yet | — |
 
-Runners: `mock`, `claude-code` (Claude Code CLI in headless `stream-json` mode). Stubs for `codex_cli`, `gemini_cli`, `glm_api`, `minimax_api`.
+Runners (all real impls):
 
-Scorers (deterministic, re-runnable from trajectory.jsonl alone — LSN-007): `file_diff`, `exec`, `schema` (jsonschema), `state_diff`, `privacy_check`. Each exposes `.run(workdir, task)` (live) and `.replay(traj_path, task)` (trajectory-only) — same verdict shape.
+- `claude-code` — Claude Code CLI in headless `stream-json` mode
+- `codex-cli` — OpenAI Codex CLI (`codex exec --json`)
+- `gemini-cli` — Google Gemini CLI (`gemini --output-format stream-json`)
+- `opencode` — OpenCode CLI (`opencode run --format json`)
+- `pi-agent` — Pi coding agent (`pi --mode json --print`)
+- `anthropic-compat` — HTTP wire to Anthropic + Zhipu/MiniMax/Moonshot/DeepSeek
+- `openai-compat` — HTTP wire to OpenAI + any /v1/chat/completions vendor
+- `local` — Ollama / LM Studio / vLLM / llama.cpp / text-generation-webui
+- `mock` — deterministic partial-credit, no live calls (CI safe)
 
-Tiers (ADR-008): T0 vanilla · T1 minimal · T2 personal · T3 placeholder. Materialized into the sandbox workdir; `tier_hash` recorded into the trajectory `run_start`.
+Stubs only: `hermes-agent`, `nanobot`, `cursor`.
+
+Scorers (deterministic, re-runnable from trajectory.jsonl alone — LSN-007): `file_diff`, `exec`, `schema` (jsonschema), `state_diff`, `privacy_check`, plus Track B's per-task assertion chains. Each scorer exposes `.run(workdir, task)` (live) and `.replay(traj_path, task)` (trajectory-only) — same verdict shape. LLM-judge available but always paired with at least one deterministic scorer (LSN-004).
+
+Tiers (ADR-008): T0 vanilla · T1 minimal · T2 personal · T3 full. Materialized into the sandbox workdir; `tier_hash` recorded in `trajectory.run_start`.
+
+Sensitivity axes recorded in every run (per `docs/result-sensitivity-axes.md`): `sampling` (temperature / top_p / max_output_tokens), `reasoning.effort`, `system_prompt_verbatim`, `model_context_window_tokens`, `output_truncated`, `turn_cap`.
 
 ---
 
@@ -128,9 +142,11 @@ agent-benchmarks/
 │   ├── ab-leaderboard/ TS/React — SPA (5 pages, shadcn defaults)
 │   ├── ab-sdk/         Python — read/write run dirs, publish gate, replay
 │   └── ab-cli/         Python — `ab run / register / publish / task / replay`
-├── docs/               architecture, trajectory protocol, tiers, trust tiers, privacy patterns
+├── docs/               architecture, trajectory protocol, tiers, trust tiers, privacy patterns,
+│                       friend-onboarding, public deploy, sensitivity axes, model registry
 ├── infra/              docker-compose + Dockerfiles
-├── scripts/            privacy_scan.py, build_t2_seed.py
+├── scripts/            run_quick.sh, run_matrix.sh, serve_local.sh, privacy_scan.py,
+│                       privacy_scrub.py, ingest_local_runs.py, build_t2_seed.py, db-{backup,restore}.sh
 ├── tests-e2e/          cross-package contract + e2e
 ├── agent_benchmarks_build_spec.md   AUTHORITATIVE BUILD SPEC
 └── Makefile
@@ -158,19 +174,29 @@ make clean
 
 ```bash
 ab --help                                          # top-level
+ab wizard                                          # interactive runner/model/effort picker
 ab task list                                       # all shipped tasks
 ab task validate packages/ab-datasets/ab_datasets/L0_foundation/
 ab task dry-run L0_001                             # load + check fixture presence
 
 ab run --suite L0_smoke --runner mock --tier T0
-ab run --suite L0_smoke --runner claude-code --model claude-sonnet-4-5 --tier T2
+ab run --suite L0_smoke --runner claude-code --model claude-sonnet-4-5 --effort low --tier T2
+ab run --suite L0_smoke --runner opencode    --model anthropic/claude-sonnet-4-5 --effort medium --tier T0
+ab run --suite L0_smoke --runner pi-agent    --model claude-sonnet-4-5 --effort high  --tier T0
+ab run --suite L0_smoke --runner codex-cli   --model gpt-5 --effort medium --tier T0
+ab run --suite L0_smoke --runner gemini-cli  --model gemini-2.5-pro --effort medium --tier T0
 ab run --task L0_003 --runner claude-code --tier T0
 
-ab register https://github.com/you/ab-results     # OAuth device flow + register
+# Vendor-routed claude-code scaffold (Anthropic-compat layer):
+ab run --suite L0_smoke --task L0_001 --runner claude-code \
+       --model GLM-5.1 --tier T0 \
+       --vendor zhipu --env ANTHROPIC_AUTH_TOKEN=$GLM_API_KEY
+
+ab register https://github.com/<you>/ab-results   # GitHub device-flow + POST /repos
 ab publish                                         # privacy-gate + commit + push
 ab publish --dry-run                               # check without pushing
 
-ab replay <run-id> <commit-sha>                    # server-side: not impl yet
+ab replay <run-id> <commit-sha>                    # server-side replay (M2.9)
 ab submit                                          # legacy push (ADR-007 fallback)
 ab evolve                                          # L5 auto-evolution (Phase 7)
 ```
@@ -203,11 +229,19 @@ ab evolve                                          # L5 auto-evolution (Phase 7)
                                    │
                                    ▼
                               ┌─────────────────┐
-                              │ ab-leaderboard  │  React SPA
-                              │ (Matrix · Run-  │  (claude-designer)
-                              │  Launcher · …)  │
+                              │ ab-leaderboard  │  React SPA (5 pages):
+                              │  Leaderboard ·  │   Leaderboard, Runs,
+                              │  Run launcher · │   Tasks, Trends,
+                              │  Tasks · Trends │   Settings (repos +
+                              │  · Settings     │   account + privacy)
                               └─────────────────┘
 ```
+
+**Friend-aggregation path** (ADR-007): each operator registers a public
+results repo via `ab register` or Settings → Add repo. The server's
+fetcher worker (`fetch_queue_poll_interval_sec`, default 30s) clones,
+ingests, re-scores. Server never gets write access. Full walkthrough:
+[`docs/friend-onboarding.md`](docs/friend-onboarding.md).
 
 ---
 

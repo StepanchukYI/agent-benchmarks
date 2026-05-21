@@ -5,6 +5,7 @@ import { useMe, useSignOut } from "../../api/hooks";
 import { Button } from "../ui/Button";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { PageHero } from "../shell/PageHero";
+import { PostLoginGuide } from "./PostLoginGuide";
 import { SignInModal } from "./SignInModal";
 
 interface Toggle {
@@ -77,6 +78,8 @@ export function AccountTab(): JSX.Element {
           )}
         </div>
       </Panel>
+
+      {me && <PostLoginGuide />}
 
       <Panel>
         <PanelHeader title={<span className="inline-flex items-center gap-2"><Eye className="size-3.5" /> Visibility</span>} />
