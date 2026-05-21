@@ -27,9 +27,11 @@ def test_zero_tokens_returns_zero() -> None:
 
 
 def test_opus_pricing() -> None:
-    # 1000 in * 15/1M + 1000 out * 75/1M = 0.015 + 0.075 = 0.09
-    cost = estimate_cost_usd("claude-opus-4-5", 1000, 1000)
-    assert cost == pytest.approx(0.09)
+    # Anthropic dropped Opus pricing to $5/$25 with the 4-6 release
+    # (verified 2026-05-21). 1000 in + 1000 out:
+    #   1000 * 5/1M + 1000 * 25/1M = 0.005 + 0.025 = 0.030
+    cost = estimate_cost_usd("claude-opus-4-7", 1000, 1000)
+    assert cost == pytest.approx(0.030)
 
 
 def test_haiku_pricing() -> None:
