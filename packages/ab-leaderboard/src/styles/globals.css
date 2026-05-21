@@ -2,58 +2,175 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+/**
+ * Design tokens — shadcn-style HSL channels (no hsl() wrapper) so Tailwind can
+ * compose them with alpha modifiers like `hsl(var(--accent) / 0.12)`.
+ *
+ * Dark is the default (data-theme="dark"). Light is opt-in via `.theme-light`.
+ * Density is set via `data-density="compact|regular|comfortable"` on <html>.
+ */
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+  :root,
+  .theme-dark {
+    --background: 240 6% 5%;
+    --background-2: 240 6% 7%;
+    --foreground: 240 5% 93%;
+    --foreground-2: 240 5% 80%;
+
+    --panel: 240 7% 8%;
+    --panel-2: 240 8% 10%;
+    --panel-3: 240 8% 13%;
+
+    --border: 240 5% 16%;
+    --border-soft: 240 5% 12%;
+    --input: 240 5% 16%;
+
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 50%;
+
+    --card: 240 7% 8%;
+    --card-foreground: 240 5% 93%;
+    --popover: 240 7% 9%;
+    --popover-foreground: 240 5% 93%;
+
+    --primary: 240 5% 95%;
+    --primary-foreground: 240 6% 5%;
+
+    --secondary: 240 5% 14%;
+    --secondary-foreground: 240 5% 90%;
+
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 217 91% 60%;
     --radius: 0.5rem;
+
+    --pass: 158 64% 45%;
+    --fail: 0 84% 60%;
+    --warn: 38 92% 50%;
+    --info: 188 86% 53%;
+    --idle: 240 4% 46%;
+
+    --vendor-anthropic: 18 64% 60%;
+    --vendor-openai: 162 88% 35%;
+    --vendor-google: 217 87% 60%;
+    --vendor-zhipu: 263 70% 65%;
+    --vendor-minimax: 38 92% 55%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  .theme-light {
+    --background: 0 0% 98%;
+    --background-2: 240 5% 95%;
+    --foreground: 240 10% 9%;
+    --foreground-2: 240 6% 20%;
+
+    --panel: 0 0% 100%;
+    --panel-2: 240 5% 98%;
+    --panel-3: 240 5% 95%;
+
+    --border: 240 6% 90%;
+    --border-soft: 240 6% 94%;
+    --input: 240 6% 90%;
+
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 9%;
+
+    --primary: 240 10% 9%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 9%;
+
+    --accent: 221 83% 53%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+
+    --pass: 158 64% 40%;
+    --fail: 0 72% 51%;
+    --warn: 38 92% 45%;
+    --info: 188 86% 38%;
+    --idle: 240 4% 46%;
   }
 
+  /* Density driven by [data-density] on <html>. Read by components via
+     getComputedStyle of --row-h etc. */
+  :root,
+  [data-density="regular"] {
+    --row-pad-y: 0.5rem;
+    --row-pad-x: 0.75rem;
+    --gap: 0.875rem;
+  }
+  [data-density="compact"] {
+    --row-pad-y: 0.3rem;
+    --row-pad-x: 0.55rem;
+    --gap: 0.625rem;
+  }
+  [data-density="comfortable"] {
+    --row-pad-y: 0.75rem;
+    --row-pad-x: 1rem;
+    --gap: 1.125rem;
+  }
+
+  html,
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+    letter-spacing: -0.005em;
+  }
+  body {
+    @apply font-sans antialiased;
+    font-size: 13px;
+  }
   * {
     @apply border-border;
   }
 
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+  /* tabular numbers + zero slash for mono spans by default */
+  .mono,
+  .font-mono {
+    font-feature-settings: "zero", "cv01";
   }
+
+  /* Hide native focus rings on mouse, keep for keyboard */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--background));
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+    background-clip: content-box;
+    border: 2px solid hsl(var(--background));
+  }
+}
+
+@layer utilities {
+  .tnum { font-variant-numeric: tabular-nums; }
+  .diff-add { background-color: hsl(var(--pass) / 0.08); }
+  .diff-del { background-color: hsl(var(--fail) / 0.08); }
 }

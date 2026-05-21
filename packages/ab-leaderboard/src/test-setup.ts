@@ -1,6 +1,5 @@
-import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
-
-afterEach(() => {
-  cleanup();
-});
+/**
+ * Vitest setup — runs before each test file.
+ *
+ * Currently a no-op shell; add global matchers or polyfills here when needed.
+ */

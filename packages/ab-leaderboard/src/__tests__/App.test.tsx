@@ -1,44 +1,56 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import Sidebar from "../components/Sidebar";
-import { queryClient } from "../lib/queryClient";
 import Leaderboard from "../pages/Leaderboard";
 import RunLauncher from "../pages/RunLauncher";
 import Settings from "../pages/Settings";
 import TrajectoryViewer from "../pages/TrajectoryViewer";
 import Trends from "../pages/Trends";
+import { queryClient } from "../lib/queryClient";
+import { ThemeProvider } from "../lib/theme";
 
-function AppForTest(): JSX.Element {
+function withRoute(path: string, element: JSX.Element): JSX.Element {
   return (
-    <div>
-      <Sidebar />
-      <main>
-        <Routes>
-          <Route path="/" element={<Navigate to="/leaderboard" replace />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/runs" element={<RunLauncher />} />
-          <Route path="/trajectories" element={<TrajectoryViewer />} />
-          <Route path="/trends" element={<Trends />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </main>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path={path} element={element} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 
-describe("App", () => {
-  it("renders the Leaderboard placeholder at /leaderboard", () => {
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/leaderboard"]}>
-          <AppForTest />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(screen.getByText(/Phase 0 placeholder/i)).toBeDefined();
+describe("Pages — smoke", () => {
+  it("renders Leaderboard with at least one model row", () => {
+    render(withRoute("/leaderboard", <Leaderboard />));
     expect(screen.getByRole("heading", { name: /Leaderboard/i })).toBeDefined();
+    expect(screen.getByText(/Mean correctness/i)).toBeDefined();
+  });
+
+  it("renders Run Launcher with task tree + configurator", () => {
+    render(withRoute("/runs", <RunLauncher />));
+    expect(screen.getByRole("heading", { name: /Run launcher/i })).toBeDefined();
+  });
+
+  it("renders Trajectory viewer with the provenance breadcrumb", () => {
+    render(withRoute("/trajectories", <TrajectoryViewer />));
+    expect(screen.getAllByText(/@evgeniy/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders Trends with overview cards", () => {
+    render(withRoute("/trends", <Trends />));
+    expect(screen.getByRole("heading", { name: /Trends/i })).toBeDefined();
+    expect(screen.getByText(/Active regressions/i)).toBeDefined();
+  });
+
+  it("renders Settings with the Account tab open by default", () => {
+    render(withRoute("/settings", <Settings />));
+    expect(screen.getByRole("heading", { name: /Account/i })).toBeDefined();
+    expect(screen.getAllByText(/GitHub identity/i).length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,15 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
+/**
+ * Tailwind tokens for ab-leaderboard.
+ *
+ * Every custom color uses the `<alpha-value>` placeholder so opacity modifiers
+ * (`bg-pass/[0.12]`, `text-accent/50`) work against CSS-variable-backed HSL
+ * channels. HSL channels themselves live in `src/styles/globals.css`.
+ */
+const hsl = (cssVar: string): string => `hsl(var(--${cssVar}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -14,44 +23,81 @@ const config: Config = {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
+        border: hsl("border"),
+        "border-soft": hsl("border-soft"),
+        input: hsl("input"),
+        ring: hsl("ring"),
+        background: hsl("background"),
+        "background-2": hsl("background-2"),
+        foreground: hsl("foreground"),
+        "foreground-2": hsl("foreground-2"),
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: hsl("muted"),
+          foreground: hsl("muted-foreground"),
+        },
+        panel: {
+          DEFAULT: hsl("panel"),
+          2: hsl("panel-2"),
+          3: hsl("panel-3"),
+        },
+        primary: {
+          DEFAULT: hsl("primary"),
+          foreground: hsl("primary-foreground"),
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: hsl("accent"),
+          foreground: hsl("accent-foreground"),
+        },
+        secondary: {
+          DEFAULT: hsl("secondary"),
+          foreground: hsl("secondary-foreground"),
+        },
+        destructive: {
+          DEFAULT: hsl("destructive"),
+          foreground: hsl("destructive-foreground"),
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: hsl("popover"),
+          foreground: hsl("popover-foreground"),
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: hsl("card"),
+          foreground: hsl("card-foreground"),
         },
+        pass: hsl("pass"),
+        fail: hsl("fail"),
+        warn: hsl("warn"),
+        info: hsl("info"),
+        idle: hsl("idle"),
+        vendor: {
+          anthropic: hsl("vendor-anthropic"),
+          openai: hsl("vendor-openai"),
+          google: hsl("vendor-google"),
+          zhipu: hsl("vendor-zhipu"),
+          minimax: hsl("vendor-minimax"),
+        },
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        pop: "0 0 0 1px hsl(var(--border)), 0 18px 40px -8px rgba(0,0,0,.35)",
+      },
+      keyframes: {
+        "pulse-ring": {
+          "0%": { transform: "scale(1)", opacity: "0.6" },
+          "70%": { transform: "scale(2.4)", opacity: "0" },
+          "100%": { transform: "scale(2.4)", opacity: "0" },
+        },
+      },
+      animation: {
+        "pulse-ring": "pulse-ring 1.6s cubic-bezier(0,0,0.2,1) infinite",
       },
     },
   },
