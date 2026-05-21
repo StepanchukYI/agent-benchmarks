@@ -50,6 +50,53 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+# PATH entries that survive isolation. Anything outside these prefixes is
+# stripped from PATH so the subprocess can't find operator-private binaries
+# (e.g. ~/.local/bin/mem, ~/.codex/bin, /Users/<op>/anything). Without this,
+# Haiku ran `mem --help` and the tool's help-text printed the operator's
+# /Users/<op>/.codex/... path verbatim, which the privacy scanner then
+# flagged. See haiku 2026-05-21 sweep — 7 trajectories had high/medium
+# privacy hits sourced from `mem` returns + vault-hub-marker leaks.
+ALLOWED_PATH_PREFIXES: tuple[str, ...] = (
+    "/usr/bin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/opt/homebrew/bin",  # claude / gh / uv on Apple Silicon
+    "/opt/homebrew/sbin",
+    "/usr/sbin",
+    "/bin",
+    "/sbin",
+    "/opt/local/bin",  # MacPorts fallback
+)
+
+
+def _sanitize_path(path_value: str) -> str:
+    """Drop operator-private dirs from $PATH.
+
+    Keep only system bin dirs (see ALLOWED_PATH_PREFIXES). Drops anything
+    rooted in $HOME or user-specific cache trees, plus relative entries.
+    """
+    out: list[str] = []
+    for entry in path_value.split(os.pathsep):
+        entry = entry.strip()
+        if not entry:
+            continue
+        # Reject relative or empty-after-norm entries.
+        if not entry.startswith("/"):
+            continue
+        # Resolve symlinks shallowly to defeat ~/.local/bin → /Users/op/...
+        # tricks; but don't follow into a missing path.
+        try:
+            resolved = os.path.realpath(entry)
+        except OSError:
+            resolved = entry
+        if any(
+            resolved == prefix or resolved.startswith(prefix + os.sep)
+            for prefix in ALLOWED_PATH_PREFIXES
+        ):
+            out.append(entry)
+    return os.pathsep.join(out) if out else "/usr/bin:/bin"
+
 # Env keys allowed through the isolation barrier. Anything outside this list is
 # dropped before the subprocess sees it.
 #
@@ -173,6 +220,13 @@ class IsolatedEnv:
         """
         allow = ALLOWED_ENV_KEYS | (extra_keep or frozenset())
         env: dict[str, str] = {k: os.environ[k] for k in allow if k in os.environ}
+
+        # Sanitize PATH: drop operator-private dirs (~/.local/bin, ~/.codex/bin,
+        # /Users/<op>/* etc.). Otherwise the subprocess can `exec` operator
+        # tools and their help-text / output leak operator home paths into
+        # the trajectory. See haiku full-L0 sweep for the original incident.
+        if "PATH" in env:
+            env["PATH"] = _sanitize_path(env["PATH"])
 
         # Always allocate a tempdir so the runner can stage helper files
         # (empty mcp-config, empty CLAUDE.md, etc) and the cleanup path
