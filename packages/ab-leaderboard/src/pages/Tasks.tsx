@@ -8,7 +8,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
 import { TaskTree } from "../components/launcher/TaskTree";
 import { TaskDetail } from "../components/launcher/TaskDetail";
-import { useTasksList } from "../api/hooks";
+import { useTaskDetail, useTasksList } from "../api/hooks";
 import { toState } from "../lib/ui-state";
 import type { Task } from "../lib/types";
 
@@ -18,6 +18,12 @@ export default function Tasks(): JSX.Element {
   const tasks = tasksState.kind === "ok" ? tasksState.value : [];
   const defaultTask = tasks.find((t) => t.id === "L1_001") ?? null;
   const [task, setTask] = useState<Task | null>(defaultTask);
+  // `useTasksList` returns a light shape (id/title/suite/layer/runs_count_30d
+  // — no scorer_chain / acceptance_criteria / fixture_ref). Pull the full
+  // detail for the selected task so TaskDetail can render real fields
+  // instead of "—" placeholders.
+  const detailQuery = useTaskDetail(task?.id);
+  const detailedTask = detailQuery.data ?? task;
   const pilotCount = tasks.filter((t) => t.layer === "L0").length;
   const privateCount = tasks.filter((t) => (t as { visibility?: string }).visibility === "private").length;
   const evolvedCount = tasks.filter((t) => t.layer === "L5").length;
@@ -63,7 +69,7 @@ export default function Tasks(): JSX.Element {
               }
             />
           )}
-          {tasksState.kind === "ok" && <TaskDetail task={task} />}
+          {tasksState.kind === "ok" && <TaskDetail task={detailedTask} />}
         </div>
       </div>
     </>
