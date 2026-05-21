@@ -91,6 +91,14 @@ class Operator(BaseModel):
     is_self: bool = False
 
 
+class SuiteOut(BaseModel):
+    id: str
+    layer: str
+    name: str
+    description: str
+    task_count: int
+
+
 class ModelInfo(BaseModel):
     id: str
     short: str

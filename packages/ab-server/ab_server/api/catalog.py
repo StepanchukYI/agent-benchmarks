@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from ab_server.db import get_session
 from ab_server.leaderboard import ModelInfo, Operator
+from ab_server.leaderboard.schemas import SuiteOut
 from ab_server.models import RegisteredRepo, Submission, TaskResult, User
 
 router = APIRouter(tags=["catalog"])
@@ -152,4 +153,67 @@ def list_models(
                 cost_per_1k_out=0.0,
             )
         )
+    return out
+
+
+_SUITE_LAYER_DEFAULTS: dict[str, str] = {
+    "L0_smoke": "L0",
+    "L0_foundation": "L0",
+    "L1_memory": "L1",
+    "L2_skill_routing": "L2",
+    "L2_skills": "L2",
+    "L3_domains": "L3",
+    "L4_composite": "L4",
+    "L5_evolved": "L5",
+}
+
+
+_SUITE_DESCRIPTIONS: dict[str, str] = {
+    "L0_smoke": "L0 foundation smoke — file ops, formatting, exact-output.",
+    "L1_memory": "L1 memory — write schema, retrieval, consolidation.",
+    "L2_skills": "L2 skill routing — invoke skills via documented triggers.",
+    "L3_domains": "L3 per-system adapters (Obsidian, GitNexus, Lantern, ...).",
+    "L4_composite": "L4 composite real-world scenarios.",
+}
+
+
+def _layer_for(suite: str) -> str:
+    if suite in _SUITE_LAYER_DEFAULTS:
+        return _SUITE_LAYER_DEFAULTS[suite]
+    head = suite.split("_", 1)[0] if "_" in suite else suite
+    if head.startswith("L") and len(head) >= 2 and head[1].isdigit():
+        return head[:2].upper()
+    return "L?"
+
+
+@router.get("/suites", response_model=list[SuiteOut])
+def list_suites(
+    session: Annotated[Session, Depends(get_session)],
+) -> list[SuiteOut]:
+    """Distinct suites currently present in ``task_results`` + their task counts.
+
+    Source of truth = the DB rows the leaderboard already exposes; this
+    keeps the picker honest (only suites that have ANY result land
+    here). Empty list when nothing's been benched yet.
+    """
+    rows = session.exec(
+        select(
+            TaskResult.suite,
+            func.count(func.distinct(TaskResult.task_id)),
+        ).group_by(TaskResult.suite)
+    ).all()
+    out: list[SuiteOut] = []
+    for suite, n in rows:
+        if not suite:
+            continue
+        out.append(
+            SuiteOut(
+                id=suite,
+                layer=_layer_for(suite),
+                name=suite,
+                description=_SUITE_DESCRIPTIONS.get(suite, f"{suite} suite."),
+                task_count=int(n),
+            )
+        )
+    out.sort(key=lambda s: (s.layer, s.id))
     return out

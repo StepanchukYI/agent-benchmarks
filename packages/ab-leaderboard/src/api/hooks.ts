@@ -188,7 +188,16 @@ export function useTrendsRegressions(direction: "down" | "up" = "down") {
   const mock: RegressionItem[] = direction === "down" ? REGRESSIONS : IMPROVEMENTS;
   return useQuery({
     queryKey: ["trends", "regressions", direction],
-    queryFn: () => fetchOrMock(endpoints.trendsRegressions({ direction }), mock),
+    queryFn: async () => {
+      // Server returns `{ direction, window_days, items: RegressionItem[] }`;
+      // mock fixture is the bare array. Normalise both to RegressionItem[]
+      // so the consumer (RightRail) can always .map() safely.
+      const resp = await fetchOrMock<
+        RegressionItem[] | { items: RegressionItem[] }
+      >(endpoints.trendsRegressions({ direction }), mock);
+      if (Array.isArray(resp)) return resp;
+      return (resp?.items ?? []) as RegressionItem[];
+    },
     ...mockSeed(mock),
   });
 }
