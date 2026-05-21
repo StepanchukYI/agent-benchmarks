@@ -23,6 +23,7 @@ from ab_harness.scorers.file_invariants import (
 )
 from ab_harness.scorers.latency_cost import latency_cost_scorer
 from ab_harness.scorers.llm_judge import llm_judge_scorer
+from ab_harness.scorers.memory_check import memory_check_scorer
 from ab_harness.scorers.privacy_check import privacy_check_scorer
 from ab_harness.scorers.schema import schema_scorer
 from ab_harness.scorers.state_diff import state_diff_scorer
@@ -43,6 +44,7 @@ SCORER_REGISTRY: dict[str, ScorerCallable] = {
     "tool_skill": tool_skill_scorer,
     "context_efficiency": context_efficiency_scorer,
     "latency_cost": latency_cost_scorer,
+    "memory_check": memory_check_scorer,
 }
 
 KIND_DEFAULT_REGISTRY: dict[ScorerKind, ScorerCallable] = {

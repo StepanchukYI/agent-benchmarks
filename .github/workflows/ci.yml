@@ -53,9 +53,10 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: packages/ab-leaderboard/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: install
+      - name: install (root workspace)
+        working-directory: ${{ github.workspace }}
         run: pnpm install --frozen-lockfile=false
 
       - name: typecheck

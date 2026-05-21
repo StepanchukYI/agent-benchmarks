@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ab_harness.pricing import estimate_cost_usd
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -377,6 +378,8 @@ class ClaudeCodeRunner(BaseRunner):
             duration_ms = int(result_event.get("duration_ms") or 0)
             if duration_ms:
                 totals_latency_ms = duration_ms
+            if totals_cost == 0.0 and (totals_tokens_in > 0 or totals_tokens_out > 0):
+                totals_cost = estimate_cost_usd(self._model, totals_tokens_in, totals_tokens_out)
         else:
             rc = self._proc.poll() if self._proc is not None else 1
             status = RunStatus.completed if rc == 0 else RunStatus.error
@@ -416,6 +419,8 @@ class ClaudeCodeRunner(BaseRunner):
         tokens_in = int(usage.get("input_tokens") or 0)
         tokens_out = int(usage.get("output_tokens") or 0)
         cost = float(event.get("cost_usd") or message.get("cost_usd") or 0.0)
+        if cost == 0.0 and (tokens_in > 0 or tokens_out > 0):
+            cost = estimate_cost_usd(self._model, tokens_in, tokens_out)
         return {
             "idx": idx,
             "role": "assistant",
