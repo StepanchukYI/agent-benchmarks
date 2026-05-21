@@ -8,11 +8,17 @@ from sqlmodel import Session
 
 from ab_server.db import get_session
 from ab_server.leaderboard import (
+    CIGateStatus,
     LeaderboardMatrix,
     ParetoSeries,
+    RegressionsPanel,
+    TrendsOverview,
     TrendsSeries,
+    compute_ci_gate,
     compute_matrix,
+    compute_overview,
     compute_pareto,
+    compute_regressions,
     compute_trends,
 )
 
@@ -54,6 +60,7 @@ def get_leaderboard(
     trust: Annotated[list[str] | None, Query()] = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    dataset_versions: Annotated[list[str] | None, Query()] = None,
 ) -> LeaderboardMatrix:
     return compute_matrix(
         session,
@@ -64,6 +71,7 @@ def get_leaderboard(
         trust=_split_csv(trust),
         date_from=_parse_iso(date_from),
         date_to=_parse_iso(date_to),
+        dataset_versions=_split_csv(dataset_versions),
     )
 
 
@@ -93,3 +101,45 @@ def get_pareto(
         suites=_split_csv(suites),
         tiers=_split_csv(tiers),
     )
+
+
+@router.get("/trends/regressions", response_model=RegressionsPanel)
+def get_trends_regressions(
+    session: Annotated[Session, Depends(get_session)],
+    window_days: int = 7,
+    min_delta: float = 0.05,
+    direction: str = "down",
+    limit: int = 5,
+) -> RegressionsPanel:
+    if window_days <= 0:
+        raise HTTPException(status_code=400, detail="window_days must be > 0")
+    if direction not in ("up", "down"):
+        raise HTTPException(
+            status_code=400, detail="direction must be 'up' or 'down'"
+        )
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit must be > 0")
+    return compute_regressions(
+        session,
+        window_days=window_days,
+        min_delta=min_delta,
+        direction=direction,
+        limit=limit,
+    )
+
+
+@router.get("/trends/overview", response_model=TrendsOverview)
+def get_trends_overview(
+    session: Annotated[Session, Depends(get_session)],
+    window_days: int = 7,
+) -> TrendsOverview:
+    if window_days <= 0:
+        raise HTTPException(status_code=400, detail="window_days must be > 0")
+    return compute_overview(session, window_days=window_days)
+
+
+@router.get("/trends/ci-gate", response_model=CIGateStatus)
+def get_trends_ci_gate(
+    session: Annotated[Session, Depends(get_session)],
+) -> CIGateStatus:
+    return compute_ci_gate(session)

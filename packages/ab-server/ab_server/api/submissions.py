@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
+from ab_harness.scorers.privacy_check import privacy_check_scorer
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
+from ab_server.api._trajectory_view import (
+    assemble_trajectory_view,
+    resolve_submission_paths,
+)
+from ab_server.config import Settings
 from ab_server.db import get_session
 from ab_server.models import (
     RegisteredRepo,
@@ -131,4 +138,71 @@ def get_submission(
         "submission": _serialize_submission(submission, task_result),
         "task_result": _serialize_task_result(task_result) if task_result else None,
         "verdicts": verdicts,
+    }
+
+
+def _resolve_submission(session: Session, id: str) -> Submission:
+    try:
+        sub_id = UUID(id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found") from exc
+    submission = session.get(Submission, sub_id)
+    if submission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    return submission
+
+
+@router.get("/submissions/{id}/trajectory")
+def get_submission_trajectory(
+    id: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    submission = _resolve_submission(session, id)
+    settings = Settings()
+    traj_path, repo, task_result = resolve_submission_paths(
+        session, submission, settings.fetcher_cache_dir
+    )
+    if not traj_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"trajectory file missing at {traj_path}",
+        )
+    return assemble_trajectory_view(
+        traj_path,
+        submission=submission,
+        task_result=task_result,
+        repo=repo,
+    )
+
+
+@router.get("/submissions/{id}/privacy-scan")
+def get_submission_privacy_scan(
+    id: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    submission = _resolve_submission(session, id)
+    settings = Settings()
+    traj_path, _repo, _tr = resolve_submission_paths(
+        session, submission, settings.fetcher_cache_dir
+    )
+    if not traj_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"trajectory file missing at {traj_path}",
+        )
+    verdict = privacy_check_scorer(
+        workdir=None,
+        task=None,
+        trajectory_path=Path(traj_path),
+        mode="replay",
+    )
+    detail = verdict.detail if isinstance(verdict.detail, dict) else {}
+    hits = detail.get("hits", []) if isinstance(detail.get("hits"), list) else []
+    total_hits = int(detail.get("total_hits", 0) or 0)
+    high_hits = int(detail.get("high_severity_hits", 0) or 0)
+    return {
+        "ok": bool(verdict.pass_),
+        "total_hits": total_hits,
+        "high_severity_hits": high_hits,
+        "hits": hits,
     }

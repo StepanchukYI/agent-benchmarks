@@ -24,3 +24,5 @@ class Run(SQLModel, table=True):
     started_at: datetime = Field(default_factory=_utcnow)
     finished_at: datetime | None = None
     cost_total_usd: float = 0.0
+    expected_total: int | None = Field(default=None, nullable=True)
+    label: str | None = Field(default=None, nullable=True)
