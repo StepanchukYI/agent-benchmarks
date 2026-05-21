@@ -104,6 +104,10 @@ def list_submissions(
             )
             .join(User, User.id == RegisteredRepo.user_id)
             .where(User.handle == operator)
+            # Never leak submissions from a private repo through the
+            # public operator-filter; private rows must only surface via
+            # owner-scoped endpoints (which this is not).
+            .where(RegisteredRepo.is_public == True)  # noqa: E712 — SQL bool
         )
 
     stmt = stmt.order_by(Submission.ingested_at.desc()).offset(offset).limit(limit)

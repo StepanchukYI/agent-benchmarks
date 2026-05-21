@@ -18,6 +18,11 @@ from ab_server.models import RegisteredRepo, ScorerVerdictRow, Submission, TaskR
 _log = logging.getLogger(__name__)
 
 _VERIFIED_THRESHOLD = 0.01
+# Below this self-reported total, use absolute (not relative) discrepancy.
+# Avoids div-by-near-zero when a model reports total_score = 0 — otherwise
+# any tiny rescored total inflates the relative discrepancy past the gate
+# and "all-zero matches all-zero" can never reach the verified tier.
+_RELATIVE_FLOOR = 0.01
 
 
 @dataclass
@@ -69,7 +74,11 @@ def rescore_submission(session: Session, submission: Submission) -> RescoreRepor
 
     has_unsupported = _has_replay_unsupported(verdicts)
     rescored_total = _verdict_mean(verdicts)
-    discrepancy = abs(rescored_total - self_total) / max(self_total, 1e-9)
+    if self_total < _RELATIVE_FLOOR:
+        # Absolute scale: score axis is 0-1, so 0.01 absolute == 1% relative.
+        discrepancy = abs(rescored_total - self_total)
+    else:
+        discrepancy = abs(rescored_total - self_total) / self_total
 
     new_tier = _decide_tier(
         task,

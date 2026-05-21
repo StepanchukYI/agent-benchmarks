@@ -42,34 +42,45 @@ def sync_repo(session: Session, repo: RegisteredRepo) -> SyncReport:
         return report
 
     report.commit_sha = head_sha
-    if repo.sync_cursor == head_sha:
-        repo.last_synced_at = datetime.now(UTC)
-        session.add(repo)
-        session.commit()
-        return report
 
-    parsed_runs = list(iter_parsed_runs(dest, head_sha))
-    inserted, skipped = ingest_runs(session, repo, parsed_runs)
-    report.inserted = inserted
-    report.skipped = skipped
+    # Skip parse + ingest when upstream HEAD hasn't moved, but still fall
+    # through to the rescore-stragglers pass below so submissions left
+    # unscored by a previous capped sync get picked up on the next call.
+    if repo.sync_cursor != head_sha:
+        parsed_runs = list(iter_parsed_runs(dest, head_sha))
+        inserted, skipped = ingest_runs(session, repo, parsed_runs)
+        report.inserted = inserted
+        report.skipped = skipped
 
-    if inserted:
-        from ab_server.rescoring import rescore_submission
+    # Cap rescoring per sync (M_F). /repos/{id}/sync is a synchronous
+    # request handler; rescoring N submissions in a tight loop holds the
+    # worker for N * rescore_time. A repo that ships dozens of submissions
+    # in one push would otherwise park a gunicorn worker until done.
+    #
+    # Trade-off: leftover submissions are picked up on subsequent syncs
+    # (the fetcher cron + manual /sync). Worst-case latency to "fully
+    # rescored" is roughly ceil(N / batch_size) * fetch_interval_sec.
+    # Pick the newest unscored submissions first so the leaderboard
+    # surfaces the freshest results soonest.
+    from ab_server.rescoring import rescore_submission
 
-        new_submissions = session.exec(
-            select(Submission)
-            .where(Submission.registered_repo_id == repo.id)
-            .where(Submission.source_commit_sha == head_sha)
-        ).all()
-        for submission in new_submissions:
-            try:
-                result = rescore_submission(session, submission)
-                report.rescored += 1
-                if result.error:
-                    report.errors.append(f"rescore {submission.id}: {result.error}")
-            except Exception as exc:
-                _log.exception("rescore failed")
-                report.errors.append(f"rescore {submission.id}: {exc}")
+    batch_size = max(1, settings.sync_rescore_batch_size)
+    pending = session.exec(
+        select(Submission)
+        .where(Submission.registered_repo_id == repo.id)
+        .where(Submission.re_scored_at.is_(None))
+        .order_by(Submission.ingested_at.desc())
+        .limit(batch_size)
+    ).all()
+    for submission in pending:
+        try:
+            result = rescore_submission(session, submission)
+            report.rescored += 1
+            if result.error:
+                report.errors.append(f"rescore {submission.id}: {result.error}")
+        except Exception as exc:
+            _log.exception("rescore failed")
+            report.errors.append(f"rescore {submission.id}: {exc}")
 
     repo.last_synced_at = datetime.now(UTC)
     repo.sync_cursor = head_sha

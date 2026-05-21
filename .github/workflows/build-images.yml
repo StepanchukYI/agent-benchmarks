@@ -1,0 +1,158 @@
+# Build and publish the two runtime images (ab-server, ab-leaderboard) to GHCR.
+#
+# Triggers:
+#   - push to main         → tags: sha-<sha>, main, latest
+#   - push of tag v*       → tags: sha-<sha>, <tag>     (e.g. v0.2.1)
+#   - workflow_dispatch    → tags: sha-<sha>            (manual; pin by sha)
+#
+# The deploy agent on the homelab pulls these tags via
+# `infra/docker-compose.deploy.yml` (IMAGE_OWNER, IMAGE_TAG env vars).
+#
+# Recommended pin for production: IMAGE_TAG=sha-<commit_sha>
+# Auto-update channel:             IMAGE_TAG=main
+# Stable release channel:          IMAGE_TAG=v0.2.1 (or whatever tag)
+# `latest` is published only from main pushes — it tracks tip of main, NOT
+# the most recent semver tag. If you want "latest stable release" semantics,
+# pin to the tag name itself.
+
+name: build-images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-ab-server:
+    name: build-ab-server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase repo owner
+        id: owner
+        run: |
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          IMAGE="ghcr.io/${{ steps.owner.outputs.owner }}/agent-benchmarks-ab-server"
+          TAGS="${IMAGE}:sha-${{ github.sha }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS="${TAGS},${IMAGE}:${{ github.ref_name }}"
+          fi
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TAGS="${TAGS},${IMAGE}:main,${IMAGE}:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${TAGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ab-server
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/ab-server.prod.Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=ab-server
+          cache-to: type=gha,scope=ab-server,mode=max
+
+      - name: Print image digest
+        run: |
+          echo "ab-server digest: ${{ steps.build.outputs.digest }}"
+          echo "ab-server tags:"
+          echo "${{ steps.tags.outputs.tags }}"
+
+  build-ab-leaderboard:
+    name: build-ab-leaderboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase repo owner
+        id: owner
+        run: |
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve API base URL
+        id: api
+        # The SPA bakes AB_API_BASE_URL at build time. We pull it from the repo
+        # variable `AB_API_BASE_URL` (Settings → Variables) when set; otherwise
+        # we fall back to a same-origin relative path `/api/v1`, which works
+        # for any host that proxies /api/v1 to ab-server (default Caddy setup).
+        run: |
+          VAL="${{ vars.AB_API_BASE_URL }}"
+          if [ -z "$VAL" ]; then
+            VAL="/api/v1"
+            echo "::notice::AB_API_BASE_URL variable not set; defaulting to ${VAL}"
+          fi
+          echo "value=${VAL}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute tags
+        id: tags
+        run: |
+          IMAGE="ghcr.io/${{ steps.owner.outputs.owner }}/agent-benchmarks-ab-leaderboard"
+          TAGS="${IMAGE}:sha-${{ github.sha }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS="${TAGS},${IMAGE}:${{ github.ref_name }}"
+          fi
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TAGS="${TAGS},${IMAGE}:main,${IMAGE}:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${TAGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ab-leaderboard
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/ab-leaderboard.prod.Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            AB_API_BASE_URL=${{ steps.api.outputs.value }}
+          cache-from: type=gha,scope=ab-leaderboard
+          cache-to: type=gha,scope=ab-leaderboard,mode=max
+
+      - name: Print image digest
+        run: |
+          echo "ab-leaderboard digest: ${{ steps.build.outputs.digest }}"
+          echo "ab-leaderboard tags:"
+          echo "${{ steps.tags.outputs.tags }}"
+          echo "AB_API_BASE_URL baked: ${{ steps.api.outputs.value }}"

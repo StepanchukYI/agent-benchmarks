@@ -66,6 +66,87 @@ First boot order:
 3. `ab-leaderboard` serves the prebuilt SPA bundle.
 4. Caddy starts, requests a Let's Encrypt cert for `${AB_DOMAIN}` (or generates a self-signed cert for `.local`). First cert issuance can take 30–90 seconds.
 
+## Deploy from pre-built images
+
+The `build-images` GitHub Actions workflow publishes both runtime images to GHCR on every push to `main` and on every `v*` tag. The deploy machine can pull them instead of building from source — no toolchain, no `pnpm`, no `uv` needed on the host. Only Docker + Compose v2.
+
+Images published:
+
+- `ghcr.io/stepanchukyi/agent-benchmarks-ab-server:<tag>`
+- `ghcr.io/stepanchukyi/agent-benchmarks-ab-leaderboard:<tag>`
+
+Available tags:
+
+| Tag | When published | Use for |
+|---|---|---|
+| `sha-<git_sha>` | every build | **Pin this in prod.** Immutable, reproducible. |
+| `v0.X.Y` | on tag push (`v*`) | Stable release channel. |
+| `main` | push to `main` | Auto-update channel — `docker compose pull` redeploys. |
+| `latest` | push to `main` | Alias for `main` (NOT the latest release tag — be deliberate). |
+
+### One-time setup on the deploy machine
+
+You only need `infra/` on the host. The simplest paths:
+
+```bash
+# Option A — shallow clone (gets you scripts/db-backup.sh and friends too)
+git clone --depth 1 https://github.com/StepanchukYI/agent-benchmarks.git /opt/agent-benchmarks
+cd /opt/agent-benchmarks
+
+# Option B — copy just infra/ from a workstation
+# scp -r infra/ deploy-host:/opt/agent-benchmarks/
+
+cp infra/.env.example /opt/agent-benchmarks/infra/.env
+chmod 600 /opt/agent-benchmarks/infra/.env
+```
+
+Edit `infra/.env`. In addition to the secrets listed under "Initial setup" above, set:
+
+| Var | Value |
+|---|---|
+| `IMAGE_OWNER` | `stepanchukyi` (lowercase GHCR owner) |
+| `IMAGE_TAG` | `sha-<git_sha>` for a pinned prod build, or `main` for auto-update |
+
+If the GitHub repo/packages are public (default for this project), no `docker login` is needed. If they are private, run once:
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+### Pull and run
+
+```bash
+cd /opt/agent-benchmarks
+docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env pull
+docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env up -d
+docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env logs -f ab-server
+```
+
+### Update to a new build
+
+```bash
+# Update the tag in infra/.env, then:
+docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env pull
+docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env up -d
+# Old containers stop, new ones start. Migrations run automatically in the
+# ab-server entrypoint.
+```
+
+### Recommended workflow
+
+- **Production:** pin `IMAGE_TAG=sha-<commit_sha>` (or `IMAGE_TAG=v0.X.Y`). Bump deliberately. Roll back by setting `IMAGE_TAG` to a previous sha and re-running `pull` + `up -d`.
+- **Staging/homelab:** `IMAGE_TAG=main` is fine. A daily cron of `compose pull && compose up -d` gives you auto-update.
+
+### Where to find the right `sha-<git_sha>`
+
+Either:
+
+- Look at the most recent successful run of the `build-images` workflow under Actions; the digest is printed in the job log.
+- `git rev-parse origin/main` on a workstation that has the repo.
+- The `scripts/release.sh` helper prints the expected URLs for a tag.
+
+First boot from pulled images follows the same order as a build-from-source boot (Postgres → server migrations → leaderboard → Caddy).
+
 ## Verify
 
 ```bash

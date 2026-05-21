@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from ab_server.models import (
@@ -13,6 +14,10 @@ from ab_server.models import (
 )
 
 _CONTENT_CAP_BYTES = 64 * 1024
+# Hard cap on trajectory file size loaded into memory. Submissions over this
+# limit are refused with 413 before we open the file. 100 MiB is a generous
+# ceiling — real trajectories at our pillar budgets stay well under 10 MiB.
+_TRAJECTORY_MAX_BYTES = 100 * 1024 * 1024
 
 
 def _truncate(value: Any) -> tuple[Any, bool]:
@@ -320,7 +325,29 @@ def resolve_submission_paths(
 ) -> tuple[Path, RegisteredRepo | None, TaskResult | None]:
     repo = session.get(RegisteredRepo, submission.registered_repo_id)
     clone_dir = Path(fetcher_cache_dir) / str(submission.registered_repo_id)
-    traj_path = clone_dir / submission.source_path / "trajectory.jsonl"
+    # Path traversal guard: a user controls submission.source_path via their
+    # registered repo. Without this, ".." segments would let them read files
+    # outside their clone dir. Mirrors ab_server.rescoring.engine.
+    clone_dir_resolved = clone_dir.resolve()
+    candidate = (clone_dir / submission.source_path / "trajectory.jsonl").resolve()
+    try:
+        candidate.relative_to(clone_dir_resolved)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid source path",
+        ) from exc
+    traj_path = candidate
+    # Size cap: refuse oversized trajectories before reading them into memory.
+    # stat() is cheap and avoids OOM on a hostile or malformed submission.
+    if traj_path.exists() and traj_path.stat().st_size > _TRAJECTORY_MAX_BYTES:
+        # 413 is the same status either way; the constant name changed in
+        # starlette 0.36+. Use the integer to avoid the deprecation warning
+        # without forcing a starlette pin.
+        raise HTTPException(
+            status_code=413,
+            detail="trajectory too large",
+        )
     task_result = session.exec(
         select(TaskResult).where(TaskResult.submission_id == submission.id)
     ).first()

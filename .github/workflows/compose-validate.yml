@@ -1,0 +1,51 @@
+# Validate both production compose files on PRs that touch infra/.
+# Catches missing required vars, bad interpolation, and YAML drift between
+# prod (build-from-source) and deploy (pull-from-ghcr) variants.
+
+name: compose-validate
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write stub .env
+        # Stub values only — enough to satisfy `${VAR:?...}` required guards
+        # AND the `env_file: .env` directive that ab-server resolves relative
+        # to the compose file location (so it must live at infra/.env).
+        # Real secrets live on the deploy host, never in CI.
+        run: |
+          cat > infra/.env <<'EOF'
+          POSTGRES_PASSWORD=ci-stub-password
+          DATABASE_URL=postgresql+psycopg://ab:ci-stub-password@postgres:5432/ab
+          GITHUB_CLIENT_ID=ci-stub-client-id
+          GITHUB_CLIENT_SECRET=ci-stub-client-secret
+          SESSION_SECRET=ci-stub-session-secret
+          AB_DOMAIN=ab.example.test
+          AB_API_BASE_URL=https://ab.example.test/api/v1
+          ALLOWED_ORIGINS=https://ab.example.test
+          GUNICORN_WORKERS=2
+          AB_TRUST_PROXY=1
+          RATE_LIMIT_PER_MINUTE=60
+          LOG_FORMAT=json
+          IMAGE_OWNER=stepanchukyi
+          IMAGE_TAG=main
+          EOF
+
+      - name: Validate docker-compose.prod.yml
+        run: docker compose -f infra/docker-compose.prod.yml --env-file infra/.env config --quiet
+
+      - name: Validate docker-compose.deploy.yml
+        run: docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env config --quiet
+
+      - name: Clean up stub
+        if: always()
+        run: rm -f infra/.env

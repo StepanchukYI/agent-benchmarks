@@ -33,18 +33,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 COPY packages ./packages
 
-# Install all workspace runtime dependencies, but drop the `dev` group
-# (pytest/mypy/ruff/debugpy/...).
-# We install all workspace members because ab-server imports cross-package
-# (e.g. ab_harness.scorers.privacy_check) without declaring those as
-# explicit dependencies. Until that's cleaned up, --all-packages is required
-# for the import graph to resolve at runtime.
-RUN uv sync --frozen --no-dev --all-packages \
-    || uv sync --no-dev --all-packages
-
-# Add gunicorn into the resolved venv WITHOUT touching the lockfile.
-# uvicorn[standard] is already a transitive dep of ab-server.
-RUN uv pip install --python /app/.venv/bin/python --no-cache "gunicorn>=21.2"
+# Install only ab-server's transitive closure (no `dev` group).
+# ab-harness and gunicorn are declared as first-class deps of ab-server,
+# so --package ab-server pulls everything the runtime needs and nothing else.
+RUN uv sync --frozen --no-dev --package ab-server \
+    || uv sync --no-dev --package ab-server
 
 ############################
 # Stage 2: runtime

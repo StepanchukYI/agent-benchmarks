@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ab_server.api._trajectory_view import (
@@ -194,12 +195,17 @@ def list_runs(
             detail=f"status must be one of {sorted(_VALID_STATUSES)}",
         )
     base = select(Run).where(Run.tenant_id == str(user.id))
+    count_stmt = select(func.count()).select_from(Run).where(Run.tenant_id == str(user.id))
     if status_filter is not None:
         base = base.where(Run.status == status_filter)
+        count_stmt = count_stmt.where(Run.status == status_filter)
 
-    all_rows = session.exec(base.order_by(Run.started_at.desc())).all()
-    total = len(all_rows)
-    page = all_rows[offset : offset + limit]
+    # Push pagination into SQL so we don't materialize the entire user's
+    # run history per request (H8). Total is a separate COUNT query under
+    # the same filters.
+    page_stmt = base.order_by(Run.started_at.desc()).offset(offset).limit(limit)
+    page = session.exec(page_stmt).all()
+    total = int(session.exec(count_stmt).one() or 0)
     items = [
         _serialize_summary(r, finished_count=_count_finished(session, r.id)) for r in page
     ]

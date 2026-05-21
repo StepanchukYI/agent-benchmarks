@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
@@ -28,6 +30,40 @@ def _timeout() -> int:
         return _DEFAULT_TIMEOUT
 
 
+def _is_private_ip(host: str) -> bool:
+    """Return True iff host (literal IP or resolvable name) maps to a
+    private/loopback/link-local address.
+
+    Unresolvable hostnames return False — the allowlist check is the primary
+    gate. SSRF protection here exists to catch literal IPs (e.g.
+    169.254.169.254) and DNS names that resolve into RFC-1918 ranges.
+    """
+    # Try literal IP first.
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_link_local or ip.is_loopback
+    except ValueError:
+        pass
+
+    # Resolve hostname. If resolution fails, skip — clone will fail anyway.
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, OSError):
+        return False
+    for info in infos:
+        sockaddr = info[4]
+        if not sockaddr:
+            continue
+        addr = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_link_local or ip.is_loopback:
+            return True
+    return False
+
+
 def _validate_repo_url(repo_url: str) -> None:
     """Reject schemes/hosts that could SSRF or hang the server."""
     if os.environ.get("AB_FETCH_ALLOW_LOCAL") == "1":
@@ -41,9 +77,16 @@ def _validate_repo_url(repo_url: str) -> None:
         raise RepoURLError(f"repo_url must be an absolute https URL: {repo_url!r}")
 
     parsed = urlparse(repo_url)
-    if parsed.scheme not in ("https", "http"):
-        raise RepoURLError(f"only https/http allowed, got {parsed.scheme!r}")
+    if parsed.scheme != "https":
+        raise RepoURLError(f"only https allowed, got {parsed.scheme!r}")
     host = (parsed.hostname or "").lower()
+    if not host:
+        raise RepoURLError(f"repo_url has no host: {repo_url!r}")
+    if _is_private_ip(host):
+        raise RepoURLError(
+            f"host {host!r} resolves to a private/link-local/loopback address; "
+            "set AB_FETCH_ALLOW_LOCAL=1 to override (tests only)"
+        )
     allowed = _allowed_hosts()
     if not any(host == h or host.endswith("." + h) for h in allowed):
         raise RepoURLError(

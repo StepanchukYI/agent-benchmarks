@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -20,25 +21,37 @@ _DEVICE_CODE_PATH = "/login/device/code"
 _ACCESS_TOKEN_PATH = "/login/oauth/access_token"
 _USER_PATH = "/user"
 
+# Process-wide singleton httpx client, guarded by _LOCK. Under gunicorn with
+# threaded workers (or async concurrency) the naive ``if _GH_CLIENT is None:
+# _GH_CLIENT = httpx.Client(...)`` pattern can race and leak file descriptors
+# when two threads both see None and each construct a new client. The
+# double-checked-locking pattern below is the standard fix.
 _GH_CLIENT: httpx.Client | None = None
+_LOCK = threading.Lock()
 
 
 def set_github_client(client: httpx.Client) -> None:
     global _GH_CLIENT
-    _GH_CLIENT = client
+    with _LOCK:
+        _GH_CLIENT = client
 
 
 def reset_github_client() -> None:
     global _GH_CLIENT
-    if _GH_CLIENT is not None:
-        _GH_CLIENT.close()
-    _GH_CLIENT = None
+    with _LOCK:
+        if _GH_CLIENT is not None:
+            _GH_CLIENT.close()
+        _GH_CLIENT = None
 
 
 def get_github_client() -> httpx.Client:
     global _GH_CLIENT
+    # Fast path: already initialised, no lock required.
     if _GH_CLIENT is None:
-        _GH_CLIENT = httpx.Client(timeout=15.0)
+        with _LOCK:
+            # Re-check inside the lock — another thread may have raced ahead.
+            if _GH_CLIENT is None:
+                _GH_CLIENT = httpx.Client(timeout=15.0)
     return _GH_CLIENT
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -81,3 +81,21 @@ def me(user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
         "handle": user.handle,
         "avatar_url": user.avatar_url,
     }
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Invalidate the caller's session token.
+
+    Clears the hashed session_token (and its expiry) on the user row so the
+    bearer token can no longer authenticate. Subsequent requests with the
+    same token will 401 in get_current_user.
+    """
+    user.session_token = None
+    user.session_expires_at = None
+    session.add(user)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     fetcher_cache_dir: str = str(Path.home() / ".cache" / "agent-benchmarks" / "fetcher")
     datasets_root: str = ""
     ab_test_auth: bool = False
+    # Production marker. When true, create_app() refuses to start if
+    # ab_test_auth is also true — the X-Test-User bypass must never be
+    # reachable in production. Env var: IS_PRODUCTION.
+    is_production: bool = False
 
     # Production hardening knobs (see ab_server/main.py:create_app).
     # Comma-separated origins for CORS. Default preserves local dev (Vite on 5173).
@@ -33,8 +37,20 @@ class Settings(BaseSettings):
     # Trust X-Forwarded-* headers (only enable when behind a reverse proxy you control).
     # Env var: AB_TRUST_PROXY (matches infra/.env.example and the codebase's AB_ convention).
     ab_trust_proxy: bool = False
+    # Comma-separated list of peer IPs whose X-Forwarded-* headers Starlette's
+    # ProxyHeadersMiddleware will honour when ab_trust_proxy is True. Default
+    # 127.0.0.1 (localhost only) — tighten in prod to just the proxy's address
+    # or range. Was previously hard-coded to "*", which allowed any container
+    # on the docker bridge to spoof X-Forwarded-For and bypass per-IP rate
+    # limiting.
+    proxy_trusted_hosts: str = "127.0.0.1"
     # Token-bucket per-IP, in-memory. 0 disables. Single-instance only —
     # multi-instance deployments need a shared store (Redis), out of scope here.
     rate_limit_per_minute: int = 120
+    # Max number of submissions to rescore inline per /repos/{id}/sync call.
+    # Sync is synchronous and rescoring is CPU-bound; without a cap a repo
+    # with 50+ new submissions parks a worker for the duration. The leftover
+    # submissions get picked up on subsequent syncs (eventually consistent).
+    sync_rescore_batch_size: int = 5
     # "text" (human-friendly) or "json" (one-line JSON per record).
     log_format: str = "text"

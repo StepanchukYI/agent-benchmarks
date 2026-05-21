@@ -80,17 +80,32 @@ main() {
 
     workers="${GUNICORN_WORKERS:-4}"
     timeout="${GUNICORN_TIMEOUT:-60}"
-    log "starting gunicorn with ${workers} workers, timeout ${timeout}s"
+
+    # Bind address. Default 0.0.0.0:8000 because in this Docker topology Caddy
+    # runs in a separate container and must reach us across the ab_net bridge;
+    # 127.0.0.1 would make us unreachable. Override only if you understand the
+    # topology (e.g. host-network deployments).
+    bind="${GUNICORN_BIND:-0.0.0.0:8000}"
+
+    # Which peer IPs we trust to set X-Forwarded-* headers. Was '*' which lets
+    # ANY container on the same docker network spoof X-Forwarded-For and bypass
+    # per-IP rate limiting. Default to RFC1918 + localhost so only same-network
+    # proxies (Caddy in 172.16.0.0/12) are trusted. Override at deploy time if
+    # your topology differs.
+    forwarded_allow_ips="${GUNICORN_FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16}"
+
+    log "starting gunicorn with ${workers} workers, timeout ${timeout}s, bind ${bind}"
+    log "trusting forwarded headers from: ${forwarded_allow_ips}"
 
     exec gunicorn ab_server.main:app \
         -k uvicorn.workers.UvicornWorker \
         -w "${workers}" \
-        -b 0.0.0.0:8000 \
+        -b "${bind}" \
         --access-logfile - \
         --error-logfile - \
         --timeout "${timeout}" \
         --graceful-timeout 30 \
-        --forwarded-allow-ips='*'
+        --forwarded-allow-ips="${forwarded_allow_ips}"
 }
 
 main "$@"

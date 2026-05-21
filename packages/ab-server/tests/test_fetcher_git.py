@@ -90,3 +90,49 @@ def test_clone_or_pull_rejects_disallowed_host(tmp_path: Path) -> None:
     from ab_server.fetcher.git import RepoURLError
     with pytest.raises(RepoURLError):
         clone_or_pull("https://attacker.example.com/foo.git", "main", tmp_path / "x")
+
+
+def test_validate_repo_url_accepts_https_github() -> None:
+    from ab_server.fetcher.git import _validate_repo_url
+
+    _validate_repo_url("https://github.com/alice/results.git")
+
+
+def test_validate_repo_url_rejects_http_scheme() -> None:
+    from ab_server.fetcher.git import RepoURLError, _validate_repo_url
+
+    with pytest.raises(RepoURLError, match="only https allowed"):
+        _validate_repo_url("http://github.com/alice/results.git")
+
+
+def test_validate_repo_url_rejects_rfc1918_ip() -> None:
+    from ab_server.fetcher.git import RepoURLError, _validate_repo_url
+
+    with pytest.raises(RepoURLError, match="private/link-local/loopback"):
+        _validate_repo_url("https://10.0.0.5/x.git")
+
+
+def test_validate_repo_url_rejects_link_local_metadata_ip() -> None:
+    from ab_server.fetcher.git import RepoURLError, _validate_repo_url
+
+    with pytest.raises(RepoURLError, match="private/link-local/loopback"):
+        _validate_repo_url("https://169.254.169.254/latest/meta-data/")
+
+
+def test_validate_repo_url_rejects_loopback() -> None:
+    from ab_server.fetcher.git import RepoURLError, _validate_repo_url
+
+    with pytest.raises(RepoURLError, match="private/link-local/loopback"):
+        _validate_repo_url("https://127.0.0.1/x.git")
+
+
+def test_validate_repo_url_allow_local_escape_hatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ab_server.fetcher.git import _validate_repo_url
+
+    monkeypatch.setenv("AB_FETCH_ALLOW_LOCAL", "1")
+    # All three would normally be rejected — escape hatch lets them through.
+    _validate_repo_url("http://github.com/alice/results.git")
+    _validate_repo_url("https://10.0.0.5/x.git")
+    _validate_repo_url("https://169.254.169.254/latest/meta-data/")

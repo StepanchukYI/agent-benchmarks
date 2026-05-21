@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from statistics import fmean
 from typing import Any
@@ -11,6 +12,8 @@ from ab_datasets.schemas import ScorerVerdict, Task, Trajectory
 from pydantic import BaseModel, ConfigDict, Field
 
 from .manifest import read_metadata, write_metadata
+
+_log = logging.getLogger(__name__)
 
 TRAJECTORY_FILE = "trajectory.jsonl"
 SCORES_FILE = "scores.json"
@@ -195,6 +198,30 @@ def build_scores_payload(
     per_pillar = _compute_per_pillar(verdicts, pillar_map)
 
     weights: dict[str, float] = dict(task.weights) if task and task.weights else {}
+
+    # Validate weights: any negative is a hard error (YAML typo or hostile
+    # input); zero-sum or off-1.0 sums are author errors but recoverable.
+    if weights:
+        for pillar, weight in weights.items():
+            if float(weight) < 0:
+                raise ValueError(
+                    f"negative weight not allowed: weights[{pillar!r}]={weight}"
+                )
+        weight_sum = sum(float(w) for w in weights.values())
+        if weight_sum == 0:
+            _log.warning(
+                "task.weights sum to zero (task_id=%s); falling back to "
+                "unweighted mean",
+                task_id,
+            )
+            weights = {}  # trigger backward-compat path below
+        elif weight_sum > 1.05 or weight_sum < 0.95:
+            _log.warning(
+                "task.weights sum to %.4f (task_id=%s); expected ~1.0 — "
+                "likely an authoring error, proceeding anyway",
+                weight_sum,
+                task_id,
+            )
 
     if weights:
         total_score = 0.0

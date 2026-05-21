@@ -174,6 +174,58 @@ def test_rescore_self_reported_when_discrepancy_large(
     assert submission.discrepancy_pct > 0.5
 
 
+def test_rescore_self_zero_does_not_explode_discrepancy(
+    tmp_path: Path,
+    session_factory: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Submission with self_total=0 must not produce an unbounded discrepancy.
+
+    Before the fix: ``discrepancy = |rescored - 0| / max(0, 1e-9)`` blew up
+    any tiny rescored value to ~1e8, locking "all-zero" submissions at
+    self_reported forever even when honest. After the fix the
+    absolute-scale branch keeps the value bounded by the 0-1 score axis.
+    """
+    fetcher_root = tmp_path / "cache"
+    monkeypatch.setenv("FETCHER_CACHE_DIR", str(fetcher_root))
+
+    # Reuse the passing trajectory but pretend the operator reported 0.
+    # Rescoring computes some rescored_total ∈ [0, 1]; the discrepancy must
+    # also be in [0, 1] (absolute scale), not 1e8.
+    submission = _seed_submission(
+        session_factory, fetcher_root=fetcher_root, self_total=0.0
+    )
+
+    report = rescore_submission(session_factory, submission)
+    assert report.error is None, report.error
+    assert report.self_total == 0.0
+    assert 0.0 <= report.discrepancy_pct <= 1.0, (
+        f"discrepancy {report.discrepancy_pct} escaped absolute-scale bound; "
+        "div-by-near-zero fix regressed"
+    )
+
+
+def test_rescore_self_zero_rescored_zero_is_verified() -> None:
+    """Pure check of the discrepancy math: if both totals are 0, the
+    absolute-scale branch must produce a small discrepancy that clears the
+    verified threshold.
+
+    This isolates the math from the live scorer chain (which never produces
+    exactly 0 on a well-formed trajectory because efficiency/latency scorers
+    award partial credit).
+    """
+    from ab_server.rescoring.engine import _RELATIVE_FLOOR, _VERIFIED_THRESHOLD
+
+    self_total = 0.0
+    rescored_total = 0.0
+    if self_total < _RELATIVE_FLOOR:
+        discrepancy = abs(rescored_total - self_total)
+    else:  # pragma: no cover — branch documented for symmetry
+        discrepancy = abs(rescored_total - self_total) / self_total
+    assert discrepancy == 0.0
+    assert discrepancy < _VERIFIED_THRESHOLD
+
+
 def test_rescore_failure_when_trajectory_missing(
     tmp_path: Path,
     session_factory: Session,

@@ -19,6 +19,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is None:
         settings = Settings()
 
+    # Production safety gate: the X-Test-User bypass in get_current_user must
+    # never be reachable in production. Refuse to boot if both flags are on.
+    if settings.ab_test_auth and settings.is_production:
+        raise RuntimeError(
+            "AB_TEST_AUTH must not be enabled when IS_PRODUCTION=1"
+        )
+
     configure_logging(log_format=settings.log_format)
 
     app = FastAPI(
@@ -53,9 +60,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Comes with uvicorn[standard]. Rewrites request.client.host and
         # request.url.scheme from X-Forwarded-For / X-Forwarded-Proto so
         # OAuth callbacks and rate-limit-by-IP work behind nginx/Caddy.
+        #
+        # IMPORTANT: trusted_hosts must NOT be "*" in production. A wildcard
+        # lets any container on the docker bridge spoof X-Forwarded-For and
+        # bypass per-IP rate limiting. Configure proxy_trusted_hosts in the
+        # env (PROXY_TRUSTED_HOSTS=...) to the proxy's IP only.
         from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+        trusted_hosts = [
+            host.strip()
+            for host in settings.proxy_trusted_hosts.split(",")
+            if host.strip()
+        ] or ["127.0.0.1"]
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_hosts)
 
     app.include_router(health_router)
     for router in v1_routers:

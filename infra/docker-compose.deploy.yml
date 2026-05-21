@@ -1,0 +1,108 @@
+# Deploy machine compose. Use this instead of docker-compose.prod.yml when
+# pulling pre-built images from ghcr.io (no source checkout required on the
+# target host beyond infra/).
+#
+# Required on the deploy host:
+#   infra/docker-compose.deploy.yml   (this file)
+#   infra/Caddyfile                   (mounted into caddy)
+#   infra/.env                        (copied from infra/.env.example and edited)
+#
+# Optional (NOT required — the static SPA + its nginx config are baked into
+# the ab-leaderboard image): infra/nginx-spa.conf.
+#
+# Usage:
+#   cp infra/.env.example infra/.env
+#   # edit infra/.env: set POSTGRES_PASSWORD, GITHUB_CLIENT_*, SESSION_SECRET,
+#   #                  AB_DOMAIN, IMAGE_OWNER, IMAGE_TAG
+#   docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env pull
+#   docker compose -f infra/docker-compose.deploy.yml --env-file infra/.env up -d
+#
+# IMAGE_TAG channels:
+#   sha-<git_sha>  — pin a specific build (recommended for prod)
+#   v0.X.Y         — pin a specific release tag
+#   main           — auto-update channel (tip of main; redeploy with `pull` + `up -d`)
+#   latest         — alias for tip of main (NOT latest release tag — be aware)
+
+name: ab-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_USER: ab
+      POSTGRES_DB: ab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in infra/.env}
+    volumes:
+      - ab_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ab -d ab"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - ab_net
+
+  ab-server:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER must be set in infra/.env}/agent-benchmarks-ab-server:${IMAGE_TAG:-main}
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Compose-injected overrides win over .env. Pin DATABASE_URL here so the
+      # operator can't accidentally point production at SQLite.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ab:${POSTGRES_PASSWORD}@postgres:5432/ab}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${AB_DOMAIN}}
+      TRUST_PROXY: ${AB_TRUST_PROXY:-1}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      FETCHER_CACHE_DIR: /app/.cache/agent-benchmarks/fetcher
+    volumes:
+      - ab_fetcher_cache:/app/.cache
+    networks:
+      - ab_net
+
+  ab-leaderboard:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER must be set in infra/.env}/agent-benchmarks-ab-leaderboard:${IMAGE_TAG:-main}
+    <<: *restart
+    depends_on:
+      - ab-server
+    networks:
+      - ab_net
+
+  caddy:
+    image: caddy:2-alpine
+    <<: *restart
+    depends_on:
+      - ab-server
+      - ab-leaderboard
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      AB_DOMAIN: ${AB_DOMAIN:?AB_DOMAIN must be set in infra/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ab_net
+
+volumes:
+  ab_pgdata:
+  ab_fetcher_cache:
+  caddy_data:
+  caddy_config:
+
+networks:
+  ab_net:
+    driver: bridge
