@@ -25,6 +25,94 @@ if TYPE_CHECKING:
 
 _DEFAULT_DATASET_VERSION = "ab-datasets==0.0.1"
 
+# Hidden suffix used while a benchmark is running. Original files are renamed
+# to <path><suffix> for the duration of subprocess.Popen and restored on
+# cleanup (or on atexit if the process crashes mid-run).
+_HIDE_SUFFIX = ".ab-benchmark-hidden"
+
+# Files + dirs in ~/.claude/ that contaminate T0 if the claude CLI loads
+# them (verified leak: model knew about user's private "memory-session"
+# skill via ~/.claude/CLAUDE.md line 16 even with --system-prompt set).
+# Renamed at run_task() start, restored in cleanup().
+_HIDE_TARGETS_RELATIVE: tuple[str, ...] = (
+    "CLAUDE.md",
+    "CLAUDE.local.md",
+    "AGENTS.md",
+    "skills",
+    "agents",
+    "plugins",
+    "memory",
+    "commands",
+    "hooks",
+)
+
+
+def _hide_user_config_files() -> list[tuple[Path, Path]]:
+    """Rename ~/.claude/{CLAUDE.md, skills/, ...} → <path>.ab-benchmark-hidden.
+
+    Returns list of (renamed_path, hidden_path) tuples for restoration.
+    Safe to call concurrently across runs because each rename uses the
+    same fixed suffix (claude CLI doesn't see *.ab-benchmark-hidden as a
+    valid memory file). If the destination already exists from a stale
+    crash, leave the user file alone and skip — the operator can restore
+    manually.
+    """
+    home = Path.home()
+    hidden: list[tuple[Path, Path]] = []
+    for rel in _HIDE_TARGETS_RELATIVE:
+        src = home / ".claude" / rel
+        if not src.exists() and not src.is_symlink():
+            continue
+        dst = src.with_name(src.name + _HIDE_SUFFIX)
+        if dst.exists() or dst.is_symlink():
+            # Stale hidden from previous crash. Skip this entry — operator
+            # restores manually. Don't double-rename and lose data.
+            continue
+        try:
+            src.rename(dst)
+            hidden.append((src, dst))
+        except OSError:
+            # Permission / cross-device / busy. Skip silently — bench
+            # still runs, just with contamination from this entry.
+            pass
+    return hidden
+
+
+def _restore_user_config_files(hidden: list[tuple[Path, Path]]) -> None:
+    """Rename hidden files back. Idempotent on missing originals."""
+    for src, dst in hidden:
+        if not dst.exists() and not dst.is_symlink():
+            continue
+        if src.exists() or src.is_symlink():
+            # Race: another process restored already, or operator created
+            # a fresh file in between. Leave the hidden in place — better
+            # to keep a backup than overwrite operator's new state.
+            continue
+        with contextlib.suppress(OSError):
+            dst.rename(src)
+
+
+# Process-wide atexit guard: if a runner crashes mid-Popen, restore any
+# hidden files we know about. Registered lazily so import-time side effects
+# stay zero.
+_ATEXIT_REGISTRY: list[tuple[Path, Path]] = []
+_ATEXIT_HOOKED = False
+
+
+def _ensure_atexit_hook() -> None:
+    global _ATEXIT_HOOKED
+    if _ATEXIT_HOOKED:
+        return
+    import atexit
+
+    def _restore_all() -> None:
+        _restore_user_config_files(list(_ATEXIT_REGISTRY))
+        _ATEXIT_REGISTRY.clear()
+
+    atexit.register(_restore_all)
+    _ATEXIT_HOOKED = True
+
+
 _SANDBOX_SYSTEM_PROMPT = (
     "You are an isolated benchmark agent. The only valid scope of your work "
     "is the current working directory. Do not read or write any path outside "
@@ -158,6 +246,9 @@ class ClaudeCodeRunner(BaseRunner):
         # tokens, OBSIDIAN_*, etc) from leaking into the benchmark agent's
         # subprocess.
         self._isolated_env: Any = None
+        # Tracks (src, hidden) pairs of user-config files renamed during
+        # run_task() to block contamination. Restored in cleanup() + atexit.
+        self._hidden_user_config: list[tuple[Path, Path]] = []
 
     def name(self) -> str:
         return "claude-code-cli"
@@ -187,6 +278,16 @@ class ClaudeCodeRunner(BaseRunner):
             with contextlib.suppress(OSError):
                 self._isolated_env.cleanup()
             self._isolated_env = None
+        # Restore ~/.claude/{CLAUDE.md, ...} that were temp-hidden for the
+        # benchmark run. atexit registry is the safety net for crashes.
+        if self._hidden_user_config:
+            _restore_user_config_files(self._hidden_user_config)
+            # Drop entries we just restored from the global atexit registry
+            # so a fresh run can re-claim them without confusion.
+            for pair in list(self._hidden_user_config):
+                with contextlib.suppress(ValueError):
+                    _ATEXIT_REGISTRY.remove(pair)
+            self._hidden_user_config = []
 
     def _build_argv(self, *, empty_mcp_config_path: str | None = None) -> list[str]:
         # Isolation strategy (verified against `claude --help` 2.1.139):
@@ -321,11 +422,30 @@ class ClaudeCodeRunner(BaseRunner):
         # HOME (Max subscription auth flows through macOS keychain +
         # ~/.claude marker files; fake HOME breaks both). Contamination of
         # ~/.claude/{CLAUDE.md, skills/, agents/, settings.json} is blocked
-        # at the CLI-flag layer instead (see _build_argv).
+        # at the CLI-flag layer + temp-rename:
+        #
+        #   1. --system-prompt REPLACES default — blocks the system-prompt
+        #      side of CLAUDE.md merge.
+        #   2. --disable-slash-commands + --agents '{}' + --strict-mcp-config
+        #      block runtime resolution of skills/agents/MCPs.
+        #   3. ~/.claude/{CLAUDE.md, CLAUDE.local.md, AGENTS.md, skills/,
+        #      agents/, plugins/, memory/, commands/, hooks/} are temp-
+        #      renamed to <path>.ab-benchmark-hidden for the duration of
+        #      the subprocess. Restored in cleanup() + atexit guard so a
+        #      crash mid-run still puts them back.
         #
         # Env whitelist still strips secret env vars (operator workplace
         # tokens, OBSIDIAN_*, etc) — those would otherwise leak into the
         # subprocess.
+        # Temp-rename ~/.claude/{CLAUDE.md, skills/, ...} is opt-in. The
+        # operator activates via AB_CLAUDE_HIDE_USER_CONFIG=1 before running
+        # a matrix. Default OFF so a wrong path or interrupted shell never
+        # silently moves the operator's config files. See _hide_user_config_files
+        # for the suffix convention used; an atexit guard restores on crash.
+        if os.environ.get("AB_CLAUDE_HIDE_USER_CONFIG") == "1":
+            _ensure_atexit_hook()
+            self._hidden_user_config = _hide_user_config_files()
+            _ATEXIT_REGISTRY.extend(self._hidden_user_config)
         self._isolated_env = IsolatedEnv.build(
             env_overrides=self._env_overrides,
             use_fake_home=False,
