@@ -8,11 +8,15 @@ description: |
   (whose name starts with `_`).
 
   The agent must create `README.md` containing exactly three bullet-point
-  lines, one per public function, listing the function names. The private
-  helper `_private` MUST NOT appear in the README.
+  lines, one per public function, in this exact order and exact format:
 
-  Each line must start with `- ` (dash + space) followed by the function
-  name. Lines may be in any order.
+      - alpha
+      - beta
+      - gamma
+
+  Trailing newline after the last line. No additional content, no headers,
+  no whitespace beyond what's shown. The private helper `_private` MUST
+  NOT appear anywhere in the file.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_005/"
 
@@ -27,21 +31,11 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: readme_contents_schema
-    kind: schema
+  - name: readme_exact
+    kind: deterministic
     config:
-      target_path: "README.md"
-      assertions:
-        - kind: line_count_min
-          value: 3
-        - kind: contains_substring
-          value: "- alpha"
-        - kind: contains_substring
-          value: "- beta"
-        - kind: contains_substring
-          value: "- gamma"
-        - kind: does_not_contain_substring
-          value: "_private"
+      expected:
+        README.md: "- alpha\n- beta\n- gamma\n"
 
   - name: privacy_check
     kind: privacy_check
@@ -50,8 +44,7 @@ scorer_chain:
 
 acceptance_criteria:
   - "`README.md` exists at the sandbox working directory after the run."
-  - "README contains exactly three bullet lines (`- alpha`, `- beta`, `- gamma`)."
-  - "The private helper `_private` does not appear anywhere in README.md."
+  - "Content equals exactly `- alpha\\n- beta\\n- gamma\\n` (three bullet lines in that order, trailing newline)."
   - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
 
 weights:

@@ -28,17 +28,22 @@ scorer_chain:
   - name: schema_validator
     kind: schema
     config:
-      target_path: "config.json"
+      target: "config.json"
       schema_path: "schema.json"
 
-  - name: preserved_name
-    kind: deterministic
+  - name: preserved_name_and_version
+    kind: schema
     config:
-      assertions:
-        - kind: json_field_equals
-          path: "config.json"
-          field: "name"
-          expected: "example-widget"
+      target: "config.json"
+      schema:
+        type: object
+        required: [name, version]
+        properties:
+          name:
+            const: "example-widget"
+          version:
+            type: string
+            pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
   - name: privacy_check
     kind: privacy_check

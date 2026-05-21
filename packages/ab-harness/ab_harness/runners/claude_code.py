@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import subprocess
+import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -166,6 +167,18 @@ class ClaudeCodeRunner(BaseRunner):
             bufsize=1,
         )
 
+        def _drain_stderr() -> None:
+            if self._proc is None or self._proc.stderr is None:
+                return
+            try:
+                for _ in self._proc.stderr:
+                    pass
+            except (OSError, ValueError):
+                pass
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
         if self._proc.stdin is not None:
             try:
                 self._proc.stdin.write(prompt)
@@ -182,6 +195,7 @@ class ClaudeCodeRunner(BaseRunner):
         result_event: dict[str, Any] | None = None
         stream_seen_system = False
         buffered_assistant: dict[str, Any] | None = None
+        run_end_written = False
 
         try:
             assert self._proc.stdout is not None
@@ -245,7 +259,24 @@ class ClaudeCodeRunner(BaseRunner):
                 totals_latency_ms=totals_latency_ms,
                 totals_cost=totals_cost,
             )
+            run_end_written = True
             return status
+        except Exception:
+            if buffered_assistant is not None:
+                with contextlib.suppress(Exception):
+                    trajectory_writer.write_turn(buffered_assistant)
+                buffered_assistant = None
+            with contextlib.suppress(Exception):
+                self._write_run_end(
+                    trajectory_writer,
+                    status=RunStatus.error.value,
+                    totals_tokens_in=totals_tokens_in,
+                    totals_tokens_out=totals_tokens_out,
+                    totals_latency_ms=totals_latency_ms,
+                    totals_cost=totals_cost,
+                )
+            run_end_written = True
+            raise
 
         _ = stream_seen_system
 
@@ -288,6 +319,8 @@ class ClaudeCodeRunner(BaseRunner):
             totals_latency_ms=totals_latency_ms,
             totals_cost=totals_cost,
         )
+        run_end_written = True
+        _ = run_end_written
         return status
 
     def _build_assistant_turn(self, event: dict[str, Any], idx: int, latency_ms: int) -> dict[str, Any]:

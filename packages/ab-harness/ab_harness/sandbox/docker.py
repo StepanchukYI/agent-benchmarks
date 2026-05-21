@@ -91,7 +91,10 @@ def materialize(
                 # Reject absolute paths and parent-escapes; safe extract.
                 if member.name.startswith("/") or ".." in Path(member.name).parts:
                     raise ValueError(f"unsafe tar entry: {member.name}")
-            tar.extractall(vault_dir)
+            try:
+                tar.extractall(vault_dir, filter="data")  # type: ignore[call-arg]
+            except TypeError:
+                tar.extractall(vault_dir)
 
     tier_hash = compute_total_sha256(manifest, manifest_dir)
 

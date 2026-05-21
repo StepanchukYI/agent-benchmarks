@@ -29,16 +29,10 @@ scorer_chain:
   - name: file_diff
     kind: deterministic
     config:
-      target_path: "new.py"
-      expected_bytes: "\"\"\"Renamed module.\"\"\"\n\n\ndef example():\n    return \"widget\"\n"
-      mode: "exact_bytes"
-
-  - name: old_path_gone
-    kind: deterministic
-    config:
-      assertions:
-        - kind: path_absent
-          path: "old.py"
+      expected:
+        new.py: "\"\"\"Renamed module.\"\"\"\n\n\ndef example():\n    return \"widget\"\n"
+      must_be_absent:
+        - "old.py"
 
   - name: privacy_check
     kind: privacy_check

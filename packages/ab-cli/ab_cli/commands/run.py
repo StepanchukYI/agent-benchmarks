@@ -13,6 +13,7 @@ from ab_datasets.schemas import ScorerVerdict, Tier
 from ab_harness.runners import ClaudeCodeRunner, MockRunner
 from ab_harness.sandbox import materialize
 from ab_harness.scorers.runner import run_scorer_chain
+from ab_harness.trajectory.splice import splice_scorer_events
 from ab_harness.trajectory.writer import TrajectoryWriter
 from ab_sdk.manifest import write_metadata
 from ab_sdk.results import SCORES_FILE, ScoresFile
@@ -102,6 +103,7 @@ def run(
         workdir = run_dir / "workdir"
         workdir.mkdir(parents=True, exist_ok=True)
 
+        started_at = datetime.now(UTC).isoformat()
         materialized = materialize(_tier_root_default(), tier_enum, t, workdir)
         seed_workdir_from_fixture(t, workdir)
 
@@ -116,6 +118,7 @@ def run(
                 runner_obj.cleanup()
 
         verdicts = run_scorer_chain(t, traj_path, workdir, mode="run")
+        splice_scorer_events(traj_path, verdicts)
 
         scores = _scores_payload(
             run_id=run_id,
@@ -140,7 +143,7 @@ def run(
             "tier_hash": materialized.tier_hash,
             "dataset_version": dataset_version,
             "harness": runner_obj.version(),
-            "started_at": finished_at,
+            "started_at": started_at,
             "finished_at": finished_at,
             "status": "completed",
             "prompt_template_hash": None,

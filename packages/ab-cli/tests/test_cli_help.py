@@ -27,7 +27,14 @@ def test_subcommand_help(runner: CliRunner, cmd: str) -> None:
     assert result.exit_code == 0
 
 
-def test_register_stub_prints_not_implemented(runner: CliRunner) -> None:
-    result = runner.invoke(app, ["register", "https://example.com/foo"])
+def test_register_help_lists_options(runner: CliRunner) -> None:
+    result = runner.invoke(app, ["register", "--help"])
     assert result.exit_code == 0
-    assert "not implemented" in result.output.lower()
+    assert "default-branch" in result.output.lower() or "default_branch" in result.output.lower()
+    assert "server" in result.output.lower()
+
+
+def test_publish_help_lists_dry_run(runner: CliRunner) -> None:
+    result = runner.invoke(app, ["publish", "--help"])
+    assert result.exit_code == 0
+    assert "dry-run" in result.output.lower() or "dry_run" in result.output.lower()

@@ -69,6 +69,15 @@ def validate(path: str | Path, scorer_chain: list[Any] | None = None) -> list[st
         for field in _REQUIRED_TURN_FIELDS:
             if field not in turn:
                 issues.append(f"turn idx={turn.get('idx')}: missing required field {field!r}")
+        vd = turn.get("vault_state_diff", None)
+        if vd is not None and (
+            not isinstance(vd, dict)
+            or not {"created", "modified", "deleted"} <= set(vd.keys())
+        ):
+            issues.append(
+                f"turn idx={turn.get('idx')}: vault_state_diff must be null or "
+                "{created,modified,deleted}"
+            )
 
     if ends:
         status = events[ends[0]].get("status")

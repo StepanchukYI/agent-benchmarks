@@ -28,9 +28,8 @@ scorer_chain:
   - name: file_diff
     kind: deterministic
     config:
-      target_path: "notes/greeting.txt"
-      expected_bytes: "Hello, Example.\n"
-      mode: "exact_bytes"
+      expected:
+        notes/greeting.txt: "Hello, Example.\n"
 
   - name: privacy_check
     kind: privacy_check

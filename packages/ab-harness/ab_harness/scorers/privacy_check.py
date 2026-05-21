@@ -43,13 +43,22 @@ def _resolve_default_patterns_path() -> Path:
 def _load_patterns(patterns_path: str | Path | None) -> list[_Pattern]:
     if patterns_path is None:
         patterns_path = _resolve_default_patterns_path()
+    else:
+        p_candidate = Path(patterns_path)
+        if not p_candidate.is_absolute() and not p_candidate.exists():
+            resolved = _resolve_default_patterns_path()
+            if resolved.exists():
+                patterns_path = resolved
     p = Path(patterns_path)
     if not p.exists():
-        return []
+        raise FileNotFoundError(
+            f"privacy_check: patterns file not found at {p!s}; "
+            "set patterns_path or place docs/privacy-patterns.yaml at repo root"
+        )
     try:
         import yaml
-    except ImportError:
-        return []
+    except ImportError as exc:
+        raise RuntimeError("privacy_check requires PyYAML to load patterns") from exc
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     raw = data.get("patterns", []) if isinstance(data, dict) else []
     out: list[_Pattern] = []
@@ -177,7 +186,16 @@ def privacy_check_scorer(
 ) -> ScorerVerdict:
     name = "privacy_check"
     kind = ScorerKind.privacy_check
-    patterns = _load_patterns(patterns_path)
+    try:
+        patterns = _load_patterns(patterns_path)
+    except (FileNotFoundError, RuntimeError) as exc:
+        return score_to_verdict(
+            name,
+            kind,
+            False,
+            0.0,
+            {"error": str(exc), "hits": [], "high_severity_hits": 0, "total_hits": 0},
+        )
 
     hits: list[dict[str, Any]] = []
 

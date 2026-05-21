@@ -105,6 +105,8 @@ def seed_workdir_from_fixture(task: Task, workdir: Path) -> Iterable[str]:
     for entry in src.rglob("*"):
         if entry.name == ".gitkeep":
             continue
+        if "__pycache__" in entry.parts or entry.suffix in {".pyc", ".pyo"}:
+            continue
         rel = entry.relative_to(src)
         target = workdir / rel
         if entry.is_dir():
