@@ -760,10 +760,128 @@ def _replay_then_compare_json(
 
 
 # ---------------------------------------------------------------------------
+# Workdir file-state assertions (post-run live workdir; replay-unfriendly).
+# Track B's L0_009 / L0_010 batch needs these to assert atomic-rename
+# outcomes and UTF-8 / line-ending invariants without writing per-task code.
+# ---------------------------------------------------------------------------
+
+
+def _resolve_workdir_path(workdir: Path | None, rel: str) -> Path | None:
+    if workdir is None:
+        return None
+    return workdir / rel
+
+
+def _workdir_file_exists(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    ok = path.is_file()
+    return ok, {"path": str(path.name), "exists": ok}
+
+
+def _workdir_file_absent(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    ok = not path.exists()
+    return ok, {"path": str(path.name), "absent": ok}
+
+
+def _workdir_file_content_equals(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    expected = p.get("content", "")
+    try:
+        actual = path.read_text(encoding=p.get("encoding", "utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        return False, {"path": p.get("path"), "error": f"read failed: {exc}"}
+    return actual == expected, {
+        "path": p.get("path"),
+        "match": actual == expected,
+        "len_actual": len(actual),
+        "len_expected": len(expected),
+    }
+
+
+def _workdir_file_bytes_equal(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    expected_bytes = p.get("content", "").encode(p.get("encoding", "utf-8"))
+    actual_bytes = path.read_bytes()
+    return actual_bytes == expected_bytes, {
+        "path": p.get("path"),
+        "match": actual_bytes == expected_bytes,
+    }
+
+
+def _workdir_file_no_bom(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    head = path.read_bytes()[:3]
+    has_bom = head == b"\xef\xbb\xbf"
+    return not has_bom, {"path": p.get("path"), "has_bom": has_bom}
+
+
+def _workdir_file_no_crlf(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    data = path.read_bytes()
+    has_crlf = b"\r\n" in data
+    return not has_crlf, {"path": p.get("path"), "has_crlf": has_crlf}
+
+
+def _workdir_file_preserves_crlf(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    """For L0_012: assert the file STILL has CRLF after the edit."""
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    data = path.read_bytes()
+    has_crlf = b"\r\n" in data
+    return has_crlf, {"path": p.get("path"), "has_crlf": has_crlf}
+
+
+def _workdir_file_encoding_utf8(events, workdir, _f, p: dict) -> tuple[bool, dict]:
+    path = _resolve_workdir_path(workdir, p.get("path", ""))
+    if path is None:
+        return False, {"error": "workdir not available (replay mode)"}
+    if not path.is_file():
+        return False, {"path": p.get("path"), "error": "file not found"}
+    try:
+        path.read_bytes().decode("utf-8")
+        return True, {"path": p.get("path"), "valid_utf8": True}
+    except UnicodeDecodeError as exc:
+        return False, {"path": p.get("path"), "valid_utf8": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Registry + chain runner
 # ---------------------------------------------------------------------------
 
 _ASSERTION_KINDS: dict[str, AssertionFn] = {
+    # workdir file-state (live run only; skipped with workdir=None)
+    "workdir_file_exists": _workdir_file_exists,
+    "workdir_file_absent": _workdir_file_absent,
+    "workdir_file_content_equals": _workdir_file_content_equals,
+    "workdir_file_bytes_equal": _workdir_file_bytes_equal,
+    "workdir_file_no_bom": _workdir_file_no_bom,
+    "workdir_file_no_crlf": _workdir_file_no_crlf,
+    "workdir_file_preserves_crlf": _workdir_file_preserves_crlf,
+    "workdir_file_encoding_utf8": _workdir_file_encoding_utf8,
     # final assistant message
     "final_assistant_message_equals": _fa_equals,
     "final_assistant_message_contains_substring": _fa_contains_substring,

@@ -548,6 +548,113 @@ def test_replay_then_compare_json_fixture(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Workdir file-state assertions (L0_009/L0_010/L0_012 batch)
+# ---------------------------------------------------------------------------
+
+
+def _wfile_v(tmp_path, kind: str, params: dict[str, Any]) -> tuple[bool, dict]:
+    """Run a single workdir_file_* assertion against tmp_path and return
+    (ok, detail) — same shape the chain runner exposes."""
+    v = run_assertion_chain("x", _events(_turn(0)), tmp_path, None, [dict(params, kind=kind)])
+    return v.detail["assertions"][0]["ok"], v.detail["assertions"][0]["detail"]
+
+
+def test_workdir_file_exists_pass(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_exists", {"path": "a.txt"})
+    assert ok
+
+
+def test_workdir_file_exists_fail(tmp_path: Path) -> None:
+    ok, _ = _wfile_v(tmp_path, "workdir_file_exists", {"path": "missing.txt"})
+    assert not ok
+
+
+def test_workdir_file_absent_pass(tmp_path: Path) -> None:
+    ok, _ = _wfile_v(tmp_path, "workdir_file_absent", {"path": "missing.txt"})
+    assert ok
+
+
+def test_workdir_file_absent_fail(tmp_path: Path) -> None:
+    (tmp_path / "still-here.txt").write_text("x", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_absent", {"path": "still-here.txt"})
+    assert not ok
+
+
+def test_workdir_file_content_equals_pass(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("hello", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_content_equals", {"path": "f.txt", "content": "hello"})
+    assert ok
+
+
+def test_workdir_file_content_equals_fail(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("world", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_content_equals", {"path": "f.txt", "content": "hello"})
+    assert not ok
+
+
+def test_workdir_file_bytes_equal_pass(tmp_path: Path) -> None:
+    (tmp_path / "b.bin").write_bytes(b"hello")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_bytes_equal", {"path": "b.bin", "content": "hello"})
+    assert ok
+
+
+def test_workdir_file_bytes_equal_fail(tmp_path: Path) -> None:
+    (tmp_path / "b.bin").write_bytes(b"hello world")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_bytes_equal", {"path": "b.bin", "content": "hello"})
+    assert not ok
+
+
+def test_workdir_file_no_bom_pass(tmp_path: Path) -> None:
+    (tmp_path / "clean.txt").write_text("no bom here", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_no_bom", {"path": "clean.txt"})
+    assert ok
+
+
+def test_workdir_file_no_bom_fail(tmp_path: Path) -> None:
+    (tmp_path / "withbom.txt").write_bytes(b"\xef\xbb\xbfHello")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_no_bom", {"path": "withbom.txt"})
+    assert not ok
+
+
+def test_workdir_file_no_crlf_pass(tmp_path: Path) -> None:
+    (tmp_path / "lf.txt").write_bytes(b"line1\nline2\n")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_no_crlf", {"path": "lf.txt"})
+    assert ok
+
+
+def test_workdir_file_no_crlf_fail(tmp_path: Path) -> None:
+    (tmp_path / "crlf.txt").write_bytes(b"line1\r\nline2\r\n")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_no_crlf", {"path": "crlf.txt"})
+    assert not ok
+
+
+def test_workdir_file_preserves_crlf_pass(tmp_path: Path) -> None:
+    (tmp_path / "ini.txt").write_bytes(b"[s]\r\nk=v\r\n")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_preserves_crlf", {"path": "ini.txt"})
+    assert ok
+
+
+def test_workdir_file_preserves_crlf_fail(tmp_path: Path) -> None:
+    (tmp_path / "lf.txt").write_bytes(b"line1\nline2\n")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_preserves_crlf", {"path": "lf.txt"})
+    assert not ok
+
+
+def test_workdir_file_encoding_utf8_pass(tmp_path: Path) -> None:
+    (tmp_path / "u.txt").write_text("Привет, мир. 🌍", encoding="utf-8")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_encoding_utf8", {"path": "u.txt"})
+    assert ok
+
+
+def test_workdir_file_encoding_utf8_fail(tmp_path: Path) -> None:
+    # Invalid UTF-8 byte sequence (lone 0xFF).
+    (tmp_path / "bad.bin").write_bytes(b"\xff\xfeabc")
+    ok, _ = _wfile_v(tmp_path, "workdir_file_encoding_utf8", {"path": "bad.bin"})
+    assert not ok
+
+
+# ---------------------------------------------------------------------------
 # Chain runner — pass/fail counts, unknown-kind handling
 # ---------------------------------------------------------------------------
 
