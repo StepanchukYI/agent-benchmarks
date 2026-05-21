@@ -1,12 +1,15 @@
 import { ExternalLink, Github } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
 import { TrustDot } from "../domain/TrustDot";
-import { operatorByHandle, TRAJECTORY } from "../../lib/mock-data";
+import { useDefaultTrajectory, useOperators } from "../../api/hooks";
 import { shortSha } from "../../lib/format";
 
 /** Provenance strip: who ran this, where it lives, which commit, run id. */
 export function CommitBreadcrumb(): JSX.Element {
-  const op = operatorByHandle(TRAJECTORY.operator);
+  const { data: trajectory } = useDefaultTrajectory();
+  const { data: operators } = useOperators();
+  if (!trajectory) return <></>;
+  const op = (operators ?? []).find((o) => o.handle === trajectory.operator);
   if (!op) return <></>;
   return (
     <div className="flex items-center gap-2 px-6 py-1.5 bg-background-2 border-b border-border-soft text-[11px]">
@@ -16,28 +19,28 @@ export function CommitBreadcrumb(): JSX.Element {
       </span>
       <Sep />
       <a
-        href={`https://${TRAJECTORY.source_repo}`}
+        href={`https://${trajectory.source_repo}`}
         target="_blank"
         rel="noreferrer"
         className="inline-flex items-center gap-1.5 font-mono text-muted-foreground hover:text-foreground"
       >
         <Github className="size-3" />
-        {TRAJECTORY.source_repo}
+        {trajectory.source_repo}
       </a>
       <Sep />
       <a
-        href={`https://${TRAJECTORY.source_repo}/commit/${TRAJECTORY.source_commit_sha}`}
+        href={`https://${trajectory.source_repo}/commit/${trajectory.source_commit_sha}`}
         target="_blank"
         rel="noreferrer"
         className="font-mono text-accent hover:underline"
       >
-        {shortSha(TRAJECTORY.source_commit_sha)}
+        {shortSha(trajectory.source_commit_sha)}
       </a>
       <Sep />
-      <span className="font-mono text-foreground-2">{TRAJECTORY.run_id}</span>
+      <span className="font-mono text-foreground-2">{trajectory.run_id}</span>
       <span className="flex-1" />
       <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-        <TrustDot tier={TRAJECTORY.trust_tier} size={11} commit={TRAJECTORY.source_commit_sha} />
+        <TrustDot tier={trajectory.trust_tier} size={11} commit={trajectory.source_commit_sha} />
         official
       </span>
       <Sep />

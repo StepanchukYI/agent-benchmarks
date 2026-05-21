@@ -1,4 +1,6 @@
-import { MODELS, OPERATOR_TRENDS, OPERATORS, TRENDS } from "../../lib/mock-data";
+import { MODELS, OPERATORS } from "../../lib/mock-data";
+import { useModels, useOperators, useTrendsSeries } from "../../api/hooks";
+import type { Model } from "../../lib/types";
 
 interface TrendChartProps {
   showOperators?: boolean;
@@ -17,6 +19,11 @@ const VENDOR_HEX: Record<string, string> = {
 const OP_COLORS = ["#ec4899", "#10b981", "#06b6d4", "#f59e0b", "#8b5cf6"];
 
 export function TrendChart({ showOperators = false, width = 880, height = 280 }: TrendChartProps): JSX.Element {
+  const { data: models } = useModels();
+  const { data: trendsSeries } = useTrendsSeries("30d", showOperators);
+  const modelList: Model[] = models ?? [];
+  const perModel: Record<string, number[]> = trendsSeries?.per_model ?? {};
+  const perOperator: Record<string, number[]> = trendsSeries?.per_operator ?? {};
   const pad = { l: 36, r: 16, t: 14, b: 28 };
   const days = 30;
   const xPx = (i: number): number => pad.l + (i / (days - 1)) * (width - pad.l - pad.r);
@@ -25,7 +32,7 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
   const yPx = (v: number): number => height - pad.b - ((v - yMin) / (yMax - yMin)) * (height - pad.t - pad.b);
 
   const opLines = showOperators
-    ? Object.entries(OPERATOR_TRENDS)
+    ? Object.entries(perOperator)
         .filter(([h]) => h !== "evgeniy")
         .map(([handle, data], i) => ({ handle, data, color: OP_COLORS[i % OP_COLORS.length]! }))
     : [];
@@ -51,8 +58,8 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
       <rect x={xPx(17)} y={pad.t} width={xPx(21) - xPx(17)} height={height - pad.t - pad.b} fill="hsl(var(--warn) / 0.10)" />
       <text x={(xPx(17) + xPx(21)) / 2} y={pad.t + 10} textAnchor="middle" fontSize="9" className="fill-warn">anomaly window</text>
 
-      {MODELS.map((m) => {
-        const data = TRENDS[m.id];
+      {modelList.map((m) => {
+        const data = perModel[m.id];
         if (!data) return null;
         const pts = data.map<[number, number]>((v, i) => [xPx(i), yPx(v)]);
         const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
@@ -84,13 +91,22 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
   );
 }
 
-export function trendLegendData(): { vendor: typeof MODELS[number]; color: string }[] {
-  return MODELS.map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
+/**
+ * Hook-driven legend data. Backed by `useModels`/`useOperators` — placeholder
+ * data from mock-data means these return immediately on first render.
+ */
+export function useTrendLegendData(): { vendor: Model; color: string }[] {
+  const { data: models } = useModels();
+  return (models ?? MODELS).map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
 }
 
-export function operatorLegendData(): { handle: string; color: string }[] {
-  return OPERATORS.filter((o) => !o.is_self).slice(0, 5).map((o, i) => ({
-    handle: o.handle,
-    color: OP_COLORS[i % OP_COLORS.length]!,
-  }));
+export function useOperatorLegendData(): { handle: string; color: string }[] {
+  const { data: operators } = useOperators();
+  return (operators ?? OPERATORS)
+    .filter((o) => !o.is_self)
+    .slice(0, 5)
+    .map((o, i) => ({
+      handle: o.handle,
+      color: OP_COLORS[i % OP_COLORS.length]!,
+    }));
 }

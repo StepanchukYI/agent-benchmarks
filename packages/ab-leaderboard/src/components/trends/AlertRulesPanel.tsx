@@ -3,9 +3,11 @@ import { Panel, PanelHeader } from "../ui/Panel";
 import { Button } from "../ui/Button";
 import { StatusPill } from "../ui/StatusPill";
 import { Tag } from "../ui/Tag";
-import { ALERT_RULES } from "../../lib/mock-data";
+import { useAlertRules } from "../../api/hooks";
 
 export function AlertRulesPanel(): JSX.Element {
+  const { data: alertRules } = useAlertRules();
+  const rules = alertRules ?? [];
   return (
     <Panel>
       <PanelHeader
@@ -13,7 +15,7 @@ export function AlertRulesPanel(): JSX.Element {
         actions={<Button size="sm"><Plus className="size-3" /> New rule</Button>}
       />
       <div className="p-3.5 flex flex-col gap-2.5">
-        {ALERT_RULES.map((r) => (
+        {rules.map((r) => (
           <div key={r.name} className="p-3 rounded-md border border-border bg-panel-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[12px]">{r.name}</span>

@@ -2,8 +2,8 @@ import { ChevronDown, ChevronRight, Folder, Lock, Plus, Search, SlidersHorizonta
 import { useState } from "react";
 import { Button } from "../ui/Button";
 import { Tag } from "../ui/Tag";
-import { SUITES, TASKS } from "../../lib/mock-data";
-import type { Layer, Task } from "../../lib/types";
+import { useSuites, useTasksList } from "../../api/hooks";
+import type { Layer, Suite, Task } from "../../lib/types";
 import { cn } from "../../lib/utils";
 
 interface TaskTreeProps {
@@ -28,13 +28,17 @@ export function TaskTree({ selected, onSelect }: TaskTreeProps): JSX.Element {
   const [open, setOpen] = useState<Record<Layer, boolean>>({
     L0: true, L1: true, L2: false, L3: false, L4: false, L5: false,
   });
+  const { data: suites } = useSuites();
+  const { data: tasks } = useTasksList();
+  const suiteList: Suite[] = suites ?? [];
+  const taskList: Task[] = tasks ?? [];
 
-  const byLayer = SUITES.reduce<Record<string, typeof SUITES>>((acc, s) => {
+  const byLayer = suiteList.reduce<Record<string, Suite[]>>((acc, s) => {
     (acc[s.layer] ||= []).push(s);
     return acc;
   }, {});
 
-  const tasksBySuite = TASKS.reduce<Record<string, Task[]>>((acc, t) => {
+  const tasksBySuite = taskList.reduce<Record<string, Task[]>>((acc, t) => {
     (acc[t.suite] ||= []).push(t);
     return acc;
   }, {});
@@ -52,7 +56,7 @@ export function TaskTree({ selected, onSelect }: TaskTreeProps): JSX.Element {
           />
         </div>
         <div className="flex items-center gap-1 text-[11px]">
-          <span className="text-muted-foreground">{TASKS.length} tasks</span>
+          <span className="text-muted-foreground">{taskList.length} tasks</span>
           <span className="flex-1" />
           <Button size="sm" variant="ghost"><SlidersHorizontal className="size-3" /> Filter</Button>
           <Button size="sm" variant="ghost"><Plus className="size-3" /> New</Button>
@@ -60,7 +64,7 @@ export function TaskTree({ selected, onSelect }: TaskTreeProps): JSX.Element {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 pb-5">
-        {(Object.entries(byLayer) as [Layer, typeof SUITES][]).map(([layer, suites]) => (
+        {(Object.entries(byLayer) as [Layer, Suite[]][]).map(([layer, suites]) => (
           <div key={layer}>
             <button
               type="button"

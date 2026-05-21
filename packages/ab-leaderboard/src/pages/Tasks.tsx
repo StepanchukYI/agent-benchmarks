@@ -5,11 +5,13 @@ import { PageHero } from "../components/shell/PageHero";
 import { Button } from "../components/ui/Button";
 import { TaskTree } from "../components/launcher/TaskTree";
 import { TaskDetail } from "../components/launcher/TaskDetail";
-import { taskById } from "../lib/mock-data";
+import { useTasksList } from "../api/hooks";
 import type { Task } from "../lib/types";
 
 export default function Tasks(): JSX.Element {
-  const [task, setTask] = useState<Task | null>(taskById("L1_001") ?? null);
+  const { data: tasks } = useTasksList();
+  const defaultTask = (tasks ?? []).find((t) => t.id === "L1_001") ?? null;
+  const [task, setTask] = useState<Task | null>(defaultTask);
   return (
     <>
       <SubNav

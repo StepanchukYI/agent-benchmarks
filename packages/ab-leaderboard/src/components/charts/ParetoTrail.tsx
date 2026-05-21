@@ -1,4 +1,4 @@
-import { LEADERBOARD, MODELS } from "../../lib/mock-data";
+import { useLeaderboard, useModels } from "../../api/hooks";
 
 const VENDOR_HEX: Record<string, string> = {
   anthropic: "#d97757",
@@ -19,6 +19,10 @@ interface ParetoTrailProps {
  * the cost-correctness plane.
  */
 export function ParetoTrail({ width = 600, height = 280 }: ParetoTrailProps): JSX.Element {
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const rows = leaderboard?.rows ?? [];
+  const modelList = models ?? [];
   const pad = { l: 40, r: 14, t: 14, b: 32 };
   const xMin = 0, xMax = 5;
   const yMin = 60, yMax = 95;
@@ -58,14 +62,15 @@ export function ParetoTrail({ width = 600, height = 280 }: ParetoTrailProps): JS
         pareto frontier
       </text>
 
-      {LEADERBOARD.map((r) => {
-        const m = MODELS.find((x) => x.id === r.model);
+      {rows.map((r) => {
+        const m = modelList.find((x) => x.id === r.model);
         if (!m) return null;
         const color = VENDOR_HEX[m.vendor]!;
         const cost14 = r.sweep_cost * 1.18;
-        const score14 = r.scores[0]! - (r.delta[0] ?? 0) * 4.2;
+        const cur = r.scores[0] ?? 0;
+        const score14 = cur - (r.delta[0] ?? 0) * 4.2;
         const x0 = xPx(cost14), y0 = yPx(score14);
-        const x1 = xPx(r.sweep_cost), y1 = yPx(r.scores[0]!);
+        const x1 = xPx(r.sweep_cost), y1 = yPx(cur);
         return (
           <g key={r.model} style={{ color }}>
             <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={color} strokeWidth="1" opacity={0.5} markerEnd="url(#arr)" />

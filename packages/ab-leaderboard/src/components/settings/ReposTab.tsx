@@ -5,7 +5,7 @@ import { StatusPill } from "../ui/StatusPill";
 import { Callout } from "../ui/Callout";
 import { PageHero } from "../shell/PageHero";
 import { OperatorTag } from "../domain/OperatorTag";
-import { CONNECTED_REPOS, operatorByHandle } from "../../lib/mock-data";
+import { useConnectedRepos, useOperators } from "../../api/hooks";
 import type { RegistryRepo } from "../../lib/types";
 
 const STATUS_TONE: Record<RegistryRepo["status"], "pass" | "warn" | "fail"> = {
@@ -15,6 +15,10 @@ const STATUS_TONE: Record<RegistryRepo["status"], "pass" | "warn" | "fail"> = {
 };
 
 export function ReposTab(): JSX.Element {
+  const { data: connectedRepos } = useConnectedRepos();
+  const { data: operators } = useOperators();
+  const repos = connectedRepos ?? [];
+  const operatorList = operators ?? [];
   return (
     <>
       <PageHero
@@ -49,8 +53,8 @@ export function ReposTab(): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {CONNECTED_REPOS.map((r) => {
-              const op = operatorByHandle(r.owner);
+            {repos.map((r) => {
+              const op = operatorList.find((o) => o.handle === r.owner);
               return (
                 <tr key={r.repo} className="hover:bg-panel-2/50">
                   <td className="px-3.5 py-2.5 border-b border-border-soft font-mono text-[11.5px]">

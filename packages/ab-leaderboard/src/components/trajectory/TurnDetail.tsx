@@ -8,8 +8,8 @@ import { CodeBlock, type Token } from "./CodeBlock";
 import { DiffView, type DiffLine } from "./DiffView";
 import { StatusPill } from "../ui/StatusPill";
 import { MiniBar } from "../ui/MiniBar";
-import { TRAJECTORY } from "../../lib/mock-data";
-import type { TurnEvent, TrustTier } from "../../lib/types";
+import { useDefaultTrajectory } from "../../api/hooks";
+import type { Trajectory, TurnEvent, TrustTier } from "../../lib/types";
 import { cn } from "../../lib/utils";
 
 const TABS_FOR_KIND: Record<TurnEvent["kind"], string[]> = {
@@ -29,6 +29,7 @@ interface TurnDetailProps {
 export function TurnDetail({ turn }: TurnDetailProps): JSX.Element {
   const tabs = TABS_FOR_KIND[turn.kind];
   const [tab, setTab] = useState<string>(tabs[0]!);
+  const { data: trajectory } = useDefaultTrajectory();
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -59,7 +60,7 @@ export function TurnDetail({ turn }: TurnDetailProps): JSX.Element {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        {renderBody(turn, tab)}
+        {renderBody(turn, tab, trajectory)}
       </div>
     </div>
   );
@@ -139,7 +140,8 @@ const JUDGES: Array<{ judge: string; verdict: TrustTier | "pass" | "fail"; score
   { judge: "gemini-2.5-pro",   verdict: "pass", score: 0.88, reason: "Mild concern: consequences section could enumerate ops cost; not failing." },
 ];
 
-function renderBody(turn: TurnEvent, tab: string): JSX.Element {
+function renderBody(turn: TurnEvent, tab: string, trajectory: Trajectory | undefined): JSX.Element {
+  const pillarScores = trajectory?.pillar_scores ?? {};
   if (turn.kind === "prompt") {
     return <CodeBlock header="system + task" lang="markdown" tokens={PROMPT_TOKENS} />;
   }
@@ -216,7 +218,7 @@ function renderBody(turn: TurnEvent, tab: string): JSX.Element {
   if (turn.kind === "verdict") {
     if (tab === "Pillars") {
       return (
-        <div className="flex justify-center"><PillarRadar scores={TRAJECTORY.pillar_scores} size={260} /></div>
+        <div className="flex justify-center"><PillarRadar scores={pillarScores} size={260} /></div>
       );
     }
     return (
@@ -227,9 +229,9 @@ function renderBody(turn: TurnEvent, tab: string): JSX.Element {
         </div>
         <div>
           <div className="text-muted-foreground text-[10.5px] mb-2 tracking-wider">PILLAR SCORES</div>
-          <div className="flex justify-center"><PillarRadar scores={TRAJECTORY.pillar_scores} size={220} /></div>
+          <div className="flex justify-center"><PillarRadar scores={pillarScores} size={220} /></div>
           <div className="grid grid-cols-2 gap-1.5 mt-3">
-            {Object.entries(TRAJECTORY.pillar_scores).map(([k, v]) => (
+            {Object.entries(pillarScores).map(([k, v]) => (
               <div key={k} className="grid items-center gap-2" style={{ gridTemplateColumns: "1fr 50px 32px" }}>
                 <span className="text-muted-foreground text-[11px]">{k}</span>
                 <MiniBar value={v} tone={v > 85 ? "pass" : v > 70 ? "neutral" : "warn"} width="100%" />

@@ -4,7 +4,7 @@ import { Avatar } from "../ui/Avatar";
 import { CheckBox } from "../ui/CheckBox";
 import { Button } from "../ui/Button";
 import { TrustDot } from "../domain/TrustDot";
-import { MODELS, OPERATORS, SUITES } from "../../lib/mock-data";
+import { useModels, useOperators, useSuites } from "../../api/hooks";
 import { cn } from "../../lib/utils";
 
 export interface LeaderboardFilters {
@@ -23,6 +23,12 @@ interface FilterRailProps {
 
 export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Element {
   const [search, setSearch] = useState("");
+  const { data: models } = useModels();
+  const { data: operators } = useOperators();
+  const { data: suites } = useSuites();
+  const modelList = models ?? [];
+  const operatorList = operators ?? [];
+  const suiteList = suites ?? [];
 
   function toggle<K extends keyof LeaderboardFilters>(key: K, value: string): void {
     const cur = filters[key] as unknown as string[];
@@ -45,7 +51,7 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
       </div>
 
       <Group title="Operator">
-        {OPERATORS.map((op) => (
+        {operatorList.map((op) => (
           <Row
             key={op.handle}
             on={filters.operators.includes(op.handle)}
@@ -100,7 +106,7 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
       </Group>
 
       <Group title="Suite" action="Clear">
-        {SUITES.map((s) => (
+        {suiteList.map((s) => (
           <Row
             key={s.id}
             on={filters.suites.includes(s.id)}
@@ -112,7 +118,7 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
       </Group>
 
       <Group title="Model">
-        {MODELS.map((m) => (
+        {modelList.map((m) => (
           <Row
             key={m.id}
             on={filters.models.includes(m.id)}

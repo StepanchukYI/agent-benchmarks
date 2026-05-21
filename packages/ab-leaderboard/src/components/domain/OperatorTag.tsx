@@ -1,6 +1,6 @@
 import { Avatar } from "../ui/Avatar";
 import { cn } from "../../lib/utils";
-import { operatorByHandle } from "../../lib/mock-data";
+import { useOperators } from "../../api/hooks";
 
 interface OperatorTagProps {
   handle: string;
@@ -17,7 +17,8 @@ export function OperatorTag({
   avatarSize = 16,
   className,
 }: OperatorTagProps): JSX.Element | null {
-  const op = operatorByHandle(handle);
+  const { data: operators } = useOperators();
+  const op = (operators ?? []).find((o) => o.handle === handle);
   if (!op) return null;
   if (avatarOnly) return <Avatar operator={op} size={avatarSize} className={className} />;
 

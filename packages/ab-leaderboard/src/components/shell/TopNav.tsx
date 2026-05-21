@@ -5,7 +5,7 @@ import { useTheme } from "../../lib/theme";
 import { Avatar } from "../ui/Avatar";
 import { Kbd } from "../ui/Tag";
 import { Button } from "../ui/Button";
-import { operatorByHandle } from "../../lib/mock-data";
+import { useOperators } from "../../api/hooks";
 
 interface TopNavProps {
   /** When false, show "Sign in with GitHub" instead of the avatar. */
@@ -32,7 +32,8 @@ const TABS: TabDef[] = [
 
 export function TopNav({ signedIn = true, selfHandle = "evgeniy", counts = {} }: TopNavProps): JSX.Element {
   const { theme, toggleTheme } = useTheme();
-  const self = operatorByHandle(selfHandle);
+  const { data: operators } = useOperators();
+  const self = (operators ?? []).find((o) => o.handle === selfHandle);
 
   return (
     <header className="h-[50px] sticky top-0 z-30 flex items-center gap-5 px-4 border-b border-border bg-gradient-to-b from-panel to-background">

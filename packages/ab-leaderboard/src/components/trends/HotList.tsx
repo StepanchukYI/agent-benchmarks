@@ -4,7 +4,7 @@ import { Pill } from "../ui/Pill";
 import { Button } from "../ui/Button";
 import { Avatar } from "../ui/Avatar";
 import type { RegressionItem } from "../../lib/types";
-import { operatorByHandle } from "../../lib/mock-data";
+import { useOperators } from "../../api/hooks";
 
 interface HotListProps {
   title?: string;
@@ -16,6 +16,8 @@ export function HotList({ title, kind, items }: HotListProps): JSX.Element {
   const isReg = kind === "regression";
   const head = title ?? (isReg ? "Top regressions" : "Top improvements");
   const Icon = isReg ? AlertTriangle : TrendingUp;
+  const { data: operators } = useOperators();
+  const operatorList = operators ?? [];
   return (
     <Panel>
       <PanelHeader
@@ -29,7 +31,7 @@ export function HotList({ title, kind, items }: HotListProps): JSX.Element {
       />
       <ul>
         {items.map((r, i) => {
-          const op = operatorByHandle(r.operator);
+          const op = operatorList.find((o) => o.handle === r.operator);
           const isSelf = op?.is_self ?? false;
           const sign = r.delta_pct > 0 ? "▲" : "▼";
           const value = Math.abs(r.delta_pct).toFixed(1);

@@ -53,6 +53,9 @@ results/
 *.db
 *.log
 
+# GitNexus local index (contains absolute paths)
+.gitnexus/
+
 # Private dataset overlay (LSN-006)
 packages/ab-datasets-private/
 **/private_fixtures/

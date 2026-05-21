@@ -13,14 +13,17 @@ import { StatusPill } from "../components/ui/StatusPill";
 import { MiniBar } from "../components/ui/MiniBar";
 import { PillarRadar } from "../components/charts/PillarRadar";
 import { CostLedger } from "../components/charts/CostLedger";
-import { TRAJECTORY } from "../lib/mock-data";
+import { useDefaultTrajectory } from "../api/hooks";
 import { useTheme } from "../lib/theme";
 
 export default function TrajectoryViewer(): JSX.Element {
   const { trajectoryLayout, setTrajectoryLayout } = useTheme();
   const [active, setActive] = useState<number>(6);
   const [compareOn, setCompareOn] = useState(false);
-  const turn = TRAJECTORY.turns.find((t) => t.idx === active) ?? TRAJECTORY.turns[0]!;
+  const { data: trajectory } = useDefaultTrajectory();
+  if (!trajectory) return <></>;
+  const turns = trajectory.turns;
+  const turn = turns.find((t) => t.idx === active) ?? turns[0]!;
 
   return (
     <>
@@ -78,12 +81,12 @@ export default function TrajectoryViewer(): JSX.Element {
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Timeline
               </span>
-              <span className="text-muted-foreground text-[11px]">· {TRAJECTORY.turns.length} turns</span>
+              <span className="text-muted-foreground text-[11px]">· {turns.length} turns</span>
               <span className="flex-1" />
               <Button size="icon-sm" variant="ghost"><SlidersHorizontal className="size-3" /></Button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              <TurnTimeline turns={TRAJECTORY.turns} active={active} onSelect={setActive} />
+              <TurnTimeline turns={turns} active={active} onSelect={setActive} />
             </div>
           </aside>
 
@@ -102,9 +105,9 @@ export default function TrajectoryViewer(): JSX.Element {
             <Panel>
               <PanelHeader title="Pillars" actions={<span className="text-[11px] text-muted-foreground">0–100</span>} />
               <div className="p-3">
-                <div className="flex justify-center"><PillarRadar scores={TRAJECTORY.pillar_scores} size={190} /></div>
+                <div className="flex justify-center"><PillarRadar scores={trajectory.pillar_scores} size={190} /></div>
                 <div className="flex flex-col gap-1.5 mt-2.5">
-                  {Object.entries(TRAJECTORY.pillar_scores).map(([k, v]) => (
+                  {Object.entries(trajectory.pillar_scores).map(([k, v]) => (
                     <div key={k} className="grid items-center gap-2" style={{ gridTemplateColumns: "1fr 60px 32px" }}>
                       <span className="text-muted-foreground text-[11px]">{k}</span>
                       <MiniBar value={v} tone={v > 85 ? "pass" : v > 70 ? "neutral" : "warn"} width="100%" />
@@ -130,7 +133,7 @@ export default function TrajectoryViewer(): JSX.Element {
                 <div className="p-4 grid items-center gap-6" style={{ gridTemplateColumns: "1fr 220px" }}>
                   <ScorerVerdictPanel />
                   <div className="flex flex-col items-center">
-                    <PillarRadar scores={TRAJECTORY.pillar_scores} size={200} />
+                    <PillarRadar scores={trajectory.pillar_scores} size={200} />
                     <div className="text-muted-foreground text-[10.5px] mt-1.5">Pillar scores · 0–100</div>
                   </div>
                 </div>
@@ -141,7 +144,7 @@ export default function TrajectoryViewer(): JSX.Element {
               </Panel>
             </div>
 
-            {TRAJECTORY.turns.map((t) => (
+            {turns.map((t) => (
               <Panel key={t.idx} className={t.idx === active ? "ring-1 ring-accent" : ""}>
                 <PanelHeader
                   title={

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { StatusPill } from "../ui/StatusPill";
 import { Button } from "../ui/Button";
-import { SCRUBBER_FINDS } from "../../lib/mock-data";
+import { useSubmissionPrivacyScan } from "../../api/hooks";
 
 /**
  * Pre-publish privacy scrubber preview (LSN-006).
@@ -12,6 +12,10 @@ import { SCRUBBER_FINDS } from "../../lib/mock-data";
  */
 export function PrivacyScrubber(): JSX.Element {
   const [scrubbed, setScrubbed] = useState(false);
+  // No submission selected in this view — the hook falls back to mock data
+  // until the trajectory carries a submission_id we can scan against.
+  const { data: scrubberFinds } = useSubmissionPrivacyScan("preview");
+  const finds = scrubberFinds ?? [];
 
   return (
     <Panel>
@@ -32,10 +36,10 @@ export function PrivacyScrubber(): JSX.Element {
         {!scrubbed ? (
           <>
             <div className="text-muted-foreground text-[11px]">
-              {SCRUBBER_FINDS.length} potentially sensitive reference{SCRUBBER_FINDS.length === 1 ? "" : "s"} detected.
+              {finds.length} potentially sensitive reference{finds.length === 1 ? "" : "s"} detected.
             </div>
             <ul>
-              {SCRUBBER_FINDS.map((f, i) => (
+              {finds.map((f, i) => (
                 <li key={i} className={"flex items-start gap-2 py-2 " + (i > 0 ? "border-t border-border-soft" : "")}>
                   <span className="font-mono text-[10.5px] text-muted-foreground bg-panel-3 rounded px-1.5 py-px shrink-0">
                     L{f.line}

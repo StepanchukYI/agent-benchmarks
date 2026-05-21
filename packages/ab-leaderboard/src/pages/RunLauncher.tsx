@@ -7,13 +7,15 @@ import { TaskTree } from "../components/launcher/TaskTree";
 import { RunConfigurator } from "../components/launcher/RunConfigurator";
 import { ReplayMode } from "../components/launcher/ReplayMode";
 import { LiveRunBanner } from "../components/launcher/LiveRunBanner";
-import { taskById } from "../lib/mock-data";
+import { useTasksList } from "../api/hooks";
 import type { Task } from "../lib/types";
 
 type Mode = "new" | "replay";
 
 export default function RunLauncher(): JSX.Element {
-  const [task, setTask] = useState<Task | null>(taskById("L1_001") ?? null);
+  const { data: tasks } = useTasksList();
+  const defaultTask = (tasks ?? []).find((t) => t.id === "L1_001") ?? null;
+  const [task, setTask] = useState<Task | null>(defaultTask);
   const [mode, setMode] = useState<Mode>("new");
 
   return (

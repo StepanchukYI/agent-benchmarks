@@ -3,7 +3,8 @@ import { MiniBar } from "../ui/MiniBar";
 import { OperatorTag } from "../domain/OperatorTag";
 import { StaleDatasetPill } from "../domain/StaleDatasetPill";
 import { TrustDot } from "../domain/TrustDot";
-import { LEADERBOARD, MODELS, PILLARS, TRENDS } from "../../lib/mock-data";
+import { PILLARS } from "../../lib/mock-data";
+import { useLeaderboard, useModels, useTrendsSeries } from "../../api/hooks";
 import { deltaArrow, deltaTone, fmtMoney } from "../../lib/format";
 import { cn } from "../../lib/utils";
 
@@ -16,10 +17,19 @@ const VENDOR_HEX: Record<string, string> = {
 };
 
 export function LeaderboardCards(): JSX.Element {
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const { data: trendsSeries } = useTrendsSeries("30d");
+  const rows = leaderboard?.rows ?? [];
+  const pillars = leaderboard?.pillars ?? PILLARS;
+  const modelList = models ?? [];
+  const trends: Record<string, number[]> = trendsSeries?.per_model ?? {};
+
   return (
     <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))" }}>
-      {LEADERBOARD.map((r, i) => {
-        const m = MODELS.find((x) => x.id === r.model)!;
+      {rows.map((r, i) => {
+        const m = modelList.find((x) => x.id === r.model);
+        if (!m) return null;
         const color = VENDOR_HEX[m.vendor]!;
         const overall = r.scores.reduce((a, b) => a + b, 0) / r.scores.length;
         return (
@@ -54,7 +64,7 @@ export function LeaderboardCards(): JSX.Element {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              {PILLARS.map((p, idx) => {
+              {pillars.map((p, idx) => {
                 const s = r.scores[idx]!;
                 const d = r.delta[idx] ?? 0;
                 const tone = deltaTone(d);
@@ -91,7 +101,7 @@ export function LeaderboardCards(): JSX.Element {
                   <span className="font-mono ml-1">{r.latency_s.toFixed(1)}s</span>
                 </div>
               </div>
-              <Sparkline data={TRENDS[r.model]!} width={84} height={18} color={color} fill />
+              <Sparkline data={trends[r.model] ?? []} width={84} height={18} color={color} fill />
             </div>
           </div>
         );

@@ -10,21 +10,27 @@ import { LeaderboardMatrix } from "../components/leaderboard/LeaderboardMatrix";
 import { LeaderboardCards } from "../components/leaderboard/LeaderboardCards";
 import { RightRail } from "../components/leaderboard/RightRail";
 import { useTheme } from "../lib/theme";
-import { MODELS, SUITES, totalRunsInWindow, totalCostInWindow, meanCorrectness } from "../lib/mock-data";
+import { useLeaderboard, useModels, useSuites } from "../api/hooks";
 
 export default function Leaderboard(): JSX.Element {
   const { leaderboardView, setLeaderboardView } = useTheme();
+  const { data: models } = useModels();
+  const { data: suites } = useSuites();
+  const { data: leaderboard } = useLeaderboard({});
+  const modelList = models ?? [];
+  const suiteList = suites ?? [];
+  const rows = leaderboard?.rows ?? [];
   const [filters, setFilters] = useState<LeaderboardFilters>({
     suites: ["L0_smoke", "L1_memory_write", "L1_retrieval", "L2_mcp"],
-    models: MODELS.map((m) => m.id),
+    models: modelList.map((m) => m.id),
     operators: ["evgeniy"],
     trustTiers: ["official", "verified"],
     datasetCurrentOnly: true,
     dateRange: "7d",
   });
-  const meanC = meanCorrectness();
-  const totalRuns = totalRunsInWindow();
-  const totalCost = totalCostInWindow();
+  const meanC = rows.length > 0 ? rows.reduce((acc, r) => acc + (r.scores[0] ?? 0), 0) / rows.length : 0;
+  const totalRuns = rows.reduce((acc, r) => acc + r.runs, 0);
+  const totalCost = rows.reduce((acc, r) => acc + r.sweep_cost * r.runs * 0.1, 0);
 
   const stats: Stat[] = [
     { label: "Mean correctness", value: meanC.toFixed(1), unit: "/100", delta: "▲ 1.4 vs prev 7d", deltaValue: 1.4 },
@@ -58,7 +64,7 @@ export default function Leaderboard(): JSX.Element {
           <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
             <PageHero
               title="Leaderboard"
-              subtitle={`${MODELS.length} models · ${SUITES.length} suites · last 7 days · 2 759 trajectories scored`}
+              subtitle={`${modelList.length} models · ${suiteList.length} suites · last 7 days · 2 759 trajectories scored`}
               actions={
                 <>
                   <Pill tone="idle" size="sm">Last refresh 4m ago</Pill>

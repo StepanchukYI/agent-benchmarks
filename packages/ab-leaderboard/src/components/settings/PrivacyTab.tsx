@@ -2,9 +2,11 @@ import { Edit, Plus } from "lucide-react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { Button } from "../ui/Button";
 import { PageHero } from "../shell/PageHero";
-import { SCRUBBER_RULES } from "../../lib/mock-data";
+import { useScrubberRules } from "../../api/hooks";
 
 export function PrivacyTab(): JSX.Element {
+  const { data: scrubberRules } = useScrubberRules();
+  const rules = scrubberRules ?? [];
   return (
     <>
       <PageHero
@@ -14,9 +16,9 @@ export function PrivacyTab(): JSX.Element {
       />
 
       <Panel>
-        <PanelHeader title="Default scrubber rules" actions={<span className="text-[11px] text-muted-foreground">{SCRUBBER_RULES.length} active</span>} />
+        <PanelHeader title="Default scrubber rules" actions={<span className="text-[11px] text-muted-foreground">{rules.length} active</span>} />
         <div className="p-3.5 flex flex-col gap-2">
-          {SCRUBBER_RULES.map((r) => (
+          {rules.map((r) => (
             <div
               key={r.name}
               className="grid items-center gap-2.5 p-2.5 bg-panel-2 rounded-md"

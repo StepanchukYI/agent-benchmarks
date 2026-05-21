@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { CheckBox } from "../ui/CheckBox";
 import { TaskDetail } from "./TaskDetail";
-import { MODELS, SUITES } from "../../lib/mock-data";
+import { useModels, useSuites } from "../../api/hooks";
 import type { Task, Vendor } from "../../lib/types";
 import { cn } from "../../lib/utils";
 
@@ -30,11 +30,15 @@ export function RunConfigurator({ task }: RunConfiguratorProps): JSX.Element {
   const [runs, setRuns] = useState(3);
   const [sandbox, setSandbox] = useState("Docker");
   const [preset, setPreset] = useState<Preset>("Custom");
+  const { data: models } = useModels();
+  const { data: suites } = useSuites();
+  const modelList = models ?? [];
+  const suiteList = suites ?? [];
 
   const totalTasks = useMemo(
     () =>
-      SUITES.filter((s) => selectedSuites.includes(s.id)).reduce((n, s) => n + s.task_count, 0),
-    [selectedSuites],
+      suiteList.filter((s) => selectedSuites.includes(s.id)).reduce((n, s) => n + s.task_count, 0),
+    [selectedSuites, suiteList],
   );
   const trajectories = totalTasks * selectedModels.length * runs;
   const estCost = (trajectories * 0.04).toFixed(2);
@@ -76,7 +80,7 @@ export function RunConfigurator({ task }: RunConfiguratorProps): JSX.Element {
             action={<Button size="sm" variant="ghost">Select all</Button>}
           >
             <div className="flex flex-wrap gap-1.5">
-              {SUITES.map((s) => {
+              {suiteList.map((s) => {
                 const on = selectedSuites.includes(s.id);
                 return (
                   <button
@@ -106,7 +110,7 @@ export function RunConfigurator({ task }: RunConfiguratorProps): JSX.Element {
             action={<Button size="sm" variant="ghost">Select all</Button>}
           >
             <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-              {MODELS.map((m) => {
+              {modelList.map((m) => {
                 const on = selectedModels.includes(m.id);
                 return (
                   <button

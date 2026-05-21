@@ -6,25 +6,34 @@ import { StatStrip, type Stat } from "../components/shell/StatStrip";
 import { Panel, PanelHeader } from "../components/ui/Panel";
 import { Button } from "../components/ui/Button";
 import { Avatar } from "../components/ui/Avatar";
-import { TrendChart, operatorLegendData, trendLegendData } from "../components/charts/TrendChart";
+import { TrendChart, useOperatorLegendData, useTrendLegendData } from "../components/charts/TrendChart";
 import { ParetoTrail } from "../components/charts/ParetoTrail";
 import { ScoreHeatmap } from "../components/charts/ScoreHeatmap";
 import { HotList } from "../components/trends/HotList";
 import { AlertRulesPanel } from "../components/trends/AlertRulesPanel";
-import { IMPROVEMENTS, OPERATORS, REGRESSIONS } from "../lib/mock-data";
+import { useOperators, useTrendsOverview, useTrendsRegressions } from "../api/hooks";
 
 type Range = "7d" | "30d" | "90d" | "custom";
 
 export default function Trends(): JSX.Element {
   const [range, setRange] = useState<Range>("30d");
   const [showOperators, setShowOperators] = useState(false);
+  const { data: overview } = useTrendsOverview();
+  const { data: regressionsData } = useTrendsRegressions("down");
+  const { data: improvementsData } = useTrendsRegressions("up");
+  const { data: operators } = useOperators();
+  const trendLegend = useTrendLegendData();
+  const operatorLegend = useOperatorLegendData();
+  const regressions = regressionsData ?? [];
+  const improvements = improvementsData ?? [];
+  const operatorList = operators ?? [];
 
   const stats: Stat[] = [
-    { label: <span className="inline-flex items-center gap-1.5"><AlertTriangle className="size-3 text-fail" /> Active regressions</span>, value: 3, unit: "P0", delta: "▲ 1 vs prev 30d", deltaValue: 1 },
-    { label: <span className="inline-flex items-center gap-1.5"><TrendingUp className="size-3 text-pass" /> Improvements</span>, value: 7, unit: "tracked", delta: "▲ 2", deltaValue: 2 },
-    { label: <span className="inline-flex items-center gap-1.5"><Check className="size-3 text-pass" /> CI gate</span>, value: "passing", unit: "last 48h", delta: "0 blocked merges", deltaValue: 0 },
-    { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: 12, unit: "fired", delta: "9 actioned", deltaValue: 0 },
-    { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: "9h ago", delta: "scheduled · 03:00 daily", deltaValue: 0 },
+    { label: <span className="inline-flex items-center gap-1.5"><AlertTriangle className="size-3 text-fail" /> Active regressions</span>, value: overview?.active_regressions ?? 0, unit: "P0", delta: "▲ 1 vs prev 30d", deltaValue: 1 },
+    { label: <span className="inline-flex items-center gap-1.5"><TrendingUp className="size-3 text-pass" /> Improvements</span>, value: overview?.improvements ?? 0, unit: "tracked", delta: "▲ 2", deltaValue: 2 },
+    { label: <span className="inline-flex items-center gap-1.5"><Check className="size-3 text-pass" /> CI gate</span>, value: overview?.ci_gate.status ?? "passing", unit: "last 48h", delta: `${overview?.ci_gate.blocked_merges ?? 0} blocked merges`, deltaValue: 0 },
+    { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: overview?.alerts_fired_30d ?? 0, unit: "fired", delta: "9 actioned", deltaValue: 0 },
+    { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: overview?.last_full_sweep_at ?? "", delta: "scheduled · 03:00 daily", deltaValue: 0 },
   ];
 
   return (
@@ -85,13 +94,13 @@ export default function Trends(): JSX.Element {
                       {showOperators && <span className="opacity-80 text-[10px] ml-0.5">· 5</span>}
                     </Button>
                     <div className="flex gap-2.5 text-[11px] text-muted-foreground">
-                      {trendLegendData().slice(0, 3).map((m) => (
+                      {trendLegend.slice(0, 3).map((m) => (
                         <span key={m.vendor.id} className="inline-flex items-center gap-1.5">
                           <span className="size-2 rounded-full" style={{ background: m.color }} />
                           {m.vendor.short}
                         </span>
                       ))}
-                      <span>+ {trendLegendData().length - 3} more</span>
+                      <span>+ {Math.max(trendLegend.length - 3, 0)} more</span>
                     </div>
                   </div>
                 }
@@ -101,8 +110,9 @@ export default function Trends(): JSX.Element {
                 {showOperators && (
                   <div className="px-3 py-2 pt-1 flex flex-wrap gap-3 text-[11px]">
                     <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Friends</span>
-                    {operatorLegendData().map(({ handle }) => {
-                      const op = OPERATORS.find((o) => o.handle === handle)!;
+                    {operatorLegend.map(({ handle }) => {
+                      const op = operatorList.find((o) => o.handle === handle);
+                      if (!op) return null;
                       return (
                         <span key={handle} className="inline-flex items-center gap-1.5 text-foreground-2">
                           <Avatar operator={op} size={14} />
@@ -116,8 +126,8 @@ export default function Trends(): JSX.Element {
             </Panel>
 
             <div className="flex flex-col gap-3.5">
-              <HotList kind="regression" items={REGRESSIONS} />
-              <HotList kind="improvement" items={IMPROVEMENTS} />
+              <HotList kind="regression" items={regressions} />
+              <HotList kind="improvement" items={improvements} />
             </div>
           </div>
 

@@ -28,6 +28,7 @@ EXCLUDED_DIRS = {
     ".pytest_cache",
     ".next",
     ".turbo",
+    ".gitnexus",
 }
 
 EXCLUDED_SUFFIXES = {".lock", ".lockb", ".min.js", ".map"}

@@ -2,12 +2,18 @@ import { AlertTriangle, ChevronRight } from "lucide-react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { Button } from "../ui/Button";
 import { ParetoChart } from "../charts/ParetoChart";
-import { LEADERBOARD, MODELS, REGRESSIONS } from "../../lib/mock-data";
+import { useLeaderboard, useModels, useTrendsRegressions } from "../../api/hooks";
 import { ModelCell } from "../domain/ModelCell";
 import { cn } from "../../lib/utils";
 
 export function RightRail(): JSX.Element {
-  const topByCorrectness = [...LEADERBOARD].sort((a, b) => b.scores[0]! - a.scores[0]!).slice(0, 5);
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const { data: regressions } = useTrendsRegressions("down");
+  const rows = leaderboard?.rows ?? [];
+  const modelList = models ?? [];
+  const regressionList = regressions ?? [];
+  const topByCorrectness = [...rows].sort((a, b) => (b.scores[0] ?? 0) - (a.scores[0] ?? 0)).slice(0, 5);
 
   return (
     <aside className="w-[320px] shrink-0 border-l border-border-soft p-4 flex flex-col gap-3.5">
@@ -22,7 +28,8 @@ export function RightRail(): JSX.Element {
         <PanelHeader title="Top 5 · Correctness" hint="7d" />
         <ul>
           {topByCorrectness.map((r, i) => {
-            const m = MODELS.find((x) => x.id === r.model)!;
+            const m = modelList.find((x) => x.id === r.model);
+            if (!m) return null;
             const d = r.delta[0] ?? 0;
             return (
               <li key={r.model} className="flex items-center gap-2.5 px-3.5 py-2">
@@ -45,7 +52,7 @@ export function RightRail(): JSX.Element {
           hint="this week"
         />
         <ul>
-          {REGRESSIONS.map((r, i) => (
+          {regressionList.map((r, i) => (
             <li
               key={r.model + r.suite}
               className={cn("px-3.5 py-2.5", i > 0 && "border-t border-border-soft")}

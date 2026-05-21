@@ -38,6 +38,7 @@ import type {
   RegressionItem,
   RunSummary,
   ScrubberFinding,
+  Suite,
   Task,
   Trajectory,
 } from "../lib/types";
@@ -316,5 +317,42 @@ export function useAlertRules() {
 export function useEvaluateAlerts() {
   return useMutation({
     mutationFn: () => apiFetch<{ fired: string[] }>(endpoints.alertsEvaluate(), { method: "POST" }),
+  });
+}
+
+/* ─── Suites ─────────────────────────────────────────────────────────────── */
+
+export function useSuites() {
+  const mock: Suite[] = SUITES;
+  return useQuery({
+    queryKey: ["suites"],
+    queryFn: () => fetchOrMock("/suites", mock),
+    placeholderData: mock,
+  });
+}
+
+/* ─── Pillars (UI constants — server may serve these alongside leaderboard) ── */
+
+export function usePillars() {
+  const mock = PILLARS as readonly string[];
+  return useQuery({
+    queryKey: ["pillars"],
+    queryFn: () => fetchOrMock<readonly string[]>("/pillars", mock),
+    placeholderData: mock,
+  });
+}
+
+/* ─── Trajectory placeholder (used by trajectory page chrome until server has runId/taskId) ── */
+
+/**
+ * Returns the current viewer's pinned trajectory. The viewer page renders even
+ * without an explicit run/task selection — this is the "default" payload.
+ */
+export function useDefaultTrajectory() {
+  const mock: Trajectory = TRAJECTORY;
+  return useQuery<Trajectory>({
+    queryKey: ["trajectory", "default"],
+    queryFn: () => fetchOrMock("/trajectories/default", mock),
+    placeholderData: mock,
   });
 }

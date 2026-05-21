@@ -9,9 +9,11 @@ import { OperatorTag } from "../domain/OperatorTag";
 import { ScoreCell } from "../domain/ScoreCell";
 import { StaleDatasetPill } from "../domain/StaleDatasetPill";
 import { TrustDot } from "../domain/TrustDot";
-import { LEADERBOARD, MODELS, PILLARS, TRENDS } from "../../lib/mock-data";
+import { PILLARS } from "../../lib/mock-data";
+import { useLeaderboard, useModels, useTrendsSeries } from "../../api/hooks";
 import { fmtMoney } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { Model } from "../../lib/types";
 
 const VENDOR_HEX: Record<string, string> = {
   anthropic: "#d97757",
@@ -26,8 +28,16 @@ interface Sort { key: number; dir: SortDir; }
 
 export function LeaderboardMatrix(): JSX.Element {
   const [sort, setSort] = useState<Sort>({ key: 0, dir: "desc" });
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const { data: trendsSeries } = useTrendsSeries("30d");
 
-  const sorted = [...LEADERBOARD].sort((a, b) => {
+  const rows = leaderboard?.rows ?? [];
+  const pillars = leaderboard?.pillars ?? PILLARS;
+  const modelList: Model[] = models ?? [];
+  const trends: Record<string, number[]> = trendsSeries?.per_model ?? {};
+
+  const sorted = [...rows].sort((a, b) => {
     const sgn = sort.dir === "desc" ? -1 : 1;
     if (sort.key === -1) return sgn * a.model.localeCompare(b.model);
     return sgn * ((a.scores[sort.key] ?? 0) - (b.scores[sort.key] ?? 0));
@@ -57,7 +67,7 @@ export function LeaderboardMatrix(): JSX.Element {
                 Model
               </Th>
               <Th className="w-[170px]">Operator</Th>
-              {PILLARS.map((p, i) => (
+              {pillars.map((p, i) => (
                 <Th key={p} onClick={() => toggleSort(i)} active={sort.key === i} dir={sort.dir} numeric className="w-[120px]">
                   {p}
                 </Th>
@@ -69,7 +79,8 @@ export function LeaderboardMatrix(): JSX.Element {
           </thead>
           <tbody>
             {sorted.map((r, i) => {
-              const m = MODELS.find((x) => x.id === r.model)!;
+              const m = modelList.find((x) => x.id === r.model);
+              if (!m) return null;
               return (
                 <tr key={r.model} className="hover:bg-panel-2/50">
                   <Td className="pl-4">
@@ -97,7 +108,7 @@ export function LeaderboardMatrix(): JSX.Element {
                   ))}
                   <Td numeric className="pr-4">
                     <Sparkline
-                      data={TRENDS[r.model]!}
+                      data={trends[r.model] ?? []}
                       width={84}
                       height={20}
                       color={VENDOR_HEX[m.vendor]}

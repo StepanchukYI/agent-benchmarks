@@ -42,8 +42,11 @@ from ab_server.models.user import User
 
 from .schemas import (
     CIGateStatus,
+    DatasetPin,
     LeaderboardCell,
     LeaderboardMatrix,
+    LeaderboardMatrixRow,
+    LeaderboardResponse,
     LeaderboardRow,
     ParetoPoint,
     ParetoSeries,
@@ -52,7 +55,17 @@ from .schemas import (
     TrendsOverview,
     TrendsPoint,
     TrendsSeries,
+    TrendsSeriesResponse,
 )
+
+PILLARS: list[str] = [
+    "Correctness",
+    "Context",
+    "Tool/Skill",
+    "Memory",
+    "Latency $",
+]
+_TRUST_RANK = {"self_reported": 0, "verified": 1, "official": 2}
 
 
 def _coalesce_dt(value: Any) -> datetime | None:
@@ -321,12 +334,12 @@ def compute_matrix(
         row_sums.setdefault((model, tier), []).append(score_mean)
 
     suites_sorted = sorted(suite_set)
-    rows: list[LeaderboardRow] = []
+    rows: list[LeaderboardMatrixRow] = []
     for (model, tier), cells in sorted(cell_index.items()):
         row_scores = row_sums.get((model, tier), [])
         row_mean = sum(row_scores) / len(row_scores) if row_scores else 0.0
         rows.append(
-            LeaderboardRow(
+            LeaderboardMatrixRow(
                 model=model,
                 tier=tier,
                 cells=cells,
@@ -637,4 +650,348 @@ def compute_ci_gate(session: Session) -> CIGateStatus:
         blocked_merges_48h=overview.ci_gate_blocked_merges_48h,
         threshold_pct=0.05,
         computed_at=datetime.now(UTC),
+    )
+
+
+def _median(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    return float((s[mid - 1] + s[mid]) / 2.0)
+
+
+def _stddev(values: Sequence[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    m = sum(values) / len(values)
+    var = sum((x - m) ** 2 for x in values) / (len(values) - 1)
+    return float(var ** 0.5)
+
+
+def _best_trust(trusts: Sequence[str]) -> str:
+    if not trusts:
+        return "self_reported"
+    return max(trusts, key=lambda t: _TRUST_RANK.get(t, -1))
+
+
+def _mode(values: Sequence[str], default: str) -> str:
+    if not values:
+        return default
+    counts: dict[str, int] = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def compute_leaderboard_response(
+    session: Session,
+    *,
+    suites: Sequence[str] | None = None,
+    models: Sequence[str] | None = None,
+    tiers: Sequence[str] | None = None,
+    operators: Sequence[str] | None = None,
+    trust: Sequence[str] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    dataset_versions: Sequence[str] | None = None,
+    range_days: int | None = None,
+) -> LeaderboardResponse:
+    if range_days is not None and range_days > 0 and date_from is None:
+        date_from = datetime.now(UTC) - timedelta(days=range_days)
+
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.tier,
+            TaskResult.suite,
+            TaskResult.task_id,
+            TaskResult.score_total,
+            TaskResult.score_correctness,
+            TaskResult.score_context_eff,
+            TaskResult.score_tool_skill,
+            TaskResult.score_memory,
+            TaskResult.score_latency,
+            TaskResult.cost_usd,
+            TaskResult.latency_ms,
+            Submission.trust_tier,
+            Submission.source_commit_sha,
+            Submission.dataset_version,
+            Submission.ingested_at,
+            Run.dataset_version,
+            Run.started_at,
+            User.handle,
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .join(
+            RegisteredRepo,
+            RegisteredRepo.id == Submission.registered_repo_id,
+            isouter=True,
+        )
+        .join(User, User.id == RegisteredRepo.user_id, isouter=True)
+    )
+
+    if suites:
+        stmt = stmt.where(TaskResult.suite.in_(list(suites)))
+    if models:
+        stmt = stmt.where(TaskResult.model.in_(list(models)))
+    if tiers:
+        stmt = stmt.where(TaskResult.tier.in_(list(tiers)))
+    if trust:
+        stmt = stmt.where(Submission.trust_tier.in_(list(trust)))
+    if dataset_versions:
+        stmt = stmt.where(_dataset_version_proxy().in_(list(dataset_versions)))
+    if operators:
+        stmt = stmt.where(User.handle.in_(list(operators)))
+    effective_ts = _date_proxy()
+    if date_from is not None:
+        stmt = stmt.where(effective_ts >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(effective_ts <= date_to)
+
+    raw = session.exec(stmt).all()
+
+    Bucket = tuple[str, str]
+    pillar_keys = ("correctness", "context_eff", "tool_skill", "memory", "latency")
+    scores: dict[Bucket, list[float]] = {}
+    pillars_by_key: dict[Bucket, dict[str, list[float]]] = {}
+    costs: dict[Bucket, list[float]] = {}
+    latencies_ms: dict[Bucket, list[float]] = {}
+    suites_seen: dict[Bucket, list[str]] = {}
+    tasks_seen: dict[Bucket, set[tuple[str, str]]] = {}
+    sweep_cost: dict[Bucket, float] = {}
+    trust_by_key: dict[Bucket, list[str]] = {}
+    tiers_by_key: dict[Bucket, list[str]] = {}
+    shas: dict[Bucket, tuple[str, datetime]] = {}
+    versions_by_key: dict[Bucket, list[tuple[str, datetime | None]]] = {}
+
+    for row in raw:
+        (
+            model,
+            tier,
+            suite,
+            task_id,
+            score_total,
+            s_corr,
+            s_ctx,
+            s_tool,
+            s_mem,
+            s_lat,
+            cost_usd,
+            latency_ms,
+            trust_tier,
+            commit_sha,
+            sub_dataset_version,
+            ingested_at,
+            run_dataset_version,
+            started_at,
+            handle,
+        ) = row
+
+        operator = handle or "self"
+        key: Bucket = (model, operator)
+        scores.setdefault(key, []).append(float(score_total or 0.0))
+        bucket_pillars = pillars_by_key.setdefault(
+            key, {k: [] for k in pillar_keys}
+        )
+        bucket_pillars["correctness"].append(float(s_corr or 0.0))
+        bucket_pillars["context_eff"].append(float(s_ctx or 0.0))
+        bucket_pillars["tool_skill"].append(float(s_tool or 0.0))
+        bucket_pillars["memory"].append(float(s_mem or 0.0))
+        bucket_pillars["latency"].append(float(s_lat or 0.0))
+        costs.setdefault(key, []).append(float(cost_usd or 0.0))
+        latencies_ms.setdefault(key, []).append(float(latency_ms or 0))
+        suites_seen.setdefault(key, []).append(suite)
+        tasks_seen.setdefault(key, set()).add((task_id, suite))
+        tiers_by_key.setdefault(key, []).append(tier)
+        if suite.startswith("L0_") or suite.startswith("L1_"):
+            sweep_cost[key] = sweep_cost.get(key, 0.0) + float(cost_usd or 0.0)
+        if trust_tier:
+            trust_by_key.setdefault(key, []).append(trust_tier)
+        ts = _coalesce_dt(started_at) or _coalesce_dt(ingested_at)
+        if commit_sha:
+            ts_for_sha = ts or datetime.min.replace(tzinfo=UTC)
+            existing = shas.get(key)
+            if existing is None or ts_for_sha > existing[1]:
+                shas[key] = (commit_sha, ts_for_sha)
+        ver = run_dataset_version or sub_dataset_version
+        if ver:
+            versions_by_key.setdefault(key, []).append((ver, ts))
+
+    prev_window = 7 if range_days is None or range_days <= 0 else range_days
+    now_ts = datetime.now(UTC)
+    prev_cutoff = now_ts - timedelta(days=2 * prev_window)
+    prev_floor = now_ts - timedelta(days=prev_window)
+
+    prev_stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.score_correctness,
+            TaskResult.score_context_eff,
+            TaskResult.score_tool_skill,
+            TaskResult.score_memory,
+            TaskResult.score_latency,
+            User.handle,
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .join(
+            RegisteredRepo,
+            RegisteredRepo.id == Submission.registered_repo_id,
+            isouter=True,
+        )
+        .join(User, User.id == RegisteredRepo.user_id, isouter=True)
+        .where(_date_proxy() >= prev_cutoff)
+        .where(_date_proxy() < prev_floor)
+    )
+    if models:
+        prev_stmt = prev_stmt.where(TaskResult.model.in_(list(models)))
+    if operators:
+        prev_stmt = prev_stmt.where(User.handle.in_(list(operators)))
+    prev_pillars: dict[Bucket, dict[str, list[float]]] = {}
+    for prow in session.exec(prev_stmt).all():
+        model_p, c_p, ctx_p, tool_p, mem_p, lat_p, handle_p = prow
+        kp: Bucket = (model_p, handle_p or "self")
+        bp = prev_pillars.setdefault(kp, {k: [] for k in pillar_keys})
+        bp["correctness"].append(float(c_p or 0.0))
+        bp["context_eff"].append(float(ctx_p or 0.0))
+        bp["tool_skill"].append(float(tool_p or 0.0))
+        bp["memory"].append(float(mem_p or 0.0))
+        bp["latency"].append(float(lat_p or 0.0))
+
+    out_rows: list[LeaderboardRow] = []
+    for key, score_list in scores.items():
+        model, operator = key
+        bucket_pillars = pillars_by_key.get(key, {k: [] for k in pillar_keys})
+        scores_arr = [
+            (sum(bucket_pillars[k]) / len(bucket_pillars[k]) if bucket_pillars[k] else 0.0) * 100.0
+            for k in pillar_keys
+        ]
+        prev_bp = prev_pillars.get(key)
+        if prev_bp is None:
+            delta_arr = [0.0] * 5
+        else:
+            prev_arr = [
+                (sum(prev_bp[k]) / len(prev_bp[k]) if prev_bp[k] else 0.0) * 100.0
+                for k in pillar_keys
+            ]
+            delta_arr = [scores_arr[i] - prev_arr[i] for i in range(5)]
+
+        version_list = versions_by_key.get(key, [])
+        if version_list:
+            latest_version = max(version_list, key=lambda x: x[1] or datetime.min.replace(tzinfo=UTC))[0]
+            distinct_versions = {v for v, _ in version_list}
+            behind = max(0, len(distinct_versions) - 1)
+        else:
+            latest_version = "unknown"
+            behind = 0
+
+        out_rows.append(
+            LeaderboardRow(
+                model=model,
+                operator=operator,
+                trust_tier=_best_trust(trust_by_key.get(key, [])),
+                source_commit_sha=shas.get(key, ("", datetime.min.replace(tzinfo=UTC)))[0],
+                scores=scores_arr,
+                delta=delta_arr,
+                runs=len(score_list),
+                variance=_stddev([s * 100.0 for s in score_list]),
+                cost_per_task=_median(costs.get(key, [])),
+                latency_s=_median(latencies_ms.get(key, [])) / 1000.0,
+                sweep_cost=sweep_cost.get(key, 0.0),
+                dataset_pin=DatasetPin(version=latest_version, behind=behind),
+                tier=_mode(tiers_by_key.get(key, []), "T0"),
+            )
+        )
+
+    out_rows.sort(key=lambda r: (-sum(r.scores) / 5.0, r.model, r.operator))
+    return LeaderboardResponse(
+        rows=out_rows,
+        pillars=list(PILLARS),
+        generated_at=datetime.now(UTC),
+    )
+
+
+def compute_trends_series(
+    session: Session,
+    *,
+    window_days: int,
+    show_operators: bool = False,
+) -> TrendsSeriesResponse:
+    if window_days <= 0:
+        return TrendsSeriesResponse(per_model={}, per_operator={}, window_days=0)
+
+    now_ts = datetime.now(UTC)
+    cutoff = now_ts - timedelta(days=window_days - 1)
+    cutoff_floor = datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=UTC)
+
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.score_total,
+            _date_proxy().label("ts"),
+            User.handle,
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .join(
+            RegisteredRepo,
+            RegisteredRepo.id == Submission.registered_repo_id,
+            isouter=True,
+        )
+        .join(User, User.id == RegisteredRepo.user_id, isouter=True)
+        .where(_date_proxy() >= cutoff_floor)
+    )
+
+    today = now_ts.date()
+    day_index: dict[date, int] = {}
+    days_in_order: list[date] = []
+    for i in range(window_days):
+        d = today - timedelta(days=window_days - 1 - i)
+        day_index[d] = i
+        days_in_order.append(d)
+
+    model_buckets: dict[str, list[list[float]]] = {}
+    operator_buckets: dict[str, list[list[float]]] = {}
+
+    for row in session.exec(stmt).all():
+        model, score_total, ts_val, handle = row
+        ts = _coalesce_dt(ts_val)
+        if ts is None:
+            continue
+        d = ts.date()
+        idx = day_index.get(d)
+        if idx is None:
+            continue
+        score_val = float(score_total or 0.0) * 100.0
+        bucket = model_buckets.setdefault(model, [[] for _ in range(window_days)])
+        bucket[idx].append(score_val)
+        if show_operators:
+            op = handle or "self"
+            op_bucket = operator_buckets.setdefault(op, [[] for _ in range(window_days)])
+            op_bucket[idx].append(score_val)
+
+    per_model: dict[str, list[float]] = {}
+    for model, buckets in model_buckets.items():
+        per_model[model] = [
+            (sum(b) / len(b) if b else 0.0) for b in buckets
+        ]
+    per_operator: dict[str, list[float]] = {}
+    if show_operators:
+        for op, buckets in operator_buckets.items():
+            per_operator[op] = [
+                (sum(b) / len(b) if b else 0.0) for b in buckets
+            ]
+
+    return TrendsSeriesResponse(
+        per_model=per_model,
+        per_operator=per_operator,
+        window_days=window_days,
     )

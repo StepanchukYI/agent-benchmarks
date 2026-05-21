@@ -26,7 +26,7 @@ class LeaderboardCell(BaseModel):
     delta: float | None = None
 
 
-class LeaderboardRow(BaseModel):
+class LeaderboardMatrixRow(BaseModel):
     model: str
     tier: str
     cells: dict[str, LeaderboardCell] = Field(default_factory=dict)
@@ -34,10 +34,87 @@ class LeaderboardRow(BaseModel):
 
 
 class LeaderboardMatrix(BaseModel):
-    rows: list[LeaderboardRow] = Field(default_factory=list)
+    rows: list[LeaderboardMatrixRow] = Field(default_factory=list)
     suites: list[str] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=_utcnow)
     filters_applied: dict[str, Any] = Field(default_factory=dict)
+
+
+class DatasetPin(BaseModel):
+    version: str
+    behind: int
+
+
+class LeaderboardRow(BaseModel):
+    model: str
+    operator: str
+    trust_tier: str
+    source_commit_sha: str
+    scores: list[float] = Field(default_factory=list)
+    delta: list[float] = Field(default_factory=list)
+    runs: int = 0
+    variance: float = 0.0
+    cost_per_task: float = 0.0
+    latency_s: float = 0.0
+    sweep_cost: float = 0.0
+    dataset_pin: DatasetPin
+    tier: str
+
+
+class LeaderboardResponse(BaseModel):
+    rows: list[LeaderboardRow] = Field(default_factory=list)
+    pillars: list[str] = Field(
+        default_factory=lambda: [
+            "Correctness",
+            "Context",
+            "Tool/Skill",
+            "Memory",
+            "Latency $",
+        ]
+    )
+    generated_at: datetime = Field(default_factory=_utcnow)
+
+
+class TrendsSeriesResponse(BaseModel):
+    per_model: dict[str, list[float]] = Field(default_factory=dict)
+    per_operator: dict[str, list[float]] = Field(default_factory=dict)
+    window_days: int = 0
+
+
+class Operator(BaseModel):
+    handle: str
+    name: str
+    initials: str
+    color: str
+    repo: str
+    trust_default: str
+    is_self: bool = False
+
+
+class ModelInfo(BaseModel):
+    id: str
+    short: str
+    vendor: str
+    harness: str
+    capabilities: list[str] = Field(default_factory=list)
+    cost_per_1k_in: float = 0.0
+    cost_per_1k_out: float = 0.0
+
+
+class RegistryRepoOut(BaseModel):
+    repo: str
+    owner: str
+    branch: str
+    runs: int
+    last_synced: str
+    status: str
+    error: str | None = None
+
+
+class ScrubberRule(BaseModel):
+    name: str
+    pattern: str
+    replacement: str
 
 
 class TrendsPoint(BaseModel):

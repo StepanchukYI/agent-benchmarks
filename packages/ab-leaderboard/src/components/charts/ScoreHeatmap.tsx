@@ -1,8 +1,9 @@
-import { LEADERBOARD, MODELS, SUITES } from "../../lib/mock-data";
+import { useLeaderboard, useModels, useSuites } from "../../api/hooks";
+import type { LeaderboardRow } from "../../lib/types";
 import { ModelCell } from "../domain/ModelCell";
 
-function score(modelIdx: number, suiteIdx: number): number {
-  const base = LEADERBOARD[modelIdx]!.scores[0]!;
+function score(rows: LeaderboardRow[], modelIdx: number, suiteIdx: number): number {
+  const base = rows[modelIdx]?.scores[0] ?? 80;
   const s = ((modelIdx * 7 + suiteIdx * 13) % 19) / 19;
   return Math.max(40, Math.min(98, base - 8 + s * 16));
 }
@@ -21,6 +22,13 @@ function cellFg(v: number): string {
 
 /** model × suite correctness heatmap. */
 export function ScoreHeatmap(): JSX.Element {
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const { data: suites } = useSuites();
+  const rows = leaderboard?.rows ?? [];
+  const modelList = models ?? [];
+  const suiteList = suites ?? [];
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[11.5px]">
@@ -29,7 +37,7 @@ export function ScoreHeatmap(): JSX.Element {
             <th className="text-left font-medium text-muted-foreground pl-3.5 py-2 sticky left-0 bg-panel border-b border-border">
               Model
             </th>
-            {SUITES.map((s) => (
+            {suiteList.map((s) => (
               <th key={s.id} className="text-right font-medium px-2 py-2 border-b border-border min-w-[80px]">
                 <div className="font-mono text-[10px] text-muted-foreground">{s.layer}</div>
                 <div className="font-medium text-foreground-2">{s.name}</div>
@@ -38,15 +46,16 @@ export function ScoreHeatmap(): JSX.Element {
           </tr>
         </thead>
         <tbody>
-          {LEADERBOARD.map((r, mi) => {
-            const m = MODELS.find((x) => x.id === r.model)!;
+          {rows.map((r, mi) => {
+            const m = modelList.find((x) => x.id === r.model);
+            if (!m) return null;
             return (
               <tr key={r.model}>
                 <td className="pl-3.5 py-1.5 border-b border-border-soft">
                   <ModelCell model={m} />
                 </td>
-                {SUITES.map((s, si) => {
-                  const v = score(mi, si);
+                {suiteList.map((s, si) => {
+                  const v = score(rows, mi, si);
                   return (
                     <td key={s.id} className="p-1 border-b border-border-soft">
                       <div

@@ -1,4 +1,4 @@
-import { LEADERBOARD, MODELS } from "../../lib/mock-data";
+import { useLeaderboard, useModels } from "../../api/hooks";
 
 const VENDOR_HEX: Record<string, string> = {
   anthropic: "#d97757",
@@ -15,11 +15,15 @@ interface ParetoChartProps {
 
 /** Single snapshot — cost per sweep vs. correctness. */
 export function ParetoChart({ width = 280, height = 180 }: ParetoChartProps): JSX.Element {
+  const { data: leaderboard } = useLeaderboard({});
+  const { data: models } = useModels();
+  const rows = leaderboard?.rows ?? [];
+  const modelList = models ?? [];
   const pad = { l: 36, r: 8, t: 8, b: 24 };
-  const xs = LEADERBOARD.map((r) => r.sweep_cost);
-  const ys = LEADERBOARD.map((r) => r.scores[0]!);
+  const xs = rows.map((r) => r.sweep_cost);
+  const ys = rows.map((r) => r.scores[0] ?? 0);
   const xMin = 0;
-  const xMax = Math.max(...xs) * 1.15;
+  const xMax = (xs.length > 0 ? Math.max(...xs) : 5) * 1.15;
   const yMin = 60;
   const yMax = 95;
   const xPx = (v: number): number => pad.l + ((v - xMin) / (xMax - xMin)) * (width - pad.l - pad.r);
@@ -50,15 +54,16 @@ export function ParetoChart({ width = 280, height = 180 }: ParetoChartProps): JS
       ))}
       <text x={pad.l} y={height - 3} fontSize="9" className="fill-muted-foreground">cost / sweep</text>
 
-      {LEADERBOARD.map((r) => {
-        const m = MODELS.find((x) => x.id === r.model);
+      {rows.map((r) => {
+        const m = modelList.find((x) => x.id === r.model);
         if (!m) return null;
         const color = VENDOR_HEX[m.vendor];
+        const y = r.scores[0] ?? 0;
         return (
           <g key={r.model}>
-            <circle cx={xPx(r.sweep_cost)} cy={yPx(r.scores[0]!)} r="5" fill={color} opacity="0.25" />
-            <circle cx={xPx(r.sweep_cost)} cy={yPx(r.scores[0]!)} r="3" fill={color} />
-            <text x={xPx(r.sweep_cost) + 8} y={yPx(r.scores[0]!) + 3} fontSize="9" className="fill-foreground-2 font-mono">
+            <circle cx={xPx(r.sweep_cost)} cy={yPx(y)} r="5" fill={color} opacity="0.25" />
+            <circle cx={xPx(r.sweep_cost)} cy={yPx(y)} r="3" fill={color} />
+            <text x={xPx(r.sweep_cost) + 8} y={yPx(y) + 3} fontSize="9" className="fill-foreground-2 font-mono">
               {m.short}
             </text>
           </g>

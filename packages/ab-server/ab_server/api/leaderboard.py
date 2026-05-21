@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
@@ -9,17 +9,19 @@ from sqlmodel import Session
 from ab_server.db import get_session
 from ab_server.leaderboard import (
     CIGateStatus,
-    LeaderboardMatrix,
+    LeaderboardResponse,
     ParetoSeries,
     RegressionsPanel,
     TrendsOverview,
     TrendsSeries,
+    TrendsSeriesResponse,
     compute_ci_gate,
-    compute_matrix,
+    compute_leaderboard_response,
     compute_overview,
     compute_pareto,
     compute_regressions,
     compute_trends,
+    compute_trends_series,
 )
 
 router = APIRouter(tags=["leaderboard"])
@@ -50,43 +52,75 @@ def _parse_iso(value: str | None) -> datetime | None:
         ) from exc
 
 
-@router.get("/leaderboard", response_model=LeaderboardMatrix)
+_RANGE_TO_DAYS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
+
+
+@router.get("/leaderboard", response_model=LeaderboardResponse)
 def get_leaderboard(
     session: Annotated[Session, Depends(get_session)],
     suites: Annotated[list[str] | None, Query()] = None,
     models: Annotated[list[str] | None, Query()] = None,
     tiers: Annotated[list[str] | None, Query()] = None,
-    operator: str | None = None,
-    trust: Annotated[list[str] | None, Query()] = None,
+    operators: Annotated[list[str] | None, Query()] = None,
+    trust_tiers: Annotated[list[str] | None, Query()] = None,
+    dataset_current_only: bool = False,
+    range: Annotated[str | None, Query()] = None,
     date_from: str | None = None,
     date_to: str | None = None,
     dataset_versions: Annotated[list[str] | None, Query()] = None,
-) -> LeaderboardMatrix:
-    return compute_matrix(
+) -> LeaderboardResponse:
+    range_days: int | None = None
+    if range is not None:
+        if range not in _RANGE_TO_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"range must be one of {list(_RANGE_TO_DAYS)}",
+            )
+        range_days = _RANGE_TO_DAYS[range]
+
+    return compute_leaderboard_response(
         session,
         suites=_split_csv(suites),
         models=_split_csv(models),
         tiers=_split_csv(tiers),
-        operator=operator,
-        trust=_split_csv(trust),
+        operators=_split_csv(operators),
+        trust=_split_csv(trust_tiers),
         date_from=_parse_iso(date_from),
         date_to=_parse_iso(date_to),
         dataset_versions=_split_csv(dataset_versions),
+        range_days=range_days,
     )
 
 
 @router.get("/trends", response_model=TrendsSeries)
 def get_trends(
     session: Annotated[Session, Depends(get_session)],
-    model: str,
-    suite: str,
-    tier: str,
+    model: str | None = None,
+    suite: str | None = None,
+    tier: str | None = None,
     days: int = 30,
 ) -> TrendsSeries:
     if days <= 0:
         raise HTTPException(status_code=400, detail="days must be > 0")
+    if not model or not suite or not tier:
+        raise HTTPException(
+            status_code=400,
+            detail="model, suite, and tier query params are required",
+        )
     return compute_trends(
         session, model=model, suite=suite, tier=tier, days=days
+    )
+
+
+@router.get("/trends/series", response_model=TrendsSeriesResponse)
+def get_trends_series(
+    session: Annotated[Session, Depends(get_session)],
+    range: Literal["7d", "30d", "90d"] = "30d",
+    show_operators: bool = False,
+) -> TrendsSeriesResponse:
+    days = {"7d": 7, "30d": 30, "90d": 90}[range]
+    return compute_trends_series(
+        session, window_days=days, show_operators=show_operators
     )
 
 

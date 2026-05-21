@@ -6,7 +6,7 @@ import { Callout } from "../ui/Callout";
 import { CheckBox } from "../ui/CheckBox";
 import { Tag } from "../ui/Tag";
 import { Avatar } from "../ui/Avatar";
-import { operatorByHandle } from "../../lib/mock-data";
+import { useOperators } from "../../api/hooks";
 
 interface RecentCommit {
   repo: string;
@@ -31,6 +31,8 @@ function ownerOf(repo: string): string {
 export function ReplayMode(): JSX.Element {
   const [url, setUrl] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
+  const { data: operators } = useOperators();
+  const operatorList = operators ?? [];
 
   return (
     <Panel>
@@ -65,7 +67,7 @@ export function ReplayMode(): JSX.Element {
           </div>
           <div className="rounded-lg border border-border overflow-hidden">
             {RECENT.map((r, i) => {
-              const op = operatorByHandle(ownerOf(r.repo));
+              const op = operatorList.find((o) => o.handle === ownerOf(r.repo));
               const isSel = picked === i;
               return (
                 <button
