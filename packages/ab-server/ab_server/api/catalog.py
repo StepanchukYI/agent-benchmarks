@@ -190,30 +190,31 @@ def _layer_for(suite: str) -> str:
 def list_suites(
     session: Annotated[Session, Depends(get_session)],
 ) -> list[SuiteOut]:
-    """Distinct suites currently present in ``task_results`` + their task counts.
+    """Suite tags defined by task YAMLs + their task counts.
 
-    Source of truth = the DB rows the leaderboard already exposes; this
-    keeps the picker honest (only suites that have ANY result land
-    here). Empty list when nothing's been benched yet.
+    Picker groups tasks by ``task.suite`` (file-ops, schema-fill,
+    long-context-niah, ...). Source of truth = task YAMLs on disk,
+    NOT ``task_results.suite`` (that one is the CLI batch label).
     """
-    rows = session.exec(
-        select(
-            TaskResult.suite,
-            func.count(func.distinct(TaskResult.task_id)),
-        ).group_by(TaskResult.suite)
-    ).all()
-    out: list[SuiteOut] = []
-    for suite, n in rows:
-        if not suite:
+    from ab_server.api.datasets import _safe_load_task, _walk_task_files
+
+    buckets: dict[tuple[str, str], int] = {}
+    for path in _walk_task_files():
+        task = _safe_load_task(path)
+        if task is None or not task.suite:
             continue
-        out.append(
-            SuiteOut(
-                id=suite,
-                layer=_layer_for(suite),
-                name=suite,
-                description=_SUITE_DESCRIPTIONS.get(suite, f"{suite} suite."),
-                task_count=int(n),
-            )
+        key = (str(task.layer), task.suite)
+        buckets[key] = buckets.get(key, 0) + 1
+
+    out: list[SuiteOut] = [
+        SuiteOut(
+            id=suite,
+            layer=layer,
+            name=suite,
+            description=_SUITE_DESCRIPTIONS.get(suite, f"{suite} suite."),
+            task_count=n,
         )
+        for (layer, suite), n in buckets.items()
+    ]
     out.sort(key=lambda s: (s.layer, s.id))
     return out
