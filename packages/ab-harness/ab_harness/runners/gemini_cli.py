@@ -300,7 +300,7 @@ class GeminiCLIRunner(BaseRunner):
         # Isolation barrier — see _isolation.py. Preserve real HOME so
         # gemini's Google OAuth login state (~/.gemini/oauth_creds.json)
         # stays reachable. Env whitelist strips secret env vars
-        # (COMFY_/OBSIDIAN_/etc). User-level memory blocked at the argv
+        # (OBSIDIAN_/workplace SaaS tokens/etc). User-level memory blocked at the argv
         # layer via `-e` (empty extension list) — see _build_argv.
         self._isolated_env = IsolatedEnv.build(use_fake_home=False)
         argv = self._build_argv()

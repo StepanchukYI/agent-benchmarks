@@ -326,7 +326,7 @@ class OpencodeRunner(BaseRunner):
         # Isolation barrier — see _isolation.py. Preserve real HOME so
         # opencode's per-provider login state under ~/.config/opencode/
         # stays reachable. Env whitelist strips secret env vars
-        # (COMFY_/OBSIDIAN_/etc).
+        # (OBSIDIAN_/workplace SaaS tokens/etc).
         #
         # KNOWN LIMITATION: opencode CLI as of v1.x exposes no flag to
         # suppress its user-level config (no --no-config, no

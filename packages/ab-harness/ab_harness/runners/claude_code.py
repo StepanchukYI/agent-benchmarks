@@ -154,8 +154,9 @@ class ClaudeCodeRunner(BaseRunner):
         self._cached_version: str | None = None
         # IsolatedEnv created per run_task and released in cleanup() — keeps
         # the operator's ~/.claude/* (CLAUDE.md, skills, agents,
-        # settings.json) and secrets in COMFY_*/OBSIDIAN_*/etc env vars from
-        # leaking into the benchmark agent's subprocess.
+        # settings.json) and secrets in operator env vars (workplace SaaS
+        # tokens, OBSIDIAN_*, etc) from leaking into the benchmark agent's
+        # subprocess.
         self._isolated_env: Any = None
 
     def name(self) -> str:
@@ -322,8 +323,9 @@ class ClaudeCodeRunner(BaseRunner):
         # ~/.claude/{CLAUDE.md, skills/, agents/, settings.json} is blocked
         # at the CLI-flag layer instead (see _build_argv).
         #
-        # Env whitelist still strips secret env vars (COMFY_*, OBSIDIAN_*,
-        # etc) — those would otherwise leak into the subprocess.
+        # Env whitelist still strips secret env vars (operator workplace
+        # tokens, OBSIDIAN_*, etc) — those would otherwise leak into the
+        # subprocess.
         self._isolated_env = IsolatedEnv.build(
             env_overrides=self._env_overrides,
             use_fake_home=False,

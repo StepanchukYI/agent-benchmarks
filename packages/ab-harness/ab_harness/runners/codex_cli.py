@@ -308,7 +308,7 @@ class CodexCLIRunner(BaseRunner):
         # Isolation barrier — see _isolation.py. Preserve real HOME so
         # codex's ChatGPT Plus/Pro subscription auth (~/.codex/auth.json
         # + macOS keychain "OpenAI Codex") stays reachable. Env whitelist
-        # strips secret env vars (COMFY_/OBSIDIAN_/etc). Per-run config
+        # strips secret operator env vars (OBSIDIAN_/workplace SaaS/etc). Per-run config
         # overrides via --strict-config + -c shell_environment_policy.inherit
         # = core block ~/.codex/config.toml from injecting arbitrary tool
         # rules into the agent's session.

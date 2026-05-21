@@ -13,7 +13,7 @@ benchmark agent. Concretely:
     ~/.claude/settings.json   — env injection (often with secrets)
     ~/.codex/, ~/.config/gh/, ~/.gemini/, ...
   All of these can change model behaviour at T0, contaminating "vanilla" runs.
-* Environment carries arbitrary tokens (Confluence / Obsidian / GitHub /
+* Environment carries arbitrary tokens (workplace SaaS / Obsidian / GitHub /
   Anthropic / vendor SDKs) that the model sees in its tool environment and may
   echo back into the trajectory.
 

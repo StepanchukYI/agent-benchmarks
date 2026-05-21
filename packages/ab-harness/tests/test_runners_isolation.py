@@ -2,7 +2,7 @@
 
 Without these tests the runner CAN regress to ``os.environ.copy()`` and
 silently leak the operator's ~/.claude/{CLAUDE.md, skills, settings.json}
-+ arbitrary secrets (COMFY_*, OBSIDIAN_*) into the benchmark agent's
++ arbitrary secrets (workplace SaaS tokens, OBSIDIAN_*) into the benchmark agent's
 process.
 """
 
@@ -21,7 +21,7 @@ def test_isolation_drops_non_whitelisted_keys() -> None:
     fake_environ = {
         "PATH": "/usr/bin:/bin",
         "ANTHROPIC_API_KEY": "sk-ant-test",
-        "COMFY_CONFLUENCE_API_TOKEN": "must-not-leak",
+        "INTERNAL_WIKI_API_TOKEN": "must-not-leak",
         "OBSIDIAN_API_KEY": "must-not-leak",
         "AB_API_BASE_URL": "must-not-leak",
         "VAULT_HUB": "must-not-leak",
@@ -35,7 +35,7 @@ def test_isolation_drops_non_whitelisted_keys() -> None:
         # PATH survives.
         assert "PATH" in iso.env
         # Operator secrets dropped.
-        assert "COMFY_CONFLUENCE_API_TOKEN" not in iso.env
+        assert "INTERNAL_WIKI_API_TOKEN" not in iso.env
         assert "OBSIDIAN_API_KEY" not in iso.env
         assert "AB_API_BASE_URL" not in iso.env
         assert "VAULT_HUB" not in iso.env
@@ -125,7 +125,7 @@ def test_extra_keep_widens_whitelist() -> None:
         {
             "PATH": "/usr/bin",
             "AB_CUSTOM_FLAG": "1",
-            "COMFY_CONFLUENCE_API_TOKEN": "must-not-leak",
+            "INTERNAL_WIKI_API_TOKEN": "must-not-leak",
         },
         clear=True,
     ):
@@ -133,7 +133,7 @@ def test_extra_keep_widens_whitelist() -> None:
     try:
         assert iso.env.get("AB_CUSTOM_FLAG") == "1"
         # extra_keep does NOT auto-widen to other operator keys.
-        assert "COMFY_CONFLUENCE_API_TOKEN" not in iso.env
+        assert "INTERNAL_WIKI_API_TOKEN" not in iso.env
     finally:
         iso.cleanup()
 
@@ -159,7 +159,7 @@ def test_essential_keys_are_in_whitelist(key: str) -> None:
     "key",
     [
         # Operator-secret keys that MUST NOT survive isolation.
-        "COMFY_CONFLUENCE_API_TOKEN",
+        "INTERNAL_WIKI_API_TOKEN",
         "OBSIDIAN_API_KEY",
         "AB_API_BASE_URL",
         "VAULT_HUB",

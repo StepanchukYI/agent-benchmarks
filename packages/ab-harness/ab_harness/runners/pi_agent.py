@@ -303,7 +303,7 @@ class PiAgentRunner(BaseRunner):
         # Isolation barrier — see _isolation.py. Preserve real HOME so pi's
         # per-provider login state (~/.pi/, plus per-provider OAuth caches
         # like ~/.claude/ for Anthropic via pi) stays reachable. Env
-        # whitelist still strips secret env vars (COMFY_/OBSIDIAN_/etc).
+        # whitelist still strips secret env vars (OBSIDIAN_/workplace SaaS tokens/etc).
         self._isolated_env = IsolatedEnv.build(
             env_overrides=self._env_overrides,
             use_fake_home=False,
