@@ -61,6 +61,19 @@ class LeaderboardRow(BaseModel):
     tier: str
 
 
+class LeaderboardSummary(BaseModel):
+    mean_correctness: float
+    mean_correctness_delta: float | None = None
+    runs_count_window: int
+    runs_count_delta: int | None = None
+    best_correctness_model: str | None = None
+    best_correctness_value: float | None = None
+    best_correctness_delta: float | None = None
+    best_cost_efficiency_model: str | None = None
+    best_cost_efficiency_value_usd: float | None = None
+    best_cost_efficiency_delta: float | None = None
+
+
 class LeaderboardResponse(BaseModel):
     rows: list[LeaderboardRow] = Field(default_factory=list)
     pillars: list[str] = Field(
@@ -72,6 +85,7 @@ class LeaderboardResponse(BaseModel):
             "Latency $",
         ]
     )
+    summary: LeaderboardSummary | None = None
     generated_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -175,6 +189,8 @@ class TrendsOverview(BaseModel):
     window_days: int
     active_regressions_count: int
     improvements_count: int
+    active_regressions_delta_30d: int | None = None
+    improvements_delta_30d: int | None = None
     ci_gate_status: str
     ci_gate_blocked_merges_48h: int
     alerts_count_window: int

@@ -48,6 +48,7 @@ from .schemas import (
     LeaderboardMatrixRow,
     LeaderboardResponse,
     LeaderboardRow,
+    LeaderboardSummary,
     ParetoPoint,
     ParetoSeries,
     RegressionItem,
@@ -603,6 +604,67 @@ def _last_full_sweep_at(session: Session) -> datetime | None:
     return _coalesce_dt(value)
 
 
+def _collect_regression_buckets_window(
+    session: Session,
+    *,
+    current_from: datetime,
+    current_to: datetime,
+    prev_from: datetime,
+    prev_to: datetime,
+) -> dict[tuple[str, str, str], dict[str, list[float]]]:
+    """Bucket scores into current/prev windows using explicit bounds.
+
+    Unlike `_collect_regression_buckets`, this version applies upper bounds
+    so anchored windows can sit anywhere on the timeline (the rolling
+    helper only filters by a single floor and leaks more-recent data in).
+    """
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.tier,
+            TaskResult.suite,
+            TaskResult.score_total,
+            _date_proxy().label("ts"),
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .where(_date_proxy() >= prev_from)
+        .where(_date_proxy() < current_to)
+    )
+    buckets: dict[tuple[str, str, str], dict[str, list[float]]] = {}
+    for model, tier, suite, score_total, ts_val in session.exec(stmt).all():
+        ts = _coalesce_dt(ts_val)
+        if ts is None:
+            continue
+        key = (model, tier, suite)
+        entry = buckets.setdefault(key, {"current": [], "prev": []})
+        score_val = float(score_total or 0.0)
+        if current_from <= ts < current_to:
+            entry["current"].append(score_val)
+        elif prev_from <= ts < prev_to:
+            entry["prev"].append(score_val)
+    return buckets
+
+
+def _count_regressions_window(
+    buckets: dict[tuple[str, str, str], dict[str, list[float]]],
+    *,
+    direction: str,
+    min_delta: float = 0.05,
+) -> int:
+    count = 0
+    for entry in buckets.values():
+        cur = entry["current"]
+        prev = entry["prev"]
+        if not cur or not prev:
+            continue
+        delta = (sum(cur) / len(cur)) - (sum(prev) / len(prev))
+        if (direction == "down" and delta <= -min_delta) or (direction == "up" and delta >= min_delta):
+            count += 1
+    return count
+
+
 def compute_overview(
     session: Session,
     *,
@@ -639,10 +701,48 @@ def compute_overview(
             blocked += 1
     status = "failing" if blocked > 0 else "passing"
 
+    # 30d delta vs prior 30d window. Two explicit window pairs:
+    #   current comparison: [now-30d, now)        vs [now-60d, now-30d)
+    #   prior comparison:   [now-60d, now-30d)    vs [now-90d, now-60d)
+    # Delta = current_count - prior_count. Null when the prior 30d window
+    # [now-60d, now-30d) is empty.
+    now_ts = datetime.now(UTC)
+    cur_from_30 = now_ts - timedelta(days=30)
+    prev_from_30 = now_ts - timedelta(days=60)
+    cur_buckets_30 = _collect_regression_buckets_window(
+        session,
+        current_from=cur_from_30,
+        current_to=now_ts,
+        prev_from=prev_from_30,
+        prev_to=cur_from_30,
+    )
+    prior_from_30 = now_ts - timedelta(days=60)
+    prior_prev_from_30 = now_ts - timedelta(days=90)
+    prior_buckets_30 = _collect_regression_buckets_window(
+        session,
+        current_from=prior_from_30,
+        current_to=cur_from_30,
+        prev_from=prior_prev_from_30,
+        prev_to=prior_from_30,
+    )
+    has_prior = any(entry["current"] for entry in prior_buckets_30.values())
+    if has_prior:
+        cur_down_30 = _count_regressions_window(cur_buckets_30, direction="down")
+        cur_up_30 = _count_regressions_window(cur_buckets_30, direction="up")
+        prior_down = _count_regressions_window(prior_buckets_30, direction="down")
+        prior_up = _count_regressions_window(prior_buckets_30, direction="up")
+        active_regressions_delta_30d: int | None = cur_down_30 - prior_down
+        improvements_delta_30d: int | None = cur_up_30 - prior_up
+    else:
+        active_regressions_delta_30d = None
+        improvements_delta_30d = None
+
     return TrendsOverview(
         window_days=window_days,
         active_regressions_count=len(down.items),
         improvements_count=len(up.items),
+        active_regressions_delta_30d=active_regressions_delta_30d,
+        improvements_delta_30d=improvements_delta_30d,
         ci_gate_status=status,
         ci_gate_blocked_merges_48h=blocked,
         alerts_count_window=0,
@@ -694,6 +794,208 @@ def _mode(values: Sequence[str], default: str) -> str:
     for v in values:
         counts[v] = counts.get(v, 0) + 1
     return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def _summary_aggregate(
+    session: Session,
+    *,
+    suites: Sequence[str] | None,
+    models: Sequence[str] | None,
+    tiers: Sequence[str] | None,
+    operators: Sequence[str] | None,
+    trust: Sequence[str] | None,
+    dataset_versions: Sequence[str] | None,
+    date_from: datetime,
+    date_to: datetime,
+) -> dict[str, Any]:
+    """One SQL aggregation over a [date_from, date_to) window.
+
+    Returns aggregate dict with keys:
+      - mean_correctness: float | None (0..1 mean across rows in window)
+      - runs_count: int (distinct (run_id, submission_id) buckets)
+      - per_model: dict[str, tuple[float, float]]  -> (mean_corr, mean_cost)
+    """
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.score_correctness,
+            TaskResult.cost_usd,
+            TaskResult.run_id,
+            TaskResult.submission_id,
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .join(
+            RegisteredRepo,
+            RegisteredRepo.id == Submission.registered_repo_id,
+            isouter=True,
+        )
+        .join(User, User.id == RegisteredRepo.user_id, isouter=True)
+        .where(_date_proxy() >= date_from)
+        .where(_date_proxy() < date_to)
+    )
+    if suites:
+        stmt = stmt.where(TaskResult.suite.in_(list(suites)))
+    if models:
+        stmt = stmt.where(TaskResult.model.in_(list(models)))
+    if tiers:
+        stmt = stmt.where(TaskResult.tier.in_(list(tiers)))
+    if trust:
+        stmt = stmt.where(Submission.trust_tier.in_(list(trust)))
+    if dataset_versions:
+        stmt = stmt.where(_dataset_version_proxy().in_(list(dataset_versions)))
+    if operators:
+        stmt = stmt.where(User.handle.in_(list(operators)))
+
+    raw = session.exec(stmt).all()
+
+    corr_vals: list[float] = []
+    per_model_corr: dict[str, list[float]] = {}
+    per_model_cost: dict[str, list[float]] = {}
+    run_keys: set[tuple[Any, Any]] = set()
+
+    for model, s_corr, cost_usd, run_id, sub_id in raw:
+        c = float(s_corr or 0.0)
+        corr_vals.append(c)
+        per_model_corr.setdefault(model, []).append(c)
+        per_model_cost.setdefault(model, []).append(float(cost_usd or 0.0))
+        # Count distinct run "groups": either run_id (local) or submission_id (pulled).
+        if run_id is not None or sub_id is not None:
+            run_keys.add((run_id, sub_id))
+
+    per_model: dict[str, tuple[float, float]] = {}
+    for m, cs in per_model_corr.items():
+        mean_c = sum(cs) / len(cs)
+        cost_list = per_model_cost.get(m, [])
+        mean_cost = sum(cost_list) / len(cost_list) if cost_list else 0.0
+        per_model[m] = (mean_c, mean_cost)
+
+    return {
+        "mean_correctness": (sum(corr_vals) / len(corr_vals)) if corr_vals else None,
+        "n_rows": len(corr_vals),
+        "runs_count": len(run_keys),
+        "per_model": per_model,
+    }
+
+
+def compute_leaderboard_summary(
+    session: Session,
+    *,
+    suites: Sequence[str] | None = None,
+    models: Sequence[str] | None = None,
+    tiers: Sequence[str] | None = None,
+    operators: Sequence[str] | None = None,
+    trust: Sequence[str] | None = None,
+    dataset_versions: Sequence[str] | None = None,
+    range_days: int = 7,
+    now: datetime | None = None,
+) -> LeaderboardSummary | None:
+    """Compute KPI summary over the current window and deltas vs prev window.
+
+    Two SQL aggregations: one for [now - range, now), one for
+    [now - 2*range, now - range). All deltas are null if the prev window
+    has zero rows. Returns None when the current window is empty.
+    """
+    if range_days <= 0:
+        range_days = 7
+    now_ts = now if now is not None else datetime.now(UTC)
+    cur_from = now_ts - timedelta(days=range_days)
+    cur_to = now_ts
+    prev_from = now_ts - timedelta(days=2 * range_days)
+    prev_to = cur_from
+
+    cur = _summary_aggregate(
+        session,
+        suites=suites,
+        models=models,
+        tiers=tiers,
+        operators=operators,
+        trust=trust,
+        dataset_versions=dataset_versions,
+        date_from=cur_from,
+        date_to=cur_to,
+    )
+    if cur["n_rows"] == 0:
+        return None
+
+    prev = _summary_aggregate(
+        session,
+        suites=suites,
+        models=models,
+        tiers=tiers,
+        operators=operators,
+        trust=trust,
+        dataset_versions=dataset_versions,
+        date_from=prev_from,
+        date_to=prev_to,
+    )
+    has_prev = prev["n_rows"] > 0
+
+    cur_per_model: dict[str, tuple[float, float]] = cur["per_model"]
+    # Best correctness: max mean correctness across models in current window.
+    best_corr_model = max(
+        cur_per_model.items(), key=lambda kv: kv[1][0]
+    )[0] if cur_per_model else None
+    best_corr_value = (
+        cur_per_model[best_corr_model][0] if best_corr_model is not None else None
+    )
+
+    # Best cost efficiency: smallest (mean_cost / mean_correctness) across models
+    # in the current window. Skip models with mean_correctness <= 0 (avoid div0).
+    def _eff(pair: tuple[float, float]) -> float | None:
+        mean_c, mean_cost = pair
+        if mean_c <= 0:
+            return None
+        return mean_cost / mean_c
+
+    eff_candidates = [
+        (m, _eff(pair)) for m, pair in cur_per_model.items()
+    ]
+    eff_candidates = [(m, v) for m, v in eff_candidates if v is not None]
+    if eff_candidates:
+        best_eff_model, best_eff_value = min(eff_candidates, key=lambda kv: kv[1])
+    else:
+        best_eff_model, best_eff_value = None, None
+
+    # Deltas vs prev window. Null when prev window is empty.
+    if has_prev:
+        prev_per_model: dict[str, tuple[float, float]] = prev["per_model"]
+        mean_corr_delta: float | None = (
+            cur["mean_correctness"] - prev["mean_correctness"]
+        )
+        runs_count_delta: int | None = cur["runs_count"] - prev["runs_count"]
+        if best_corr_model is not None and best_corr_model in prev_per_model:
+            best_corr_delta: float | None = (
+                best_corr_value - prev_per_model[best_corr_model][0]
+            )
+        else:
+            best_corr_delta = None
+        if best_eff_model is not None and best_eff_model in prev_per_model:
+            prev_eff = _eff(prev_per_model[best_eff_model])
+            best_eff_delta: float | None = (
+                (best_eff_value - prev_eff) if prev_eff is not None else None
+            )
+        else:
+            best_eff_delta = None
+    else:
+        mean_corr_delta = None
+        runs_count_delta = None
+        best_corr_delta = None
+        best_eff_delta = None
+
+    return LeaderboardSummary(
+        mean_correctness=cur["mean_correctness"],
+        mean_correctness_delta=mean_corr_delta,
+        runs_count_window=cur["runs_count"],
+        runs_count_delta=runs_count_delta,
+        best_correctness_model=best_corr_model,
+        best_correctness_value=best_corr_value,
+        best_correctness_delta=best_corr_delta,
+        best_cost_efficiency_model=best_eff_model,
+        best_cost_efficiency_value_usd=best_eff_value,
+        best_cost_efficiency_delta=best_eff_delta,
+    )
 
 
 def compute_leaderboard_response(
@@ -949,9 +1251,22 @@ def compute_leaderboard_response(
         )
     else:
         out_rows.sort(key=lambda r: (-sum(r.scores) / 5.0, r.model, r.operator))
+
+    summary = compute_leaderboard_summary(
+        session,
+        suites=suites,
+        models=models,
+        tiers=tiers,
+        operators=operators,
+        trust=trust,
+        dataset_versions=dataset_versions,
+        range_days=range_days if range_days and range_days > 0 else 7,
+    )
+
     return LeaderboardResponse(
         rows=out_rows,
         pillars=list(PILLARS),
+        summary=summary,
         generated_at=datetime.now(UTC),
     )
 
