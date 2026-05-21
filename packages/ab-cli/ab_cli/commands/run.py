@@ -39,6 +39,7 @@ def _make_runner(
     api_key: str | None = None,
     base_url: str | None = None,
     system_prompt: str | None = None,
+    effort: str | None = None,
 ) -> Any:
     """Map a CLI `--runner` string + `--model` to a BaseRunner.
 
@@ -51,7 +52,7 @@ def _make_runner(
     if runner_name == "mock":
         return MockRunner(model=model)
     if runner_name in {"claude-code", "claude-code-cli", "claude"}:
-        return ClaudeCodeRunner(model=model)
+        return ClaudeCodeRunner(model=model, effort=effort)
     return make_runner(
         runner=runner_name,
         model=model,
@@ -115,6 +116,14 @@ def run(
         None,
         help="System prompt passed to HTTP-driven runners.",
     ),
+    effort: str | None = typer.Option(
+        None,
+        help=(
+            "Reasoning effort for claude-code: low|medium|high|xhigh|max. "
+            "Maps to claude CLI's --effort. Other runners may use it via "
+            "their own reasoning controls in a future commit."
+        ),
+    ),
     results_root: Path = typer.Option(
         Path.home() / ".ab" / "results",
         help=(
@@ -162,6 +171,7 @@ def run(
             api_key=api_key,
             base_url=base_url,
             system_prompt=system_prompt,
+            effort=effort,
         )
         runner_obj.prepare(materialized)
 

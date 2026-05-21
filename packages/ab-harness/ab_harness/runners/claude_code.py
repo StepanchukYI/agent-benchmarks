@@ -124,12 +124,16 @@ class ClaudeCodeRunner(BaseRunner):
         extra_args: list[str] | None = None,
         dataset_version: str = _DEFAULT_DATASET_VERSION,
         prompt_template_hash: str | None = None,
+        effort: str | None = None,
     ) -> None:
         self._model = model
         self._binary = binary
         self._extra_args = list(extra_args or [])
         self._dataset_version = dataset_version
         self._prompt_template_hash = prompt_template_hash
+        # Maps to claude CLI's --effort. Recorded in trajectory.reasoning.
+        # Valid values per `claude --help`: low|medium|high|xhigh|max.
+        self._effort = effort
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
@@ -171,6 +175,8 @@ class ClaudeCodeRunner(BaseRunner):
             "--append-system-prompt",
             _SANDBOX_SYSTEM_PROMPT,
         ]
+        if self._effort:
+            argv.extend(["--effort", self._effort])
         argv.extend(self._extra_args)
         return argv
 
