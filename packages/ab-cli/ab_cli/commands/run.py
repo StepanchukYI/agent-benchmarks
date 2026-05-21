@@ -10,7 +10,7 @@ from typing import Any
 
 import typer
 from ab_datasets.schemas import ScorerVerdict, Task, Tier
-from ab_harness.runners import ClaudeCodeRunner, MockRunner
+from ab_harness.runners import ClaudeCodeRunner, MockRunner, make_runner
 from ab_harness.sandbox import materialize
 from ab_harness.scorers.runner import run_scorer_chain
 from ab_harness.trajectory.splice import splice_scorer_events
@@ -32,12 +32,33 @@ def _utc_stamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _make_runner(runner_name: str, model: str) -> Any:
+def _make_runner(
+    runner_name: str,
+    model: str,
+    *,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    system_prompt: str | None = None,
+) -> Any:
+    """Map a CLI `--runner` string + `--model` to a BaseRunner.
+
+    Native fast paths first (claude-code CLI + mock); everything else
+    delegates to ``ab_harness.runners.make_runner`` which handles the
+    full scaffold/model matrix (anthropic-compat, openai-compat, local,
+    + stubs for codex-cli/gemini-cli/opencode/pi-agent/hermes-agent/
+    nanobot/cursor).
+    """
     if runner_name == "mock":
         return MockRunner(model=model)
     if runner_name in {"claude-code", "claude-code-cli", "claude"}:
         return ClaudeCodeRunner(model=model)
-    raise ValueError(f"unknown runner: {runner_name}")
+    return make_runner(
+        runner=runner_name,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        system_prompt=system_prompt,
+    )
 
 
 def _scores_payload(
@@ -68,7 +89,31 @@ def run(
     tier: str = typer.Option("T0", help="Initial config tier (T0/T1/T2/T3)."),
     task: str | None = typer.Option(None, help="Single task id override."),
     runner: str = typer.Option(
-        "claude-code", help="Runner: 'claude-code' or 'mock' (for local dry-runs)."
+        "claude-code",
+        help=(
+            "Runner: 'claude-code' (default) | 'mock' | 'anthropic-compat' | "
+            "'openai-compat' | 'local' | 'codex-cli' | 'gemini-cli' | "
+            "'opencode' | 'pi-agent' | 'hermes-agent' | 'nanobot' | 'cursor'."
+        ),
+    ),
+    api_key: str | None = typer.Option(
+        None,
+        help=(
+            "API key override for HTTP-driven runners. Defaults to the "
+            "appropriate env var (ANTHROPIC_API_KEY / OPENAI_API_KEY). "
+            "Empty allowed for local runners."
+        ),
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        help=(
+            "Override the runner's base URL (Anthropic-compat / OpenAI-compat / "
+            "local scaffolds). Defaults from the model registry / scaffold port."
+        ),
+    ),
+    system_prompt: str | None = typer.Option(
+        None,
+        help="System prompt passed to HTTP-driven runners.",
     ),
     results_root: Path = typer.Option(
         Path.home() / ".ab" / "results",
@@ -111,7 +156,13 @@ def run(
         materialized = materialize(_tier_root_default(), tier_enum, t, workdir)
         seed_workdir_from_fixture(t, workdir)
 
-        runner_obj = _make_runner(runner, model)
+        runner_obj = _make_runner(
+            runner,
+            model,
+            api_key=api_key,
+            base_url=base_url,
+            system_prompt=system_prompt,
+        )
         runner_obj.prepare(materialized)
 
         traj_path = run_dir / "trajectory.jsonl"

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/server.json",
+  "name": "obsidian-memory",
+  "description": "Mock MCP server — drives memory benchmark tasks without touching a real Obsidian vault. Reads + writes are simulated against the per-run vault snapshot. Deterministic for verified-tier rescoring.",
+  "version": "0.1.0-mock",
+  "transport": "stdio",
+  "command": "python",
+  "args": ["-m", "ab_harness.mcp_mocks.obsidian_memory"],
+  "tools": [
+    {
+      "name": "search_vault",
+      "description": "Full-text search across the vault snapshot. Returns up to 10 matches with relative path + first-100-char excerpt.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text query. Case-insensitive substring match in v1 (no semantic search in the mock)."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "read_vault_file",
+      "description": "Read a markdown file from the vault snapshot by relative path.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path inside the vault root (e.g. `projects/example/hub.md`)."
+          }
+        }
+      }
+    },
+    {
+      "name": "append_decision",
+      "description": "Append a decision entry to `decisions.md` with structured frontmatter. Returns the new entry id + final file path.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["title", "body", "importance"],
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project hub slug. Defaults to top-level decisions.md if omitted."
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "1-2 paragraphs explaining the decision + trade-offs."
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "sub_type": {
+            "type": "string",
+            "enum": ["architecture", "tooling", "process", "data", "security"]
+          },
+          "valid_until": {
+            "type": "string",
+            "description": "ISO date or null."
+          }
+        }
+      }
+    },
+    {
+      "name": "append_lesson",
+      "description": "Append a lesson entry to `lessons.md`.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["title", "body"],
+        "properties": {
+          "project": { "type": "string" },
+          "title": { "type": "string" },
+          "body": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "read_hub",
+      "description": "Read the top-level or project hub.md.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "notes": "v1 stores writes in-memory inside the per-run vault snapshot — survives a single run, not a re-run. For verified-tier rescoring the trajectory's tool_returns are the source of truth; the mock replays its own returns deterministically given the same input."
+}

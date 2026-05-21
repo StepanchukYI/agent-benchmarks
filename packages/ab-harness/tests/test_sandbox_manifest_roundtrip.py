@@ -59,5 +59,11 @@ def test_t3_manifest_roundtrip():
     root = _dir_for(Tier.T3, "full")
     manifest = load_manifest(root / "manifest.yaml")
     assert manifest.tier is Tier.T3
-    assert manifest.claude_md is None
+    # T3 now ships a full operator config (CLAUDE.md + CLAUDE.local.md +
+    # skills + MCPs + vault snapshot) — the placeholder-empty era is over.
+    assert manifest.claude_md is not None
+    assert manifest.claude_local_md is not None
+    assert len(manifest.skills) >= 3
+    assert len(manifest.mcps) >= 1
+    assert manifest.vault_state is not None
     assert verify_hashes(manifest, root) == []

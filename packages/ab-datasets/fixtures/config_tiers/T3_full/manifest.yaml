@@ -1,7 +1,28 @@
 tier: T3
-description: "Full operator config - populated by community / Phase 7. Not used in M1 tests."
-claude_md: null
-claude_local_md: null
-skills: []
-mcps: []
-vault_state: null
+description: "Full operator config - CLAUDE.md + CLAUDE.local.md + skills + MCPs + fuller vault state."
+claude_md:
+  path: CLAUDE.md
+  sha256: 6c7e803e5e0514c6bda48296405897ae78cf7164fbf32543336cb4e3294a4327
+claude_local_md:
+  path: CLAUDE.local.md
+  sha256: df5f4f791bebb3e2a3e844a6a53752090cacbb24e244bf47873648fbabeb0852
+skills:
+  - id: memory:memory-session
+  - id: memory:memory-write
+  - id: memory:memory-ops
+  - id: gitnexus-exploring
+  - id: gitnexus-debugging
+  - id: gitnexus-refactoring
+  - id: gitnexus-impact-analysis
+mcps:
+  - id: obsidian-memory
+    config: { mock: true }
+  - id: gitnexus
+    config: { mock: true }
+  - id: context7
+    config: { mock: true }
+  - id: lantern
+    config: { mock: true }
+vault_state:
+  snapshot: vault_snapshots/T3_seed_full.tar.gz
+  sha256: f0166bed5cb83e5993430b4c89288301044d49d62e6a131673d8482c7bfd1759

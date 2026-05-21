@@ -1,0 +1,27 @@
+{
+  "$comment": "Canned MCP tool returns used by the mock server when replaying verified-tier rescores. Keys are sha256(tool_name + canonical_json(args)). The mock looks up by hash; if absent it falls through to the live in-memory vault simulation. Deterministic, replay-safe.",
+  "responses": [
+    {
+      "input_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tool_name": "read_hub",
+      "args": {},
+      "result": {
+        "path": "hub.md",
+        "content": "# Hub\n\nProject: `<example-project>`\nOwner: `<operator>`\nStatus: active\nUpdated: 2026-05-21\n\nNotes: anonymized seed for T2 fixture; do not reference real systems.\n"
+      }
+    },
+    {
+      "input_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "tool_name": "search_vault",
+      "args": { "query": "decision", "limit": 10 },
+      "result": {
+        "matches": [
+          {
+            "path": "decisions.md",
+            "excerpt": "# Decisions\n\n<!-- append new entries above this line -->\n"
+          }
+        ]
+      }
+    }
+  ]
+}
