@@ -44,6 +44,14 @@ export interface TaskConfig {
   requires?: Record<string, unknown>;
 }
 
+export interface TaskStats {
+  runs_count_30d: number;
+  pass_rate_30d: number | null;
+  median_cost_usd: number | null;
+  median_latency_ms: number | null;
+  median_turns: number | null;
+}
+
 export interface Task {
   id: string;
   layer: Layer;
@@ -58,7 +66,9 @@ export interface Task {
   visibility?: Visibility;
   trust_tier_ceiling?: TrustTier;
   config: TaskConfig;
-  /** UI-only convenience — pass-rate over last 30d, 0-100. */
+  /** Real aggregate stats from server. Null when no runs yet. */
+  stats?: TaskStats;
+  /** @deprecated use stats.pass_rate_30d. Kept for backward compat. */
   pass_rate?: number;
 }
 

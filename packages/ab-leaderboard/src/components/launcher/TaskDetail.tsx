@@ -10,6 +10,23 @@ interface TaskDetailProps {
   task: Task | null;
 }
 
+function formatCostUsd(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  return `$${usd.toFixed(3)}`;
+}
+
+function formatPassRate(rate: number | null | undefined): string {
+  if (rate == null) return "—";
+  // Server returns 0..1, render as 0..100%.
+  const pct = rate > 1 ? rate : rate * 100;
+  return `${pct.toFixed(1)}%`;
+}
+
+function formatTurns(t: number | null | undefined): string {
+  if (t == null) return "—";
+  return String(t);
+}
+
 export function TaskDetail({ task }: TaskDetailProps): JSX.Element {
   if (!task) {
     return (
@@ -18,6 +35,11 @@ export function TaskDetail({ task }: TaskDetailProps): JSX.Element {
       </div>
     );
   }
+
+  const stats = task.stats;
+  const passRate = stats?.pass_rate_30d ?? null;
+  const runsCount = stats?.runs_count_30d ?? 0;
+  const hasRuns = runsCount > 0;
 
   return (
     <Panel className="shrink-0">
@@ -46,31 +68,38 @@ export function TaskDetail({ task }: TaskDetailProps): JSX.Element {
       <PanelBody className="flex gap-5">
         <div className="flex-1 flex flex-col gap-3">
           <Section label="SCORER CHAIN">
-            <div className="flex flex-wrap gap-1.5">
-              {task.scorer_chain?.map((s) => (
-                <Pill key={s.name} tone="accent" size="sm">
-                  {s.name}
-                </Pill>
-              ))}
-            </div>
+            {task.scorer_chain && task.scorer_chain.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {task.scorer_chain.map((s) => (
+                  <Pill key={s.name} tone="accent" size="sm">
+                    {s.name}
+                  </Pill>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[12px] text-muted-foreground">—</div>
+            )}
           </Section>
           <Section label="FIXTURE">
-            <div className="font-mono text-[11.5px] inline-flex items-center gap-1.5">
-              <Folder className="size-3" />
-              vault-medium-2026-05.tar.gz
-              <span className="text-muted-foreground ml-2">· 4.8 MB · sha256:a7c2…b09f</span>
-            </div>
+            {task.fixture_ref ? (
+              <div className="font-mono text-[11.5px] inline-flex items-center gap-1.5">
+                <Folder className="size-3" />
+                {task.fixture_ref}
+              </div>
+            ) : (
+              <div className="text-[12px] text-muted-foreground">No fixture</div>
+            )}
           </Section>
           <Section label="ACCEPTANCE">
-            <div className="text-[12px] text-foreground-2 leading-relaxed">
-              File <span className="font-mono">decisions/&lt;slug&gt;.md</span> created with frontmatter{" "}
-              <span className="font-mono">{`{status, decided_by, supersedes?}`}</span> validating against{" "}
-              <span className="font-mono">schemas/decision.v2.json</span>; body includes{" "}
-              <span className="font-mono">## Context</span>,{" "}
-              <span className="font-mono">## Decision</span>,{" "}
-              <span className="font-mono">## Consequences</span> sections; vault diff contains{" "}
-              <strong>no</strong> deletions.
-            </div>
+            {task.acceptance_criteria && task.acceptance_criteria.length > 0 ? (
+              <ul className="text-[12px] text-foreground-2 leading-relaxed list-disc pl-4 space-y-0.5">
+                {task.acceptance_criteria.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[12px] text-muted-foreground">—</div>
+            )}
           </Section>
         </div>
 
@@ -78,18 +107,26 @@ export function TaskDetail({ task }: TaskDetailProps): JSX.Element {
           <div>
             <Label>PASS RATE (30d)</Label>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[22px] font-semibold tnum">{task.pass_rate ?? "—"}%</span>
-              <span className="text-[10px] tnum text-pass">▲ 4.2</span>
+              <span className="text-[22px] font-semibold tnum">{formatPassRate(passRate)}</span>
+              {hasRuns ? null : <span className="text-[10px] text-muted-foreground">no runs</span>}
             </div>
-            <Sparkline data={sampleSpark(task.pass_rate ?? 80)} width={180} height={26} color="hsl(var(--accent))" fill />
+            {hasRuns && passRate != null ? (
+              <Sparkline data={[passRate * 100]} width={180} height={26} color="hsl(var(--accent))" fill />
+            ) : (
+              <div className="h-[26px]" aria-hidden />
+            )}
           </div>
           <div>
             <Label>MEDIAN COST</Label>
-            <div className="font-mono tnum text-[13px]">$0.041</div>
+            <div className="font-mono tnum text-[13px]">{formatCostUsd(stats?.median_cost_usd)}</div>
           </div>
           <div>
             <Label>MEDIAN TURNS</Label>
-            <div className="font-mono tnum text-[13px]">9</div>
+            <div className="font-mono tnum text-[13px]">{formatTurns(stats?.median_turns)}</div>
+          </div>
+          <div>
+            <Label>RUNS (30d)</Label>
+            <div className="font-mono tnum text-[13px]">{runsCount}</div>
           </div>
         </div>
       </PanelBody>
@@ -108,17 +145,4 @@ function Section({ label, children }: { label: string; children: ReactNode }): J
 
 function Label({ children }: { children: ReactNode }): JSX.Element {
   return <div className="text-[10.5px] text-muted-foreground mb-1 tracking-wider">{children}</div>;
-}
-
-function sampleSpark(base: number): number[] {
-  const arr: number[] = [];
-  let v = base;
-  let s = 91;
-  for (let i = 0; i < 12; i++) {
-    s = (s * 9301 + 49297) % 233280;
-    const r = s / 233280;
-    v += (r - 0.5) * 2.4;
-    arr.push(+v.toFixed(1));
-  }
-  return arr;
 }
