@@ -87,24 +87,44 @@ def _trajectory_to_events(trajectory: Trajectory) -> list[dict[str, Any]]:
     return events
 
 
-def _build_scores_payload(
-    trajectory: Trajectory,
+def build_scores_payload(
+    *,
+    run_id: str,
+    task_id: str,
+    model: str,
+    tier: str,
+    dataset_version: str,
     verdicts: list[ScorerVerdict],
 ) -> dict[str, Any]:
+    """Compute the scores.json dict from a verdict list (single source of truth)."""
     scores = [v.score for v in verdicts]
     total_score = float(fmean(scores)) if scores else 0.0
     all_pass = all(v.pass_ for v in verdicts) if verdicts else False
-    tier_val = trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier
     return {
-        "run_id": trajectory.run_id,
-        "task_id": trajectory.task_id,
-        "model": trajectory.model,
-        "tier": tier_val,
-        "dataset_version": trajectory.dataset_version,
+        "run_id": run_id,
+        "task_id": task_id,
+        "model": model,
+        "tier": tier,
+        "dataset_version": dataset_version,
         "verdicts": [v.model_dump(mode="json", by_alias=True) for v in verdicts],
         "total_score": total_score,
         "pass": all_pass,
     }
+
+
+def _build_scores_payload(
+    trajectory: Trajectory,
+    verdicts: list[ScorerVerdict],
+) -> dict[str, Any]:
+    tier_val = trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier
+    return build_scores_payload(
+        run_id=trajectory.run_id,
+        task_id=trajectory.task_id,
+        model=trajectory.model,
+        tier=str(tier_val),
+        dataset_version=trajectory.dataset_version,
+        verdicts=verdicts,
+    )
 
 
 def write_run_dir(
@@ -365,6 +385,7 @@ __all__ = [
     "RunDir",
     "ScorerVerdict",
     "ScoresFile",
+    "build_scores_payload",
     "read_run_dir",
     "read_scores",
     "read_trajectory",

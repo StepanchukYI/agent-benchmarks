@@ -38,7 +38,16 @@ def rescore_submission(session: Session, submission: Submission) -> RescoreRepor
         return _failure(submission, "registered_repo missing")
 
     clone_dir = Path(settings.fetcher_cache_dir) / str(repo.id)
-    traj_path = clone_dir / submission.source_path / "trajectory.jsonl"
+    clone_dir_resolved = clone_dir.resolve()
+    candidate = (clone_dir / submission.source_path / "trajectory.jsonl").resolve()
+    try:
+        candidate.relative_to(clone_dir_resolved)
+    except ValueError:
+        return _failure(
+            submission,
+            f"source_path escapes clone dir: {submission.source_path!r}",
+        )
+    traj_path = candidate
     if not traj_path.exists():
         return _failure(submission, f"trajectory not found at {traj_path}")
 

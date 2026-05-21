@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
+import ab_datasets
 from ab_datasets.loaders import load_task
 from ab_datasets.schemas import Task
 
@@ -18,22 +20,58 @@ _LAYER_DIR_BY_PREFIX = {
 }
 
 
+def _ab_datasets_package_dir() -> Path:
+    """Filesystem path of the installed `ab_datasets` package."""
+    return Path(ab_datasets.__file__).resolve().parent
+
+
 def repo_root(start: Path | None = None) -> Path:
-    """Walk parents from start (or this file) until we find pyproject.toml."""
-    here = Path(start) if start is not None else Path(__file__).resolve()
-    if here.is_file():
-        here = here.parent
-    for parent in [here, *here.parents]:
-        if (parent / "pyproject.toml").exists() and (parent / "packages").is_dir():
-            return parent
-    raise RuntimeError("could not locate repo root containing pyproject.toml + packages/")
+    """Walk parents from start (or this file) until we find pyproject.toml + packages/.
+
+    Resolution order:
+    1. `$AB_REPO_ROOT` env var if set and valid.
+    2. `$PWD` (or `start`) walk upward.
+    3. This module's path walk upward.
+    Caller can override via env var when the package is installed outside the tree.
+    """
+    env_root = os.environ.get("AB_REPO_ROOT")
+    if env_root:
+        p = Path(env_root).resolve()
+        if (p / "pyproject.toml").exists() and (p / "packages").is_dir():
+            return p
+
+    candidates: list[Path] = []
+    if start is not None:
+        s = Path(start).resolve()
+        candidates.append(s if s.is_dir() else s.parent)
+    candidates.append(Path.cwd())
+    candidates.append(Path(__file__).resolve().parent)
+
+    for c in candidates:
+        for parent in [c, *c.parents]:
+            if (parent / "pyproject.toml").exists() and (parent / "packages").is_dir():
+                return parent
+
+    raise RuntimeError(
+        "could not locate repo root containing pyproject.toml + packages/; "
+        "set $AB_REPO_ROOT to override when running from an installed package"
+    )
 
 
 def datasets_root(start: Path | None = None) -> Path:
+    """Path of the `ab_datasets` package; prefers the installed package dir."""
+    pkg = _ab_datasets_package_dir()
+    if (pkg / "L0_foundation").is_dir():
+        return pkg
     return repo_root(start) / "packages" / "ab-datasets" / "ab_datasets"
 
 
 def fixtures_root(start: Path | None = None) -> Path:
+    """Locate fixtures/. Prefer sibling of the installed datasets package, then repo."""
+    pkg = _ab_datasets_package_dir()
+    sibling = pkg.parent / "fixtures"
+    if sibling.is_dir():
+        return sibling
     return repo_root(start) / "packages" / "ab-datasets" / "fixtures"
 
 

@@ -123,6 +123,7 @@ def _make_source_repo(root: Path) -> Path:
 @pytest.fixture()
 def app_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
     monkeypatch.setenv("AB_TEST_AUTH", "1")
+    monkeypatch.setenv("AB_FETCH_ALLOW_LOCAL", "1")
     monkeypatch.setenv("FETCHER_CACHE_DIR", str(tmp_path / "cache"))
 
     db_path = tmp_path / "test.db"

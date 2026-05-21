@@ -13,6 +13,7 @@ from ab_server.models import (
     ScorerVerdictRow,
     Submission,
     TaskResult,
+    User,
 )
 
 router = APIRouter(tags=["submissions"])
@@ -90,9 +91,13 @@ def list_submissions(
     if suite:
         stmt = stmt.where(TaskResult.suite == suite)
     if operator:
-        stmt = stmt.join(
-            RegisteredRepo, RegisteredRepo.id == Submission.registered_repo_id
-        ).where(RegisteredRepo.user_id == operator)
+        stmt = (
+            stmt.join(
+                RegisteredRepo, RegisteredRepo.id == Submission.registered_repo_id
+            )
+            .join(User, User.id == RegisteredRepo.user_id)
+            .where(User.handle == operator)
+        )
 
     stmt = stmt.order_by(Submission.ingested_at.desc()).offset(offset).limit(limit)
     rows = session.exec(stmt).all()

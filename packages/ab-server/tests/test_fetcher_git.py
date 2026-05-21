@@ -48,9 +48,10 @@ def _make_source_repo(root: Path) -> tuple[Path, Path]:
     return source, run_dir
 
 
-def test_clone_or_pull_returns_head_sha(tmp_path: Path) -> None:
+def test_clone_or_pull_returns_head_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     if shutil.which("git") is None:
         pytest.skip("git not available")
+    monkeypatch.setenv("AB_FETCH_ALLOW_LOCAL", "1")
 
     source, _ = _make_source_repo(tmp_path)
     dest = tmp_path / "dest"
@@ -62,11 +63,30 @@ def test_clone_or_pull_returns_head_sha(tmp_path: Path) -> None:
     assert head_sha.strip() == head_sha
 
 
-def test_clone_or_pull_idempotent(tmp_path: Path) -> None:
+def test_clone_or_pull_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     if shutil.which("git") is None:
         pytest.skip("git not available")
+    monkeypatch.setenv("AB_FETCH_ALLOW_LOCAL", "1")
     source, _ = _make_source_repo(tmp_path)
     dest = tmp_path / "dest"
     sha1 = clone_or_pull(str(source), "main", dest)
     sha2 = clone_or_pull(str(source), "main", dest)
     assert sha1 == sha2
+
+
+def test_clone_or_pull_rejects_file_scheme(tmp_path: Path) -> None:
+    from ab_server.fetcher.git import RepoURLError
+    with pytest.raises(RepoURLError):
+        clone_or_pull("file:///etc/passwd", "main", tmp_path / "x")
+
+
+def test_clone_or_pull_rejects_ssh_url(tmp_path: Path) -> None:
+    from ab_server.fetcher.git import RepoURLError
+    with pytest.raises(RepoURLError):
+        clone_or_pull("git@github.com:foo/bar.git", "main", tmp_path / "x")
+
+
+def test_clone_or_pull_rejects_disallowed_host(tmp_path: Path) -> None:
+    from ab_server.fetcher.git import RepoURLError
+    with pytest.raises(RepoURLError):
+        clone_or_pull("https://attacker.example.com/foo.git", "main", tmp_path / "x")

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Index
+from sqlalchemy import Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -15,6 +15,12 @@ class Submission(SQLModel, table=True):
     __tablename__ = "submissions"
     __table_args__ = (
         Index("ix_submissions_repo_commit", "registered_repo_id", "source_commit_sha"),
+        UniqueConstraint(
+            "registered_repo_id",
+            "source_commit_sha",
+            "source_path",
+            name="uq_submissions_repo_commit_path",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)

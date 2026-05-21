@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from ab_server.models.repo import RegisteredRepo
@@ -103,14 +103,14 @@ def compute_matrix(
         stmt = stmt.where(TaskResult.tier.in_(list(tiers)))
     if trust:
         stmt = stmt.where(Submission.trust_tier.in_(list(trust)))
+    effective_ts = case(
+        (Run.started_at.is_not(None), Run.started_at),
+        else_=Submission.ingested_at,
+    )
     if date_from is not None:
-        stmt = stmt.where(
-            or_(Run.started_at >= date_from, Submission.ingested_at >= date_from)
-        )
+        stmt = stmt.where(effective_ts >= date_from)
     if date_to is not None:
-        stmt = stmt.where(
-            or_(Run.started_at <= date_to, Submission.ingested_at <= date_to)
-        )
+        stmt = stmt.where(effective_ts <= date_to)
 
     raw = session.exec(stmt).all()
 
@@ -233,9 +233,7 @@ def compute_trends(
         .where(TaskResult.model == model)
         .where(TaskResult.suite == suite)
         .where(TaskResult.tier == tier)
-        .where(
-            or_(Run.started_at >= cutoff, Submission.ingested_at >= cutoff)
-        )
+        .where(date_proxy >= cutoff)
         .group_by(bucket)
         .order_by(bucket)
     )

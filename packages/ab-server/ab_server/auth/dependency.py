@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlmodel import Session, select
 
+from ab_server.auth.github_oauth import hash_session_token
 from ab_server.config import Settings
 from ab_server.db import get_session
 from ab_server.models import User
@@ -35,7 +36,8 @@ def get_current_user(
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token")
 
-    user = session.exec(select(User).where(User.session_token == token)).first()
+    token_hash = hash_session_token(token)
+    user = session.exec(select(User).where(User.session_token == token_hash)).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
     if user.session_expires_at is not None:

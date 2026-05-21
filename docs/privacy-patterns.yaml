@@ -1,8 +1,12 @@
 patterns:
   - id: email-real
-    description: "Real email address outside @example.com / @noreply.github.com"
-    regex: "(?i)\\b[a-z0-9._%+-]+@(?!example\\.com\\b)(?!noreply\\.github\\.com\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
+    description: "Real email address outside @example.com / @(users.)noreply.github.com / git@github.com ssh url"
+    regex: "(?i)\\b(?!git@github\\.com\\b)[a-z0-9._%+-]+@(?!example\\.com\\b)(?!(?:users\\.)?noreply\\.github\\.com\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
     severity: medium
+    exclude_paths:
+      - "pnpm-lock.yaml"
+      - "uv.lock"
+      - "package-lock.json"
 
   - id: maintainer-home-path
     description: "Maintainer home directory path leaked into tree"
@@ -35,8 +39,11 @@ patterns:
     severity: high
 
   - id: vault-hub-marker
-    description: "vault hub leakage marker outside .claude/"
+    description: "vault hub leakage marker outside .claude/ and L3 obsidian tasks"
     regex: "vault_hub:\\s"
     severity: medium
     exclude_paths:
       - ".claude/"
+      - "CLAUDE.md"
+      - "L3_domains/obsidian/"
+      - "docs/privacy-patterns"

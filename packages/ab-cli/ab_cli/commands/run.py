@@ -16,7 +16,7 @@ from ab_harness.scorers.runner import run_scorer_chain
 from ab_harness.trajectory.splice import splice_scorer_events
 from ab_harness.trajectory.writer import TrajectoryWriter
 from ab_sdk.manifest import write_metadata
-from ab_sdk.results import SCORES_FILE, ScoresFile
+from ab_sdk.results import SCORES_FILE, ScoresFile, build_scores_payload
 
 from .._discover import (
     discover_tasks,
@@ -49,19 +49,15 @@ def _scores_payload(
     dataset_version: str,
     verdicts: list[ScorerVerdict],
 ) -> dict[str, Any]:
-    scores = [v.score for v in verdicts]
-    total = float(sum(scores) / len(scores)) if scores else 0.0
-    all_pass = all(v.pass_ for v in verdicts) if verdicts else False
-    return {
-        "run_id": run_id,
-        "task_id": task_id,
-        "model": model,
-        "tier": tier,
-        "dataset_version": dataset_version,
-        "verdicts": [v.model_dump(mode="json", by_alias=True) for v in verdicts],
-        "total_score": total,
-        "pass": all_pass,
-    }
+    payload = build_scores_payload(
+        run_id=run_id,
+        task_id=task_id,
+        model=model,
+        tier=tier,
+        dataset_version=dataset_version,
+        verdicts=verdicts,
+    )
+    return payload
 
 
 def run(

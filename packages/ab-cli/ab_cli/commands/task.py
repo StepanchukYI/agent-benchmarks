@@ -8,6 +8,7 @@ import typer
 from ab_datasets.loaders import load_task
 from rich.table import Table
 
+from .._discover import datasets_root as _resolved_datasets_root
 from ..ui import console
 
 task_app = typer.Typer(
@@ -19,10 +20,7 @@ task_app = typer.Typer(
 
 
 def _datasets_root() -> Path:
-    here = Path(__file__).resolve()
-    # commands/task.py -> ab_cli -> ab-cli -> packages -> repo root
-    repo_root = here.parents[4]
-    return repo_root / "packages" / "ab-datasets" / "ab_datasets"
+    return _resolved_datasets_root()
 
 
 def _collect_yaml_paths(target: Path) -> list[Path]:

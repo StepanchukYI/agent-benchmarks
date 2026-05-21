@@ -104,11 +104,15 @@ def test_device_flow_creates_user_and_session(
     assert me.status_code == 200
     assert me.json()["handle"] == "alice"
 
+    from ab_server.auth.github_oauth import hash_session_token
+
     with Session(db_engine) as session:  # type: ignore[arg-type]
         users = session.exec(select(User)).all()
         assert len(users) == 1
         assert users[0].github_id == "4242"
-        assert users[0].session_token == token
+        # Token stored hashed, never plaintext.
+        assert users[0].session_token == hash_session_token(token)
+        assert users[0].session_token != token
 
 
 def test_me_requires_token(db_engine: object) -> None:

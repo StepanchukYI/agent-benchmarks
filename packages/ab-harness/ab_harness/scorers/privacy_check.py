@@ -166,7 +166,7 @@ def _scan_workdir(workdir: Path, patterns: list[_Pattern]) -> list[dict[str, Any
         rel = str(path.relative_to(workdir))
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
-        except (OSError, UnicodeDecodeError):
+        except OSError:
             continue
         _scan_text(rel, content, patterns, hits)
         if len(hits) >= _HIT_CAP:

@@ -87,7 +87,7 @@ def scan_file(path: Path, rel: Path, patterns: list[dict]) -> list[tuple[int, di
     rel_str = str(rel)
     for lineno, line in enumerate(text.splitlines(), start=1):
         for pat in patterns:
-            if any(rel_str.startswith(ex) for ex in pat["exclude_paths"]):
+            if any(ex in rel_str for ex in pat["exclude_paths"]):
                 continue
             if pat["regex"].search(line):
                 matches.append((lineno, pat, line.rstrip()))

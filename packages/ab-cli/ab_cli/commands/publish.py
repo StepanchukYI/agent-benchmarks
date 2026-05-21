@@ -148,6 +148,15 @@ def publish(
 
     try:
         _run_git(["git", "add", "results"], cwd=clone)
+        status_proc = _run_git(["git", "status", "--porcelain", "results"], cwd=clone)
+        if not status_proc.stdout.strip():
+            rev = _run_git(["git", "rev-parse", "HEAD"], cwd=clone)
+            sha = rev.stdout.strip()
+            console.print(
+                f"[yellow]nothing to commit[/yellow] — {len(ready)} run dir(s) already match "
+                f"{target.repo_url}@{target.default_branch} (sha={sha[:12]})"
+            )
+            return
         _run_git(
             [
                 "git",

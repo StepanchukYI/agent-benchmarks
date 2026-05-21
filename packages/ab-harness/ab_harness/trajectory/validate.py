@@ -94,7 +94,11 @@ def validate(path: str | Path, scorer_chain: list[Any] | None = None) -> list[st
             (getattr(spec, "name", None) or spec.get("name") if isinstance(spec, dict) else getattr(spec, "name", None))
             for spec in scorer_chain
         ]
-        got_names = [e.get("scorer") for e in events if e.get("event") == "scorer"]
+        got_names = [
+            e.get("scorer_name") or e.get("scorer")
+            for e in events
+            if e.get("event") == "scorer"
+        ]
         if got_names[: len(expected_names)] != expected_names:
             issues.append(
                 f"scorer order mismatch: expected {expected_names!r}, got {got_names!r}"

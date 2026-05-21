@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -9,6 +10,11 @@ from sqlmodel import Session, select
 
 from ab_server.config import Settings
 from ab_server.models import User
+
+
+def hash_session_token(token: str) -> str:
+    """One-way fingerprint stored in the DB; raw token returned to client only at mint."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 _DEVICE_CODE_PATH = "/login/device/code"
 _ACCESS_TOKEN_PATH = "/login/oauth/access_token"
@@ -119,7 +125,7 @@ def _mint_session(
 ) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
-    user.session_token = token
+    user.session_token = hash_session_token(token)
     user.session_expires_at = expires_at
     session.add(user)
     session.commit()
