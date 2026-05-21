@@ -38,7 +38,11 @@ export default function Tasks(): JSX.Element {
           { id: "evolved", label: "L5 evolved", count: evolvedCount },
         ]}
       />
-      <div className="flex flex-1 min-h-0">
+      {/* TopNav 50px + SubNav ~42px; calc gives the inner row a finite
+          height so both panels can clip + scroll independently. Without a
+          bounded parent, `flex-1 min-h-0` collapses to page-document
+          scroll and the sidebar drags the centre column with it. */}
+      <div className="flex h-[calc(100vh-92px)] min-h-0">
         <div className="w-[340px] shrink-0 border-r border-border bg-background-2 overflow-hidden flex">
           <TaskTree selected={task} onSelect={setTask} />
         </div>
