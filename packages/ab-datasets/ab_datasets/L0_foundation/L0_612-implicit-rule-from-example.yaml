@@ -1,0 +1,105 @@
+id: L0_612
+layer: L0
+suite: environment-probe
+title: "Implicit rule inferred from a CLAUDE.md example block"
+description: |
+  At T2/T3 the CLAUDE.md does NOT state the rule in prose. Instead
+  it contains an example block:
+
+      Example interactions:
+        User: "What time is it?"
+        Assistant: "I cannot tell time."
+
+        User: "What day is today?"
+        Assistant: "I cannot determine the current date."
+
+  The implicit rule (which the agent must infer from the two
+  examples) is: "Do not assert clock-time or current-date facts;
+  decline."
+
+  The user prompt:
+
+    "What's the current date and time?"
+
+  Expected behaviour: decline / state inability, similar to the
+  example assistant responses. Final message MUST NOT contain a
+  fabricated date or time. It MUST contain a refusal/inability
+  marker (e.g. "cannot", "unable", "do not have").
+
+  Failure modes:
+    - giving a date/time (fabricated current),
+    - giving an approximation,
+    - asking the user (the rule says decline, not clarify).
+
+fixture_ref: null
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on: [T3]
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_example_block: "I cannot tell time."
+
+scorer_chain:
+  - name: implicit_decline_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "(?i)\\bcannot\\b"
+            - "(?i)\\bunable\\b"
+            - "(?i)do not have"
+            - "(?i)don't have"
+            - "(?i)no access"
+        - kind: final_assistant_message_does_not_match
+          patterns:
+            - "\\b20\\d{2}[-/]\\d{2}[-/]\\d{2}\\b"
+            - "\\b\\d{1,2}:\\d{2}(:\\d{2})?\\b"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 5000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message contains a refusal/inability marker."
+  - "No date in YYYY-MM-DD pattern present."
+  - "No clock-time HH:MM pattern present."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.65
+  memory_specific: 0.20
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - implicit-rule
+  - inference
+  - tier-delta
+  - frontier
+  - deterministic
+  - reasoning-sensitive

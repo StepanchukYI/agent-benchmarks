@@ -1,0 +1,86 @@
+id: L0_405
+layer: L0
+suite: instruction-following
+title: "Explicit override of default formatting habit"
+description: |
+  The user prompt:
+
+    "List the seven days of the week, in the conventional Sunday-
+     first order (Sun, Mon, ..., Sat), but DO NOT use bullet
+     points, numbered list, or any list marker. Output the seven
+     full names separated by `, ` (comma + space). Output ONLY
+     that comma-separated line, no surrounding prose."
+
+  Default model habit is to render lists as markdown bullets.
+  This task explicitly overrides that.
+
+  Expected exact final message:
+
+      Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday
+
+  Failure modes:
+    - rendering as bullet/numbered list,
+    - adding prose ("Here are the seven days:"),
+    - omitting any day,
+    - reordering (Monday-first is a common default),
+    - using abbreviations.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_csv_line
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 400, max_tokens: 3000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 8000, max_ms: 45000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message equals the exact comma-space-separated line."
+  - "No bullet, no numbered list, no prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - followbench
+  - override-default
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -82,6 +82,7 @@ def llm_judge_scorer(
     mode: str = "run",
     **scorer_config: Any,
 ) -> ScorerVerdict:
+    name = str(scorer_config.get("scorer_name") or "llm_judge")
     judge_model = str(scorer_config.get("judge_model") or _DEFAULT_MODEL)
     rubric = scorer_config.get("rubric")
     n_judges = max(1, int(scorer_config.get("n_judges") or 1))
@@ -90,7 +91,7 @@ def llm_judge_scorer(
 
     if task is None:
         return score_to_verdict(
-            "llm_judge",
+            name,
             ScorerKind.llm_judge,
             ok=False,
             score=0.0,
@@ -100,7 +101,7 @@ def llm_judge_scorer(
     events = _load_trajectory_events(trajectory_path)
     if not events:
         return score_to_verdict(
-            "llm_judge",
+            name,
             ScorerKind.llm_judge,
             ok=False,
             score=0.0,
@@ -129,7 +130,7 @@ def llm_judge_scorer(
             )
         except JudgeError as exc:
             return score_to_verdict(
-                "llm_judge",
+                name,
                 ScorerKind.llm_judge,
                 ok=False,
                 score=0.0,
@@ -153,7 +154,7 @@ def llm_judge_scorer(
     )
 
     return score_to_verdict(
-        "llm_judge",
+        name,
         ScorerKind.llm_judge,
         ok=overall_pass,
         score=float(mean_score),

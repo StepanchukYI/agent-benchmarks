@@ -129,6 +129,10 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "tool_dispatched_check": "tool_skill",
     "no_fake_invocation_check": "tool_skill",
     "rule_gates_tool_check": "tool_skill",
+    "skill_invocation_check": "tool_skill",
+    "exec_skill_dispatched": "tool_skill",
+    "lifecycle_order_check": "tool_skill",
+    "exec_silence_check": "tool_skill",
     # Correctness — verdicts, content checks, exact-match shapes,
     # state assertions, hallucination/source-quality checks.
     "best_source_verdict": "correctness",
@@ -170,6 +174,18 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "scoped_diff": "correctness",
     "stale_flag_verdict": "correctness",
     "t3_strict_no_emoji": "correctness",
+    # L1/L4 memory-specific checks.
+    "decision_schema_validator": "memory_specific",
+    "lesson_schema_validator": "memory_specific",
+    "append_only_state_diff": "memory_specific",
+    "lesson_append_only": "memory_specific",
+    "importance_distribution_check": "memory_specific",
+    "multi_decision_state_diff": "memory_specific",
+    "vault_state_diff": "memory_specific",
+    # L4 SWE/composite correctness checks.
+    "red_green_exec": "correctness",
+    "minimal_patch_state_diff": "correctness",
+    "hallucination_check": "correctness",
 }
 
 

@@ -75,6 +75,15 @@ def _expand_shorthand_to_assertions(cfg: dict[str, Any]) -> list[dict[str, Any]]
     must_exist = cfg.get("must_exist") or []
     for path in must_exist or []:
         out.append({"kind": "workdir_file_exists", "path": path})
+    forbidden = cfg.get("forbidden_substrings") or cfg.get("forbidden") or []
+    target_path = cfg.get("target_path") or cfg.get("path")
+    if target_path and forbidden:
+        out.append({
+            "kind": "workdir_file_does_not_contain",
+            "path": target_path,
+            "forbidden_substrings": forbidden,
+            "encoding": cfg.get("encoding", "utf-8"),
+        })
     if cfg.get("forbid_bom") and isinstance(expected, dict):
         for path in expected:
             out.append({"kind": "workdir_file_no_bom", "path": path})
@@ -129,6 +138,10 @@ def _make_assertion_scorer(scorer_name: str):
         extra_context: dict[str, Any] = {}
         if cfg.get("tool_schema_path"):
             extra_context["tool_schema_path"] = cfg["tool_schema_path"]
+        if cfg.get("target_file"):
+            extra_context["target_file"] = cfg["target_file"]
+        if cfg.get("target_paths"):
+            extra_context["target_paths"] = cfg["target_paths"]
         return run_assertion_chain(
             scorer_name,
             events,
@@ -234,6 +247,10 @@ TRACK_B_SCORER_NAMES: tuple[str, ...] = (
     "state_tracking_validator",
     "t3_strict_no_emoji",
     "tool_dispatched_check",
+    # L1-L3 deterministic assertion-chain aliases.
+    "importance_distribution_check",
+    "skill_invocation_check",
+    "lifecycle_order_check",
 )
 
 

@@ -1,0 +1,21 @@
+Facts in the report:
+
+[F1] Roen is the only child of Lyra.
+[F2] Idris is older than Lyra.
+[F3] Sevda is Roen's grandparent on the maternal side.
+[F4] Sevda is younger than Idris.
+
+Question: are these four facts mutually consistent?
+
+Hint: F1 + F3 imply that Sevda is Lyra's parent (since the
+maternal-side grandparent of Lyra's only child is Lyra's mother).
+So Sevda is the mother of Lyra. Therefore Sevda is older than
+Lyra. But F2 says Idris is older than Lyra, and F4 says Sevda is
+younger than Idris. None of those directly contradicts the
+inferred "Sevda older than Lyra", so let's check more carefully:
+
+We have: Sevda > Lyra (inferred), Idris > Lyra (F2), Sevda < Idris (F4).
+That's consistent: order is Idris > Sevda > Lyra > Roen (Roen is
+born to Lyra).
+
+So the four facts ARE consistent.

@@ -1,0 +1,94 @@
+id: L0_014
+layer: L0
+suite: file-ops
+title: "Section-scoped edit in INI file: only change [client] section"
+description: |
+  The fixture `config.ini` has three sections (`[server]`,
+  `[client]`, `[database]`), each with a `host`, `port`, and
+  third field. The user asks:
+
+    "In config.ini, ONLY in the `[client]` section, change `port`
+     from 9090 to 9595. Every other key in every other section
+     must be byte-for-byte unchanged. Section ordering and blank
+     lines must be preserved."
+
+  Expected exact result:
+
+      [server]
+      host = localhost
+      port = 8080
+      timeout = 30
+
+      [client]
+      host = remote.example.com
+      port = 9595
+      retries = 3
+
+      [database]
+      host = db.example.com
+      port = 5432
+      pool = 10
+
+  Failure modes:
+    - changing port 8080 (server) or 5432 (database) by accident
+      (regex too greedy),
+    - reordering sections,
+    - collapsing blank lines.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_014/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: scoped_diff
+    kind: deterministic
+    config:
+      expected:
+        config.ini: "[server]\nhost = localhost\nport = 8080\ntimeout = 30\n\n[client]\nhost = remote.example.com\nport = 9595\nretries = 3\n\n[database]\nhost = db.example.com\nport = 5432\npool = 10\n"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "config.ini matches the expected byte content exactly."
+  - "Only [client] section's port was changed."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - scoped-edit
+  - regex-discipline
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

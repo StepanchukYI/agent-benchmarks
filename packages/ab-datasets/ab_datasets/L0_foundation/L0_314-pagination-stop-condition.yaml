@@ -1,0 +1,91 @@
+id: L0_314
+layer: L0
+suite: tool-use
+title: "Pagination stop-condition: stop when has_more=false"
+description: |
+  The fixture's `fetch_page(cursor)` tool returns paginated data:
+    - page 1: items=[A,B], has_more=true,  cursor="p2"
+    - page 2: items=[C,D], has_more=true,  cursor="p3"
+    - page 3: items=[E],   has_more=false, cursor=null
+
+  The user asks:
+
+    "Fetch ALL pages of results and tell me the total count of
+     items. Stop when has_more is false. Output ONLY the total
+     integer count as your final message, no prose."
+
+  The agent MUST issue exactly 3 calls to `fetch_page`:
+    1. `fetch_page()` or `fetch_page(cursor=null)` → page 1
+    2. `fetch_page(cursor="p2")` → page 2
+    3. `fetch_page(cursor="p3")` → page 3, has_more=false → STOP.
+
+  Final assistant message MUST equal `5` exactly (2 + 2 + 1).
+
+  Failure modes:
+    - infinite loop (≥4 calls),
+    - early stop (≤2 calls — missing items),
+    - reporting items found (`A,B,C,D,E`) instead of count.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_314/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: pagination_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "fetch_page"
+          expected: 3
+        - kind: final_assistant_message_equals
+          expected: "5"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 12000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Exactly three `fetch_page` calls."
+  - "Final assistant message equals `5`."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - pagination
+  - stop-condition
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -12,6 +12,20 @@ from typing import Any
 from ab_datasets.schemas import ScorerKind, ScorerVerdict, Task
 
 from ab_harness.scorers._base import replay_unsupported, score_to_verdict
+from ab_harness.scorers.assertions import load_events, run_assertion_chain
+
+
+def _resolve_fixture_dir(task: Task | None) -> Path | None:
+    if task is None or not task.fixture_ref:
+        return None
+    try:
+        from ab_cli._discover import fixture_dir_for_task  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    try:
+        return fixture_dir_for_task(task)
+    except (RuntimeError, OSError):
+        return None
 
 
 def _collect_state(trajectory_path: Path) -> tuple[set[str], set[str], set[str]]:
@@ -53,13 +67,32 @@ def state_diff_scorer(
     expected_created: list[str] | None = None,
     expected_modified: list[str] | None = None,
     expected_deleted: list[str] | None = None,
+    assertions: list[dict[str, Any]] | None = None,
+    target_file: str | None = None,
+    target_paths: list[str] | None = None,
+    scorer_name: str | None = None,
     **_: Any,
 ) -> ScorerVerdict:
-    name = "state_diff"
+    name = scorer_name or "state_diff"
     kind = ScorerKind.state_diff
 
     if trajectory_path is None:
         return replay_unsupported(name, kind, "trajectory_path required (state_diff is trajectory-driven)")
+
+    if assertions:
+        extra_context: dict[str, Any] = {}
+        if target_file:
+            extra_context["target_file"] = target_file
+        if target_paths:
+            extra_context["target_paths"] = target_paths
+        return run_assertion_chain(
+            name,
+            load_events(trajectory_path),
+            workdir,
+            _resolve_fixture_dir(task),
+            assertions,
+            extra_context=extra_context,
+        )
 
     exp_created = set(expected_created or [])
     exp_modified = set(expected_modified or [])

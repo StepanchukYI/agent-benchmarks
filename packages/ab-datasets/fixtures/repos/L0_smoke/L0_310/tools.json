@@ -1,0 +1,37 @@
+{
+  "tools": [
+    {
+      "name": "open_ticket",
+      "description": "Open a support ticket. Returns ticket_id.",
+      "parameters": {
+        "type": "object",
+        "properties": { "subject": { "type": "string", "minLength": 1 } },
+        "required": ["subject"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_comment",
+      "description": "Add a comment to an existing ticket (must use a real ticket_id).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticket_id": { "type": "string", "minLength": 1 },
+          "body":      { "type": "string", "minLength": 1 }
+        },
+        "required": ["ticket_id", "body"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "close_ticket",
+      "description": "Close an existing ticket.",
+      "parameters": {
+        "type": "object",
+        "properties": { "ticket_id": { "type": "string", "minLength": 1 } },
+        "required": ["ticket_id"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

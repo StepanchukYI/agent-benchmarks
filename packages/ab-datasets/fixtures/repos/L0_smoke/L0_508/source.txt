@@ -1,0 +1,16 @@
+Source A (peer-reviewed journal, published 2024-10-15, retracted
+2025-03-04 due to data-fabrication concerns):
+
+"Patients treated with compound X showed a 38% reduction in
+recovery time vs control."
+
+Source B (preprint, posted 2026-02-22, not yet peer-reviewed):
+
+"In a follow-up trial, patients treated with compound X showed
+no statistically significant difference in recovery time vs
+control."
+
+Source C (regulatory bulletin, 2026-04-08):
+
+"The regulator has placed compound X under enhanced surveillance
+pending replication of efficacy claims."

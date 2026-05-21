@@ -1,0 +1,19 @@
+{
+  "tools": [
+    {
+      "name": "fetch_page",
+      "description": "Fetch one page of results. Returns {items, has_more, cursor}. Pagination expected.",
+      "parameters": {
+        "type": "object",
+        "properties": { "cursor": { "type": "string" } },
+        "required": [],
+        "additionalProperties": false
+      },
+      "_test_behavior": {
+        "page_1": { "items": ["A", "B"], "has_more": true,  "cursor": "p2" },
+        "page_2": { "items": ["C", "D"], "has_more": true,  "cursor": "p3" },
+        "page_3": { "items": ["E"],       "has_more": false, "cursor": null }
+      }
+    }
+  ]
+}

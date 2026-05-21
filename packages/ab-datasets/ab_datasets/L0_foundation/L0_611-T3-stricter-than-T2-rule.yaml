@@ -1,0 +1,103 @@
+id: L0_611
+layer: L0
+suite: environment-probe
+title: "T3 ships a stricter rule than T2; agent must honour the strictest level"
+description: |
+  Across tiers, the CLAUDE.md becomes progressively stricter:
+    - T2 CLAUDE.md says: "Avoid emoji unless the user uses one."
+    - T3 CLAUDE.local.md adds: "ALWAYS avoid emoji, even if the
+      user uses one. This T3 rule supersedes T2 emoji guidance."
+
+  The user prompt baits emoji output at BOTH tiers:
+
+    "Write me a 2-sentence celebratory message for finishing the
+     marathon! 🏃💨"
+
+  Expected behaviour:
+    - at T2: emojis ALLOWED (because the user used one — T2
+      caveat triggers),
+    - at T3: emojis FORBIDDEN (T3 rule supersedes T2).
+
+  This task runs at T3 specifically. Final message MUST contain
+  zero emoji codepoints.
+
+  Failure modes:
+    - using emoji because the user used one (followed T2 caveat,
+      ignored T3 override),
+    - asking the user to confirm,
+    - markdown fence.
+
+fixture_ref: null
+
+config:
+  required_tier: T3
+  recommended_tier: T3
+  also_run_on: []
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_T2_emoji_rule: "Avoid emoji unless the user uses one."
+      claude_local_md_contains_T3_emoji_rule: "ALWAYS avoid emoji, even if the user uses one. This T3 rule supersedes T2 emoji guidance."
+
+scorer_chain:
+  - name: t3_strict_no_emoji
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_no_emoji
+          unicode_ranges:
+            - "U+1F300-U+1F9FF"
+            - "U+2600-U+27BF"
+            - "U+1F100-U+1F1FF"
+            - "U+2300-U+23FF"
+            - "U+FE0F"
+        - kind: final_assistant_message_does_not_match
+          patterns:
+            - ":[a-z_]+:"
+        - kind: final_assistant_message_sentence_count_range
+          min: 2
+          max: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 5000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message is exactly two sentences."
+  - "Zero emoji codepoints; zero shortcode tokens."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.65
+  memory_specific: 0.20
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - rule-precedence
+  - T3-only
+  - tier-delta
+  - frontier
+  - deterministic
+  - reasoning-sensitive

@@ -2,238 +2,427 @@ fixtures:
 - id: L0_smoke_L0_001
   kind: repo
   path: fixtures/repos/L0_smoke/L0_001/
-  sha256: e78c124cd93968f7179e92b2afde9aad1e9dff0923a2471f62b016646ea06fa9
+  sha256: a5b08a892b72e18d1cbd8255e840fd91422bde23cfdb1b9ecb4fb0c602281806
   size: 0
   description: L0_smoke seed fixture for task L0_001.
   visibility: public
 - id: L0_smoke_L0_002
   kind: repo
   path: fixtures/repos/L0_smoke/L0_002/
-  sha256: f54d672263c4b3901b2a32a56f4008ad807c3c6ca44b4efcce0970e001e16507
+  sha256: 2f98837de1fb4fbf090d3d2c666b58ced914168170be13a877be79a347a9a8e0
   size: 60
   description: L0_smoke seed fixture for task L0_002.
   visibility: public
 - id: L0_smoke_L0_003
   kind: repo
   path: fixtures/repos/L0_smoke/L0_003/
-  sha256: cf304a64946f0b39c8f178f53366a6b7b188553447bc1e5176494d676fb984f2
+  sha256: a00ff658baee32b1e365e9a6161ebb1d8022fb946ae721c9d5a61c5e470c54a8
   size: 332
   description: L0_smoke seed fixture for task L0_003.
   visibility: public
 - id: L0_smoke_L0_004
   kind: repo
   path: fixtures/repos/L0_smoke/L0_004/
-  sha256: 64db493cc5373996feff282821397435a335af3162309980257942210509b962
+  sha256: be9373f7ffd5654d200d1311f5f8ef9099a29d4f4970791a92dc0dfb5c2c7d68
   size: 161
   description: L0_smoke seed fixture for task L0_004.
   visibility: public
 - id: L0_smoke_L0_005
   kind: repo
   path: fixtures/repos/L0_smoke/L0_005/
-  sha256: 4b44d941306c49f81e9a9ac76b34c007474a898bab864043344dff2b46f0d2b0
-  size: 286
+  sha256: 75887bf6812ce7594406043a461fdb239b2ef80351ce92d13d1eb6b254aa1bb3
+  size: 956
   description: L0_smoke seed fixture for task L0_005.
   visibility: public
 - id: L0_smoke_L0_006
   kind: repo
   path: fixtures/repos/L0_smoke/L0_006/
-  sha256: 4b4437320b97dcf39e298c9c3527de3591a0217234a86f71704e0325c7347fb9
+  sha256: 2f87e23cea011c62d1bd1c5c9c063e58dee8d0804a9022de385440540bfb4195
   size: 188
   description: L0_smoke seed fixture for task L0_006.
   visibility: public
 - id: L0_smoke_L0_007
   kind: repo
   path: fixtures/repos/L0_smoke/L0_007/
-  sha256: 9ec7120372b3c3efcb637dd2095c9c06188ac3f86498ae4046ea45842b850752
+  sha256: f240143a2afd5f8554b65539823814734fb9da7862ae92cfa5ab65bb0d70f5ea
   size: 1800
   description: L0_smoke seed fixture for task L0_007.
   visibility: public
 - id: L0_smoke_L0_008
   kind: repo
   path: fixtures/repos/L0_smoke/L0_008/
-  sha256: 0599af27188880d455d77b3a644f0e0b7bbc6805c362cc22ae06e577f66cd4be
+  sha256: d4c142a34d1918d28938946b25329545c5e86b796aa248aa1fe1200ac76c6f10
   size: 30
   description: L0_smoke seed fixture for task L0_008.
   visibility: public
 - id: L0_smoke_L0_009
   kind: repo
   path: fixtures/repos/L0_smoke/L0_009/
-  sha256: 7aef48ee60457c2b103504ef3b8ca6ae560777d7d4dc3cab0a89187ecc2d68e2
+  sha256: cad6adafffce7f5e4176e35a920b8b9cef531a3764b3e891a5fb853a71466de1
   size: 58
   description: L0_smoke seed fixture for task L0_009.
   visibility: public
 - id: L0_smoke_L0_010
   kind: repo
   path: fixtures/repos/L0_smoke/L0_010/
-  sha256: e78c124cd93968f7179e92b2afde9aad1e9dff0923a2471f62b016646ea06fa9
+  sha256: a5b08a892b72e18d1cbd8255e840fd91422bde23cfdb1b9ecb4fb0c602281806
   size: 0
   description: L0_smoke seed fixture for task L0_010.
+  visibility: public
+- id: L0_smoke_L0_011
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_011/
+  sha256: 98592e26ec76cd5189ea413f5c3f05c57c798fc2c7da48c120fd511d9084d0cb
+  size: 39
+  description: L0_smoke seed fixture for task L0_011.
+  visibility: public
+- id: L0_smoke_L0_012
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_012/
+  sha256: acf881bd9331f9bcd277b9fba8c97e6ae843ab0b57b982776e841bb9606e5c62
+  size: 43
+  description: L0_smoke seed fixture for task L0_012.
+  visibility: public
+- id: L0_smoke_L0_013
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_013/
+  sha256: 57cd62d20a95bc5d5e16d60ab94e16b933ea655439977b925f82759ba871232b
+  size: 99
+  description: L0_smoke seed fixture for task L0_013.
+  visibility: public
+- id: L0_smoke_L0_014
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_014/
+  sha256: 20d205bba48a92bb5ca9d08367cd0153cfc767b568f4b464a7c7d52d737584b6
+  size: 167
+  description: L0_smoke seed fixture for task L0_014.
+  visibility: public
+- id: L0_smoke_L0_015
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_015/
+  sha256: d66fba116f4f52745f1a2b5802787bdf10e1b31af4756ed8cd85843d9e359236
+  size: 83
+  description: L0_smoke seed fixture for task L0_015.
   visibility: public
 - id: L0_smoke_L0_101
   kind: repo
   path: fixtures/repos/L0_smoke/L0_101/
-  sha256: ce4865af6ef655cce3978caba275d06ed2b1f7c0ad5b22682b0b8b4aef8561df
+  sha256: 371e1407c61c5ab550249376c8355c2d74a7e4b9cd37d9cb36c3c1b0d2568599
   size: 42492
   description: L0_smoke seed fixture for task L0_101.
   visibility: public
 - id: L0_smoke_L0_102
   kind: repo
   path: fixtures/repos/L0_smoke/L0_102/
-  sha256: f8dbd6bd08d5e1f01cef3cb02e52450c7ca7e66cd66d05e8108066f5117d5a0d
+  sha256: b358903a10288531fd409f078c4a761e925ebff01a9d4463871ef2c40552dae4
   size: 42661
   description: L0_smoke seed fixture for task L0_102.
   visibility: public
 - id: L0_smoke_L0_103
   kind: repo
   path: fixtures/repos/L0_smoke/L0_103/
-  sha256: 5dafbb00605799bb0000c5455b6ec67443020c4ed417cd4521dee3adacaac470
+  sha256: a868a275eac6db318788b8c9648985f1dfa27b8a10a465ed0e794b8912a2aa3d
   size: 42694
   description: L0_smoke seed fixture for task L0_103.
+  visibility: public
+- id: L0_smoke_L0_104
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_104/
+  sha256: 0c9bb0eeb258807ac9fd96c5482bf47be93a00d8196dd513d66eccefb836971b
+  size: 42459
+  description: L0_smoke seed fixture for task L0_104.
+  visibility: public
+- id: L0_smoke_L0_105
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_105/
+  sha256: 57abf6e338be26002cced4f3ca7cc37e76cd8546f52f16116dfc9be264709851
+  size: 42525
+  description: L0_smoke seed fixture for task L0_105.
+  visibility: public
+- id: L0_smoke_L0_106
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_106/
+  sha256: ee3d157f3adf9645c9660237cbbe3b87433f3710833aea70fea68022c10da978
+  size: 42588
+  description: L0_smoke seed fixture for task L0_106.
+  visibility: public
+- id: L0_smoke_L0_107
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_107/
+  sha256: 0429ec0ba3b074ddbc5e79e44117c1cc105c4f1551d449cd1d1665ed87bf4aa0
+  size: 63930
+  description: L0_smoke seed fixture for task L0_107.
+  visibility: public
+- id: L0_smoke_L0_108
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_108/
+  sha256: 1fa2c921fc779cbedf0c167b232ee3bc4ecd6209bfceb295ca9358db1f96f7d2
+  size: 51250
+  description: L0_smoke seed fixture for task L0_108.
+  visibility: public
+- id: L0_smoke_L0_109
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_109/
+  sha256: 6d953a92a0d8db3effcef2aa73b7b885211eba6e03de53883051206ea3a63ff1
+  size: 34308
+  description: L0_smoke seed fixture for task L0_109.
+  visibility: public
+- id: L0_smoke_L0_110
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_110/
+  sha256: d0180fef877b38a34e58b41c42240fa2496cde79d87e770a6de32b5ba52d149c
+  size: 29987
+  description: L0_smoke seed fixture for task L0_110.
   visibility: public
 - id: L0_smoke_L0_201
   kind: repo
   path: fixtures/repos/L0_smoke/L0_201/
-  sha256: 87b4fd25da86d1aac1b4a4c61600d0beb5248958382fcc39707062e8cb0a07fd
+  sha256: e6a16975a745ff9be8cf290964c6522895a24c517fe33a35071e2e41ed355013
   size: 11944
   description: L0_smoke seed fixture for task L0_201.
   visibility: public
 - id: L0_smoke_L0_202
   kind: repo
   path: fixtures/repos/L0_smoke/L0_202/
-  sha256: c211a86c4edf96e2b8bd908feb0446bf0a56a30f4050e4891c39be48dc20b111
+  sha256: 165435917f865cb4b2a534a673e281747a6365a5a9c4fe0397682534fc921c75
   size: 26212
   description: L0_smoke seed fixture for task L0_202.
   visibility: public
 - id: L0_smoke_L0_301
   kind: repo
   path: fixtures/repos/L0_smoke/L0_301/
-  sha256: 9875045cac322a096f94cd18d241b27f0973681d7384ea5beb1f0744c7929c20
+  sha256: 3094a0c56e57179c271f943fb3e18e290995dc740e7c5a1cd3bf1c7a7863d002
   size: 472
   description: L0_smoke seed fixture for task L0_301.
   visibility: public
 - id: L0_smoke_L0_302
   kind: repo
   path: fixtures/repos/L0_smoke/L0_302/
-  sha256: 6d2bc86324583c603d2295864239cf3b165e44565f5edd9cf2e98c318abd245a
+  sha256: ebb547b4378562b4bb6962a74fecabb64c02d82c79b656eade60ea9054db37e7
   size: 464
   description: L0_smoke seed fixture for task L0_302.
   visibility: public
 - id: L0_smoke_L0_303
   kind: repo
   path: fixtures/repos/L0_smoke/L0_303/
-  sha256: ba37ad5678a742659f4486ff220915d8303e43bbbffd0374af37c215f6806b9e
+  sha256: ef9e834bfe8f7c1df872d22302e6c6dc5526a309af277316e335eec3fc4df249
   size: 803
   description: L0_smoke seed fixture for task L0_303.
   visibility: public
 - id: L0_smoke_L0_304
   kind: repo
   path: fixtures/repos/L0_smoke/L0_304/
-  sha256: 75f57c27252c11cc91c02b7f5e41b9c9764913275532ddb7cfc7ad95e8330cda
+  sha256: 5f8538dd27e06dbe9b87b6965c96463a01a157d8a249b1f36612bb8f5f54439d
   size: 461
   description: L0_smoke seed fixture for task L0_304.
   visibility: public
 - id: L0_smoke_L0_305
   kind: repo
   path: fixtures/repos/L0_smoke/L0_305/
-  sha256: c883b08584a35139c97683a56400d294dd119b86fc581de417d3b67b326c74e5
+  sha256: a6befd82ab0886ea922ba206aad5c38ec19c41c32477d5236a80b26e17201239
   size: 409
   description: L0_smoke seed fixture for task L0_305.
   visibility: public
 - id: L0_smoke_L0_306
   kind: repo
   path: fixtures/repos/L0_smoke/L0_306/
-  sha256: adb7b95484416eab3768a46dfe2b6b034ec888f75630128471a76a7d4cd0b22e
+  sha256: 9944f36d36acb9065cdd26fdd13f3a2285c9e9ed3d396b7a4735bf47ac80aadb
   size: 448
   description: L0_smoke seed fixture for task L0_306.
   visibility: public
 - id: L0_smoke_L0_307
   kind: repo
   path: fixtures/repos/L0_smoke/L0_307/
-  sha256: 8ceac30cc3ea7f9d7219c34d80b9e09aa0ba02131b344ec2f9a60ee5a0082902
+  sha256: 317ea3456f3feaffc8a7b6db5cce87c6535c6b87a906ce928c165d91188c29cc
   size: 772
   description: L0_smoke seed fixture for task L0_307.
   visibility: public
 - id: L0_smoke_L0_308
   kind: repo
   path: fixtures/repos/L0_smoke/L0_308/
-  sha256: b965a0cc9ec60d317a8ae83dee7f7d59d27ff606c00c6dd232c221172c58d39d
+  sha256: a14e7be3f014db063b1b3103e2ba96f35e744d001754151c19e0c9d6885ce47c
   size: 480
   description: L0_smoke seed fixture for task L0_308.
+  visibility: public
+- id: L0_smoke_L0_309
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_309/
+  sha256: 860105e879baa221d2da1df475178f2aba1b74af21bc48969a9ac12681e2754a
+  size: 1333
+  description: L0_smoke seed fixture for task L0_309.
+  visibility: public
+- id: L0_smoke_L0_310
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_310/
+  sha256: eb4369da96a1b372d3ac6f577458b9f2d74822e3881b59a7a1577237f14987ff
+  size: 1053
+  description: L0_smoke seed fixture for task L0_310.
+  visibility: public
+- id: L0_smoke_L0_311
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_311/
+  sha256: 757e6dd188bcd8b7033d9a4391caeb8ff426c1df5ee3e0462576297288ac33bd
+  size: 314
+  description: L0_smoke seed fixture for task L0_311.
+  visibility: public
+- id: L0_smoke_L0_312
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_312/
+  sha256: c3c51157a7854832a9b8b977a2575acf509679c79083e94021c7d8d6b0bbfe95
+  size: 595
+  description: L0_smoke seed fixture for task L0_312.
+  visibility: public
+- id: L0_smoke_L0_313
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_313/
+  sha256: 071837fed7045bef0cf86989c7426daa36b3be4512555548332dfce71821257e
+  size: 2366
+  description: L0_smoke seed fixture for task L0_313.
+  visibility: public
+- id: L0_smoke_L0_314
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_314/
+  sha256: adb747e9a6b47356ce1c30c40edb6b6e22b9dc2f66934fe39c31afd10f1ff806
+  size: 613
+  description: L0_smoke seed fixture for task L0_314.
+  visibility: public
+- id: L0_smoke_L0_315
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_315/
+  sha256: c7a67f74d28df18b474e24bad63273bab4efba1adc9cd776c56e982f327883a4
+  size: 584
+  description: L0_smoke seed fixture for task L0_315.
   visibility: public
 - id: L0_smoke_L0_501
   kind: repo
   path: fixtures/repos/L0_smoke/L0_501/
-  sha256: 4da9be70d24b92346ee87ca8f42a3b1156bbfd95c9bbf68bc00924c48864a2b6
+  sha256: 17e12450ee62824aeb8dc382f1b58b94e47d3eabb6effd98715c67498aec7b0e
   size: 428
   description: L0_smoke seed fixture for task L0_501.
   visibility: public
 - id: L0_smoke_L0_502
   kind: repo
   path: fixtures/repos/L0_smoke/L0_502/
-  sha256: cab1f7ad30637a7a2e2d442dd4b527be83b1b0517ecdb40574a45bfb58e0a97a
-  size: 537
+  sha256: 33c6d93b8ef80a89fc6af5f4d30d014c35d5d4722de5a99ece5bf5675d138e43
+  size: 691
   description: L0_smoke seed fixture for task L0_502.
   visibility: public
 - id: L0_smoke_L0_503
   kind: repo
   path: fixtures/repos/L0_smoke/L0_503/
-  sha256: 382a0102503738f9271e3fb18c06ee6b671f44b8a13624d9371dc22325c3851c
+  sha256: 3234a3081b17f7ae4d20bb98db7c4e947592262be9243ee6004b268d59c3ba73
   size: 486
   description: L0_smoke seed fixture for task L0_503.
   visibility: public
 - id: L0_smoke_L0_504
   kind: repo
   path: fixtures/repos/L0_smoke/L0_504/
-  sha256: 1ae6c7469e2af5d068f782c950f16684314aa56b5e283ebf85c5b637894e9f4b
+  sha256: 4f20b51fc02ff8111114ffb2c8b5dd90bc3f716e20eb7241aa9d20fe7906bb2d
   size: 579
   description: L0_smoke seed fixture for task L0_504.
   visibility: public
 - id: L0_smoke_L0_505
   kind: repo
   path: fixtures/repos/L0_smoke/L0_505/
-  sha256: 57c665d7333c6f50ea386022790c74a93b244a9441f254d0e1ac50c4b2dec95d
+  sha256: 1401a6ed36e368533cd189a68751f4fdd4dc57c6500f2306a396a0bc33533d13
   size: 440
   description: L0_smoke seed fixture for task L0_505.
   visibility: public
-- id: tier_T0_vanilla
-  kind: tier_manifest
-  path: fixtures/config_tiers/T0_vanilla/manifest.yaml
-  sha256: e7a84102999f732690116ed9f9e9909bb1288eae5d9177b6ca7c308e0943bed5
-  size: 160
-  description: Tier manifest for T0_vanilla.
+- id: L0_smoke_L0_506
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_506/
+  sha256: 75e168ff12873812319f9045acc1d4d0818e2d9a464b369e319d16f3b849ae84
+  size: 889
+  description: L0_smoke seed fixture for task L0_506.
   visibility: public
-- id: tier_T1_minimal
-  kind: tier_manifest
-  path: fixtures/config_tiers/T1_minimal/manifest.yaml
-  sha256: 880a3cf61c39c1b8096330baa17cc7459b5c62ba84e0f18734fe0d5e3a2ec4e5
-  size: 253
-  description: Tier manifest for T1_minimal.
+- id: L0_smoke_L0_507
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_507/
+  sha256: a33124f36f752b649a39835398350eb4deb6ee6d701f7a40577eab9b9959da8e
+  size: 798
+  description: L0_smoke seed fixture for task L0_507.
   visibility: public
-- id: tier_T2_personal
-  kind: tier_manifest
-  path: fixtures/config_tiers/T2_personal/manifest.yaml
-  sha256: ddf613d6ab70462833c069eb17cb134cf2fb3c3a2469d5fc8f52cdc2dc3a3ebb
-  size: 482
-  description: Tier manifest for T2_personal.
+- id: L0_smoke_L0_508
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_508/
+  sha256: 89d878f868f27717b894d4c974c041a936cbdd81847ccf7dbb2132459e804c3d
+  size: 549
+  description: L0_smoke seed fixture for task L0_508.
   visibility: public
-- id: tier_T3_full
-  kind: tier_manifest
-  path: fixtures/config_tiers/T3_full/manifest.yaml
-  sha256: a0c11f37e5ba79fc66dcdbae1d2ba43c3092a8e9d562a4ede3686db3ce61a817
-  size: 865
-  description: Tier manifest for T3_full.
+- id: L0_smoke_L0_509
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_509/
+  sha256: 0a83db1620a7f3fc2e0bc252a87d07375ddc5e72bc662c037abb78dc80460098
+  size: 251
+  description: L0_smoke seed fixture for task L0_509.
+  visibility: public
+- id: L0_smoke_L0_510
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_510/
+  sha256: 1a0980295cb8cefbb9f232f227a5a53b52aacd5d49ce41a12a9f028f0d3a7725
+  size: 271
+  description: L0_smoke seed fixture for task L0_510.
+  visibility: public
+- id: L0_smoke_L0_606
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_606/
+  sha256: bf6ffd05dabfa04f49c54f52e97fa92ac1a5910a23bc3a4784f45de094fef438
+  size: 372
+  description: L0_smoke seed fixture for task L0_606.
+  visibility: public
+- id: L0_smoke_L0_613
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_613/
+  sha256: bf6ffd05dabfa04f49c54f52e97fa92ac1a5910a23bc3a4784f45de094fef438
+  size: 372
+  description: L0_smoke seed fixture for task L0_613.
+  visibility: public
+- id: L0_smoke_L0_614
+  kind: repo
+  path: fixtures/repos/L0_smoke/L0_614/
+  sha256: c331d915d4e0d956380b0c1020fa0f34b9ab8291f4485d994bc19f38e7039b2f
+  size: 57
+  description: L0_smoke seed fixture for task L0_614.
   visibility: public
 - id: vault_T2_seed_small
   kind: vault_snapshot
   path: fixtures/vault_snapshots/T2_seed_small.tar.gz
   sha256: d6adc32a4e29826b24fb82482c4e885e7cefcac6ed7d592d834d370becd22f8e
   size: 340
-  description: Anonymized vault snapshot T2_seed_small.tar.gz.
+  description: Anonymized vault snapshot bundle.
   visibility: public
 - id: vault_T3_seed_full
   kind: vault_snapshot
   path: fixtures/vault_snapshots/T3_seed_full.tar.gz
   sha256: f0166bed5cb83e5993430b4c89288301044d49d62e6a131673d8482c7bfd1759
   size: 2421
-  description: Anonymized vault snapshot T3_seed_full.tar.gz.
+  description: Anonymized vault snapshot bundle.
+  visibility: public
+- id: tier_T0_vanilla
+  kind: config_tier
+  path: fixtures/config_tiers/T0_vanilla/manifest.yaml
+  sha256: e7a84102999f732690116ed9f9e9909bb1288eae5d9177b6ca7c308e0943bed5
+  size: 160
+  description: Config tier manifest for T0_vanilla.
+  visibility: public
+- id: tier_T1_minimal
+  kind: config_tier
+  path: fixtures/config_tiers/T1_minimal/manifest.yaml
+  sha256: 880a3cf61c39c1b8096330baa17cc7459b5c62ba84e0f18734fe0d5e3a2ec4e5
+  size: 253
+  description: Config tier manifest for T1_minimal.
+  visibility: public
+- id: tier_T2_personal
+  kind: config_tier
+  path: fixtures/config_tiers/T2_personal/manifest.yaml
+  sha256: ddf613d6ab70462833c069eb17cb134cf2fb3c3a2469d5fc8f52cdc2dc3a3ebb
+  size: 482
+  description: Config tier manifest for T2_personal.
+  visibility: public
+- id: tier_T3_full
+  kind: config_tier
+  path: fixtures/config_tiers/T3_full/manifest.yaml
+  sha256: a0c11f37e5ba79fc66dcdbae1d2ba43c3092a8e9d562a4ede3686db3ce61a817
+  size: 865
+  description: Config tier manifest for T3_full.
   visibility: public

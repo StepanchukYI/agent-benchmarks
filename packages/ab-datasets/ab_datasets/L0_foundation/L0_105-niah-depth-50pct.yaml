@@ -1,0 +1,90 @@
+id: L0_105
+layer: L0
+suite: long-context-niah
+title: "Needle at ~50% depth (middle of haystack) — RULER-style"
+description: |
+  The fixture contains one planted fact near the MIDDLE of the
+  document (~50% depth):
+
+      "The original Saltmoor lantern was forged from copper
+       salvaged from the wreck of the Cinder Belle in 1741."
+
+  The user asks:
+
+    "From the haystack: what was the original Saltmoor lantern
+     forged from, and from what wreck did the material come?
+     Output exactly two tokens joined by a slash:
+     `<material>/<wreck>`. Material lowercase, wreck name proper
+     case with spaces replaced by underscores."
+
+  The agent's final message MUST equal `copper/Cinder_Belle`
+  exactly.
+
+  Mid-depth probes often expose models with U-shaped attention
+  (good at start and end, weak in middle).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_105/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_pair_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "copper/Cinder_Belle"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 1, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 12000, max_tokens: 40000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 30000, max_ms: 180000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message equals `copper/Cinder_Belle` exactly."
+  - "No format drift (wrong case, space, missing underscore)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - ruler
+  - depth-curve
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

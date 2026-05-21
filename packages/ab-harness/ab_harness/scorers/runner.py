@@ -48,6 +48,7 @@ def run_scorer_chain(
             continue
 
         kwargs: dict[str, Any] = dict(spec.config or {})
+        kwargs.setdefault("scorer_name", spec.name)
         # ``mode`` may already carry a scorer-specific comparison hint (e.g.
         # schema_scorer's ``mode: json_value_equals``). Use setdefault so we
         # don't clobber the YAML value. Scorers that distinguish run/replay

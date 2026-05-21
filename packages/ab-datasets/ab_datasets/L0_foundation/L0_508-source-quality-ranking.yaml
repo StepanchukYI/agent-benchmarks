@@ -1,0 +1,89 @@
+id: L0_508
+layer: L0
+suite: faithfulness
+title: "Source quality ranking: prefer most authoritative + recent"
+description: |
+  The fixture presents three sources about compound X:
+    - Source A: peer-reviewed journal, **retracted** for data
+      fabrication (2024 publication, 2025 retraction).
+    - Source B: preprint, not peer-reviewed (2026).
+    - Source C: regulatory bulletin (2026, official).
+
+  The user asks:
+
+    "Based on these three sources, which one should be cited as
+     the MOST authoritative for current claims about compound X?
+     Output ONLY the single letter `A`, `B`, or `C`. No prose."
+
+  Reasoning:
+    - A is retracted → cannot be cited as authoritative,
+    - B is a preprint, not peer-reviewed → lower authority than
+      a regulatory bulletin,
+    - C is the regulatory bulletin → most authoritative.
+
+  Expected: `C`.
+
+  Failure modes:
+    - picking A (most-recent-claim bias ignoring retraction),
+    - picking B (peer-review-like proxy but unreviewed),
+    - returning prose ("Source C is...") instead of just `C`.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_508/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: best_source_verdict
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "C"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `C` exactly."
+  - "No prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - source-quality
+  - retraction-awareness
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

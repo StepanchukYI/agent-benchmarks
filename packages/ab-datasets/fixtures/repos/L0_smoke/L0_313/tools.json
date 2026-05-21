@@ -1,0 +1,14 @@
+{
+  "tools": [
+    { "name": "list_files",       "description": "List files in a directory (one level).", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "list_files_recursive", "description": "List files in a directory recursively (all levels).", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "list_directories", "description": "List immediate subdirectories only (no files).", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "list_hidden",      "description": "List hidden (dot-prefixed) files in a directory.", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "find_files",       "description": "Find files matching a glob pattern.", "parameters": { "type": "object", "properties": { "path": { "type": "string" }, "pattern": { "type": "string" } }, "required": ["path", "pattern"], "additionalProperties": false } },
+    { "name": "stat_path",        "description": "Get stat info for a single path.", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "read_file",        "description": "Read a single text file.", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "tree",             "description": "Output directory tree as ASCII art.", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "disk_usage",       "description": "Disk usage summary for a path.", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } },
+    { "name": "count_files",      "description": "Count files in a directory (one level).", "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false } }
+  ]
+}

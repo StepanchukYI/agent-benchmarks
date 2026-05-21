@@ -34,28 +34,50 @@ def l0_by_id() -> dict[str, Task]:
 # Task ids that MUST carry each sensitivity tag (additions allowed,
 # removals require updating both this list and the axes doc).
 EXPECT_REASONING_SENSITIVE: frozenset[str] = frozenset({
-    "L0_101", "L0_102", "L0_103",        # NIAH (esp. adversarial)
-    "L0_201", "L0_202",                  # multi-hop, aggregation
-    "L0_303", "L0_304", "L0_305",
-    "L0_306", "L0_307", "L0_308",        # tool-use judgement / mapping
-    "L0_401", "L0_402",                  # nested IF, exact count
-    "L0_501", "L0_503",                  # abstain, contradiction
-    "L0_602", "L0_604", "L0_605",
-    "L0_607",                            # rule application
+    # NIAH (esp. adversarial + depth curve + multi-key/value)
+    "L0_101", "L0_102", "L0_103",
+    "L0_104", "L0_105", "L0_106", "L0_107", "L0_108",
+    # multi-hop, aggregation
+    "L0_109", "L0_110", "L0_201", "L0_202",
+    # tool-use judgement / mapping / multi-turn / retry / disambiguation
+    "L0_303", "L0_304", "L0_305", "L0_306", "L0_307", "L0_308",
+    "L0_309", "L0_310", "L0_311", "L0_312", "L0_313", "L0_314", "L0_315",
+    # instruction following: nested IF, exact count, multi-constraint
+    "L0_401", "L0_402", "L0_404", "L0_405", "L0_406", "L0_407",
+    # extract & file-ops with reasoning
+    "L0_005", "L0_011", "L0_012", "L0_013", "L0_014", "L0_015",
+    # faithfulness: abstain, contradictions, attribution, draft-audit
+    "L0_501", "L0_502", "L0_503", "L0_506", "L0_507", "L0_508", "L0_509", "L0_510",
+    # environment-probe rule application
+    "L0_602", "L0_604", "L0_605", "L0_607",
+    "L0_609", "L0_610", "L0_611", "L0_612", "L0_613", "L0_614", "L0_615",
+    # reasoning-trap suite (all are reasoning-sensitive by construction)
+    "L0_701", "L0_702", "L0_703", "L0_704", "L0_705",
+    "L0_706", "L0_707", "L0_708", "L0_709", "L0_710",
 })
 
 EXPECT_BYTE_EXACT: frozenset[str] = frozenset({
-    "L0_001", "L0_002", "L0_006", "L0_007", "L0_010",
-    "L0_101", "L0_102", "L0_103", "L0_201", "L0_202",
-    "L0_401", "L0_402", "L0_403",
+    "L0_001", "L0_002", "L0_005",
+    "L0_006", "L0_007", "L0_010",
+    "L0_011", "L0_012", "L0_013", "L0_014", "L0_015",
+    "L0_101", "L0_102", "L0_103",
+    "L0_104", "L0_105", "L0_106", "L0_107", "L0_108", "L0_109", "L0_110",
+    "L0_201", "L0_202",
+    "L0_314",
+    "L0_401", "L0_402", "L0_403", "L0_404", "L0_405", "L0_406",
     "L0_502", "L0_505",
+    "L0_506", "L0_507", "L0_508", "L0_509", "L0_510",
     "L0_608",
+    "L0_609", "L0_615",
+    "L0_701", "L0_702", "L0_703", "L0_704", "L0_705",
+    "L0_706", "L0_707", "L0_708", "L0_709", "L0_710",
 })
 
 EXPECT_OUTPUT_NORM: frozenset[str] = EXPECT_BYTE_EXACT  # always co-occur
 
 EXPECT_CONTEXT_WINDOW_SENSITIVE: frozenset[str] = frozenset({
     "L0_101", "L0_102", "L0_103",
+    "L0_104", "L0_105", "L0_106", "L0_107", "L0_108", "L0_109", "L0_110",
     "L0_201", "L0_202",
 })
 
@@ -64,16 +86,20 @@ EXPECT_FACTUAL_RECALL: frozenset[str] = frozenset({
     "L0_608",  # gold = Au
 })
 
-EXPECT_RUNNER_SKILL_DISPATCH: frozenset[str] = frozenset({
-    "L0_605", "L0_606",
-})
+# L0 hard refactor: skill-dispatch primitive is NOT part of L0 foundation.
+# L0_605/606/613 were originally tagged but were rewritten to a generic
+# `note_write` TOOL (not a personal-environment skill). The
+# `runner-skill-dispatch` axis lives in L2+ where skill primitives are
+# the explicit subject — L0 keeps zero entries to avoid leaking
+# environment-specific assumptions.
+EXPECT_RUNNER_SKILL_DISPATCH: frozenset[str] = frozenset()
 
-EXPECT_LANGUAGE_RUSSIAN: frozenset[str] = frozenset({
-    "L0_605", "L0_606",
-})
+# Same rationale: L0 stays language-neutral. Russian-prompt probes
+# belong in L1+ where multilingual capability is in scope.
+EXPECT_LANGUAGE_RUSSIAN: frozenset[str] = frozenset()
 
 EXPECT_TOKENIZER_SENSITIVE: frozenset[str] = frozenset({
-    "L0_402",
+    "L0_402", "L0_404", "L0_406",
 })
 
 
@@ -139,8 +165,8 @@ def test_every_l0_task_has_at_least_one_sensitivity_tag_or_is_simple(
         "factual-recall", "runner-skill-dispatch", "language-russian",
         "tokenizer-sensitive",
     }
-    SIMPLE_ALLOW = {"L0_003", "L0_004", "L0_005", "L0_008", "L0_009",
-                    "L0_301", "L0_302", "L0_504", "L0_601"}
+    SIMPLE_ALLOW = {"L0_003", "L0_004", "L0_008", "L0_009",
+                    "L0_301", "L0_302", "L0_504", "L0_601", "L0_606"}
     for tid, task in l0_by_id.items():
         has_any = bool(set(task.tags) & SENSITIVITY_TAGS)
         if not has_any:

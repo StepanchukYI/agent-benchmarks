@@ -1,0 +1,94 @@
+id: L0_506
+layer: L0
+suite: faithfulness
+title: "Detect subtle hallucination in a 90%-true draft summary"
+description: |
+  The fixture `source.txt` contains a verbatim quote from the 2024
+  Marsh Reserve annual report (the SOURCE) followed by a DRAFT
+  summary that is 90 % faithful but contains ONE fabricated detail
+  not present in the source.
+
+  Specifically the draft inserts the claim:
+
+      "...who has chaired the reserve trust since 2009."
+
+  The source does NOT state when Dr. Anaya Holm became chair —
+  only that she is the honorary chair. The `2009` claim is the
+  fabrication.
+
+  The user asks:
+
+    "Compare the draft summary to the source quote. Identify the
+     single fabricated detail (a claim that the source does not
+     support). Output ONLY the verbatim substring from the draft
+     that is fabricated — no prose, no surrounding quotes, just
+     the substring."
+
+  Expected exact: `who has chaired the reserve trust since 2009`.
+
+  Failure modes:
+    - returning the entire trailing clause with the comma,
+    - quoting an UNFABRICATED part,
+    - paraphrasing instead of returning verbatim substring,
+    - claiming there is no fabrication.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_506/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: hallucination_identified
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "who has chaired the reserve trust since 2009"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals the exact fabricated substring."
+  - "No prose, no surrounding quotes."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - hallucination-detection
+  - truthfulqa
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

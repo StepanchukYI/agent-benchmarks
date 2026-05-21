@@ -1,9 +1,16 @@
-In a 2024 study of municipal recycling programs, Dr. Lin and colleagues
-observed that participation rates rose by 27% in cities that adopted
-single-stream collection, compared with a 4% rise in cities that retained
-sortable bins. The authors attribute most of the gap to "the reduction
-in household-level sorting friction."
+The following three quotes appear in the same archive volume,
+labelled by their respective speakers. Note that the quotes are
+intentionally similar but NOT identical.
 
-The study covered 41 cities across four U.S. regions over an 18-month
-window. It did not measure contamination rates in the recovered stream,
-nor the downstream cost-per-ton at the materials recovery facilities.
+Speaker A, the cartographer Adis: "The road north of Eldermere
+turns west at the cairn marked by three stacked stones."
+
+Speaker B, the surveyor Roen: "The road north of Eldermere turns
+west at the cairn marked with three stacked stones."
+
+Speaker C, the historian Lyra: "The road north of Eldermere bends
+west at the cairn marked by three stacked stones."
+
+(Note for the reader: the prepositions and verbs differ — `marked
+by`, `marked with`, `marked by`; `turns`, `turns`, `bends`. The
+attribution distinguishes them.)

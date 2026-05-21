@@ -1,0 +1,16 @@
+{
+  "tools": [
+    {
+      "name": "note_write",
+      "description": "Append a free-form note to the shared notebook. Returns the new note_id.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "body": { "type": "string", "minLength": 1 }
+        },
+        "required": ["body"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

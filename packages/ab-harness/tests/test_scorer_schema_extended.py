@@ -186,6 +186,63 @@ def test_final_assistant_message_fails_on_extra_key(tmp_path: Path) -> None:
     assert v.detail["total_errors"] >= 1
 
 
+def test_final_assistant_message_schema_runs_extra_assertions(tmp_path: Path) -> None:
+    traj = tmp_path / "trajectory.jsonl"
+    _write_trajectory(
+        traj,
+        final_assistant=json.dumps(
+            {
+                "summary": "water has two hydrogen atoms and one oxygen atom in each molecule",
+                "keywords": ["water", "hydrogen", "oxygen"],
+            }
+        ),
+    )
+    v = schema_scorer(
+        trajectory_path=traj,
+        mode="exact_json",
+        input="final_assistant_message",
+        schema={
+            "type": "object",
+            "required": ["summary", "keywords"],
+            "additionalProperties": False,
+            "properties": {
+                "summary": {"type": "string"},
+                "keywords": {"type": "array", "minItems": 3, "maxItems": 3},
+            },
+        },
+        assertions=[
+            {"kind": "top_level_key_order", "expected": ["summary", "keywords"]},
+            {"kind": "field_word_count", "field": "summary", "expected": 12, "tokenizer": "whitespace"},
+        ],
+    )
+    assert v.pass_ is True, v.detail
+    assert v.detail["assertions"]["passed"] == 2
+
+
+def test_final_assistant_message_schema_assertions_can_fail(tmp_path: Path) -> None:
+    traj = tmp_path / "trajectory.jsonl"
+    _write_trajectory(
+        traj,
+        final_assistant=json.dumps({"keywords": ["water"], "summary": "too short"}),
+    )
+    v = schema_scorer(
+        trajectory_path=traj,
+        mode="exact_json",
+        input="final_assistant_message",
+        schema={
+            "type": "object",
+            "required": ["summary", "keywords"],
+            "properties": {"summary": {"type": "string"}, "keywords": {"type": "array"}},
+        },
+        assertions=[
+            {"kind": "top_level_key_order", "expected": ["summary", "keywords"]},
+            {"kind": "field_word_count", "field": "summary", "expected": 12, "tokenizer": "whitespace"},
+        ],
+    )
+    assert v.pass_ is False
+    assert v.detail["assertions"]["passed"] == 0
+
+
 def test_final_assistant_message_no_messages(tmp_path: Path) -> None:
     traj = tmp_path / "trajectory.jsonl"
     _write_trajectory(traj, final_assistant=None)

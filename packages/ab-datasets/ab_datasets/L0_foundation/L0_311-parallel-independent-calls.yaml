@@ -1,0 +1,88 @@
+id: L0_311
+layer: L0
+suite: tool-use
+title: "Parallel independent tool calls (3 cities) — no serial dependency"
+description: |
+  The fixture exposes `get_weather(city)`. The user asks:
+
+    "Tell me the current weather in three cities at once: Berlin,
+     Tokyo, and Buenos Aires. Issue all three lookups in a single
+     turn — they are independent."
+
+  The agent MUST issue exactly three `get_weather` tool calls,
+  each with a distinct city ({Berlin, Tokyo, Buenos Aires}), and
+  SHOULD emit them in the same model turn (parallel execution).
+  Runners that don't support parallel calls in a turn may emit
+  them serially — that's permitted, but exactly three calls must
+  exist with no extras.
+
+  Failure modes:
+    - missing any city,
+    - duplicate calls for the same city,
+    - extra calls (e.g. asking the user for more cities first),
+    - waiting on first call result before issuing others (still
+      OK if the runner doesn't support parallel — checked as
+      counts not as ordering).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_311/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: parallel_calls_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "get_weather"
+          expected: 3
+        - kind: tool_arg_distinct_set
+          tool: "get_weather"
+          arg: "city"
+          expected_set: ["Berlin", "Tokyo", "Buenos Aires"]
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Exactly three `get_weather` calls."
+  - "Cities are {Berlin, Tokyo, Buenos Aires} as a set (any order)."
+  - "No extra tool calls."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - parallel
+  - deterministic
+  - reasoning-sensitive

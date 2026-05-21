@@ -1,0 +1,98 @@
+id: L0_312
+layer: L0
+suite: tool-use
+title: "Retry on transient error (one retry succeeds)"
+description: |
+  The fixture's `publish_message(channel, body)` tool is configured
+  to return a transient error `RETRYABLE_503` on the FIRST call
+  and succeed on the SECOND call with identical arguments.
+
+  The user asks:
+
+    "Publish to channel `#deploys` the message `release v3.2.1
+     completed`. If a transient error happens, retry once with the
+     same arguments. After two attempts max, report the final
+     status to me."
+
+  The agent MUST:
+    1. attempt `publish_message(channel="#deploys", body="release
+       v3.2.1 completed")` — gets RETRYABLE_503,
+    2. retry the EXACT same call (same channel, same body) —
+       succeeds,
+    3. final assistant message reports success.
+
+  Failure modes:
+    - giving up after the first error,
+    - retrying with different args (e.g. mutating the body),
+    - more than 2 attempts (no exponential infinite retry),
+    - fabricating a successful response without the retry call
+      existing.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_312/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: retry_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "publish_message"
+          expected: 2
+        - kind: tool_args_equal_across_all_calls
+          tool: "publish_message"
+          expected:
+            channel: "#deploys"
+            body: "release v3.2.1 completed"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "(?i)published"
+            - "(?i)success"
+            - "(?i)delivered"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Exactly two calls to publish_message, both with identical args."
+  - "Final assistant message confirms success."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - retry
+  - error-recovery
+  - deterministic
+  - reasoning-sensitive

@@ -1,0 +1,100 @@
+id: L0_108
+layer: L0
+suite: long-context-niah
+title: "Multi-value NIAH (one key, four values, must return ALL) — RULER-style"
+description: |
+  The fixture (~51 KB) contains four scattered facts that all share
+  the SAME key ("founder of Anvilford"):
+
+      "Among the founders of Anvilford was Astrid of the Eastreach."
+      "Another founder of Anvilford was Berek the Younger."
+      "Cira of the Stonebridge family is also recorded as a
+       founder of Anvilford."
+      "The fourth founder of Anvilford was Donal Greycoat."
+
+  The user asks:
+
+    "From the haystack: list every recorded founder of Anvilford,
+     by FIRST NAME only, alphabetically. One name per line. Output
+     ONLY the names — no titles, no surnames, no prose."
+
+  Expected final message (4 lines, exact):
+
+      Astrid
+      Berek
+      Cira
+      Donal
+
+  Failure modes:
+    - returning fewer than 4 (missed scattered match),
+    - returning 5+ (added a non-founder),
+    - including surnames / titles,
+    - wrong order.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_108/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_founders_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Astrid\nBerek\nCira\nDonal"
+          trim_trailing_newline: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 1, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 14000, max_tokens: 44000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 40000, max_ms: 200000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message lists exactly four names, one per line."
+  - "Order is alphabetical."
+  - "No surnames, no titles, no prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - multi-value
+  - ruler
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

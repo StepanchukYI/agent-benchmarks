@@ -1,0 +1,107 @@
+id: L0_310
+layer: L0
+suite: tool-use
+title: "Multi-turn ticket state tracking: open, comment, close"
+description: |
+  The fixture exposes three tools: `open_ticket(subject)` returning
+  `ticket_id`, `add_comment(ticket_id, body)`, `close_ticket(
+  ticket_id)`. The user prompt is a single message:
+
+    "Open a support ticket with subject `cannot login`, then add
+     a comment with body `tried in incognito too`, then close the
+     same ticket."
+
+  The agent MUST issue exactly three tool calls in this order:
+    1. `open_ticket(subject="cannot login")` → returns a ticket_id
+    2. `add_comment(ticket_id=<id from step 1>, body="tried in
+       incognito too")`
+    3. `close_ticket(ticket_id=<same id>)`
+
+  The `ticket_id` in steps 2 and 3 MUST be the value RETURNED by
+  step 1 — not fabricated, not omitted.
+
+  Failure modes:
+    - skipping the open call,
+    - fabricating a ticket_id,
+    - using different ticket_ids in steps 2 and 3,
+    - wrong call order.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_310/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: state_tracking_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "open_ticket"
+          expected: 1
+        - kind: tool_call_count
+          tool: "add_comment"
+          expected: 1
+        - kind: tool_call_count
+          tool: "close_ticket"
+          expected: 1
+        - kind: tool_call_order
+          order:
+            - "open_ticket"
+            - "add_comment"
+            - "close_ticket"
+        - kind: tool_arg_from_prior_return
+          tool: "add_comment"
+          arg: "ticket_id"
+          source_tool: "open_ticket"
+          source_field: "ticket_id"
+        - kind: tool_arg_from_prior_return
+          tool: "close_ticket"
+          arg: "ticket_id"
+          source_tool: "open_ticket"
+          source_field: "ticket_id"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 6, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 12000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 25000, max_ms: 150000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Three tool calls in order: open_ticket, add_comment, close_ticket."
+  - "ticket_id in add_comment and close_ticket equals the open_ticket return value."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - multi-turn-state
+  - frontier
+  - deterministic
+  - reasoning-sensitive

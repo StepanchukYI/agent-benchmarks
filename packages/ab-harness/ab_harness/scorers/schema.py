@@ -29,6 +29,7 @@ the source of truth for run vs replay below.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -36,12 +37,14 @@ import jsonschema
 from ab_datasets.schemas import ScorerKind, ScorerVerdict, Task
 
 from ab_harness.scorers._base import replay_unsupported, score_to_verdict
+from ab_harness.scorers.assertions import load_events, run_assertion_chain
 
 _EXECUTION_MODES: frozenset[str] = frozenset({"run", "replay"})
 
 # Comparison-mode aliases. All map to the same dispatch.
 _SCHEMA_MODES: frozenset[str] = frozenset({"schema", "exact_json", "jsonschema"})
 _VALUE_EQUALS_MODES: frozenset[str] = frozenset({"json_value_equals", "value_equals", "deep_equal"})
+_MARKDOWN_APPEND_MODES: frozenset[str] = frozenset({"append_only_last_entry", "append_only_last_n_entries"})
 
 
 def _load_schema(
@@ -219,6 +222,107 @@ def _check_value_equals(
     return False, {"error": "value mismatch", "expected": expected, "got": instance}
 
 
+_ENTRY_RE = re.compile(r"(?m)^### .*(?:\n(?!### ).*)*")
+
+
+def _markdown_entries(text: str) -> list[str]:
+    return [m.group(0).rstrip() for m in _ENTRY_RE.finditer(text)]
+
+
+def _resolve_existing_path(root: Path, rel: str) -> Path | None:
+    direct = root / rel
+    if direct.exists():
+        return direct
+    basename = Path(rel).name
+    matches = sorted(root.rglob(basename))
+    return matches[0] if matches else None
+
+
+def _markdown_field(entry: str, field: str) -> str | None:
+    match = re.search(rf"(?m)^\*\*{re.escape(field)}\*\*:\s*(.*)$", entry)
+    return match.group(1).strip() if match else None
+
+
+def _captured_pytest_failure_text(trajectory_path: Path | None) -> str | None:
+    if trajectory_path is None:
+        return None
+    with trajectory_path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("event") != "turn":
+                continue
+            for ret in ev.get("tool_returns") or []:
+                if not isinstance(ret, dict):
+                    continue
+                exit_code = ret.get("exit_code")
+                if not isinstance(exit_code, int) or exit_code == 0:
+                    continue
+                text = "\n".join(
+                    str(ret.get(k) or "")
+                    for k in ("stdout", "stderr", "output", "content")
+                    if ret.get(k) is not None
+                ).strip()
+                if text:
+                    return text
+    return None
+
+
+def _check_markdown_append_schema(
+    *,
+    scorer_name: str,
+    workdir: Path | None,
+    trajectory_path: Path | None,
+    target_file: str | None,
+    mode: str,
+    n: int | None,
+    heading_pattern: str | None,
+    required_fields: list[str] | None,
+    field_patterns: dict[str, str] | None,
+    verbatim_required_in_field: dict[str, str] | None,
+) -> ScorerVerdict:
+    name = scorer_name
+    kind = ScorerKind.schema
+    if workdir is None:
+        return replay_unsupported(name, kind, "workdir required for markdown append schema checks")
+    if not target_file:
+        return score_to_verdict(name, kind, False, 0.0, {"error": "target_file is required"})
+    path = _resolve_existing_path(workdir, target_file)
+    if path is None or not path.is_file():
+        return score_to_verdict(name, kind, False, 0.0, {"error": f"target_file not found: {target_file}"})
+    entries = _markdown_entries(path.read_text(encoding="utf-8"))
+    count = int(n or 1) if mode == "append_only_last_n_entries" else 1
+    selected = entries[-count:] if count else []
+    errors: list[dict[str, Any]] = []
+    if len(selected) != count:
+        errors.append({"error": "not enough entries", "expected": count, "actual": len(selected)})
+    for idx, entry in enumerate(selected):
+        heading = entry.splitlines()[0] if entry.splitlines() else ""
+        if heading_pattern and not re.search(heading_pattern, heading):
+            errors.append({"entry": idx, "field": "<heading>", "error": "heading pattern mismatch", "heading": heading})
+        for field in required_fields or []:
+            if _markdown_field(entry, field) is None:
+                errors.append({"entry": idx, "field": field, "error": "missing required field"})
+        for field, pattern in (field_patterns or {}).items():
+            value = _markdown_field(entry, field)
+            if value is None or not re.search(pattern, value):
+                errors.append({"entry": idx, "field": field, "error": "pattern mismatch", "pattern": pattern, "value": value})
+        for field, marker in (verbatim_required_in_field or {}).items():
+            value = _markdown_field(entry, field) or ""
+            required = _captured_pytest_failure_text(trajectory_path) if marker == "captured_pytest_failure_text" else marker
+            if required and required not in value:
+                errors.append({"entry": idx, "field": field, "error": "required verbatim text missing"})
+    return score_to_verdict(
+        name,
+        kind,
+        not errors,
+        1.0 if not errors else 0.0,
+        {"checked_entries": len(selected), "errors": errors[:10], "total_errors": len(errors)},
+    )
+
+
 def schema_scorer(
     workdir: Path | None = None,
     task: Task | None = None,
@@ -226,14 +330,22 @@ def schema_scorer(
     *,
     mode: str = "run",
     target: str | None = None,
+    target_file: str | None = None,
     schema: dict[str, Any] | None = None,
     schema_path: str | Path | None = None,
     expected: Any = None,
     input: str = "file",
     additional_properties_forbidden: bool = False,
+    assertions: list[dict[str, Any]] | None = None,
+    n: int | None = None,
+    heading_pattern: str | None = None,
+    required_fields: list[str] | None = None,
+    field_patterns: dict[str, str] | None = None,
+    verbatim_required_in_field: dict[str, str] | None = None,
+    scorer_name: str | None = None,
     **_: Any,
 ) -> ScorerVerdict:
-    name = "schema"
+    name = scorer_name or "schema"
     kind = ScorerKind.schema
 
     # The runner now uses ``kwargs.setdefault("mode", ...)``, so when YAML
@@ -243,6 +355,20 @@ def schema_scorer(
 
     if is_execution_mode and workdir is None and trajectory_path is None:
         return replay_unsupported(name, kind, "trajectory_path required for replay")
+
+    if mode in _MARKDOWN_APPEND_MODES:
+        return _check_markdown_append_schema(
+            scorer_name=name,
+            workdir=workdir,
+            trajectory_path=trajectory_path,
+            target_file=target_file,
+            mode=mode,
+            n=n,
+            heading_pattern=heading_pattern,
+            required_fields=required_fields,
+            field_patterns=field_patterns,
+            verbatim_required_in_field=verbatim_required_in_field,
+        )
 
     instance, err = _resolve_input(
         input_source=input,
@@ -258,6 +384,33 @@ def schema_scorer(
     # validation — the legacy behavior shipped with M1.3.
     comparison_mode = mode if not is_execution_mode else "schema"
 
+    def _with_assertions(base: ScorerVerdict) -> ScorerVerdict:
+        if not assertions or not base.pass_:
+            return base
+        if trajectory_path is None:
+            return score_to_verdict(
+                name,
+                kind,
+                False,
+                0.0,
+                {"schema": base.detail, "assertions_error": "trajectory_path required for schema assertions"},
+            )
+        assertion_verdict = run_assertion_chain(
+            name,
+            load_events(trajectory_path),
+            workdir,
+            None,
+            assertions,
+        )
+        ok = bool(assertion_verdict.pass_)
+        return score_to_verdict(
+            name,
+            kind,
+            ok,
+            assertion_verdict.score if ok else min(base.score, assertion_verdict.score),
+            {"schema": base.detail, "assertions": assertion_verdict.detail},
+        )
+
     if comparison_mode in _SCHEMA_MODES:
         loaded = _load_schema(schema, schema_path, workdir)
         if isinstance(loaded, str):
@@ -266,7 +419,7 @@ def schema_scorer(
         validator = jsonschema.Draft202012Validator(loaded)
         errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.absolute_path))
         if not errors:
-            return score_to_verdict(name, kind, True, 1.0, {"errors": []})
+            return _with_assertions(score_to_verdict(name, kind, True, 1.0, {"errors": []}))
         detail = {
             "errors": [
                 {
@@ -294,7 +447,7 @@ def schema_scorer(
             expected,
             additional_properties_forbidden=bool(additional_properties_forbidden),
         )
-        return score_to_verdict(name, kind, ok, 1.0 if ok else 0.0, detail)
+        return _with_assertions(score_to_verdict(name, kind, ok, 1.0 if ok else 0.0, detail))
 
     return score_to_verdict(
         name,

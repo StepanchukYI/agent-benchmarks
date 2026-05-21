@@ -1,0 +1,90 @@
+id: L0_509
+layer: L0
+suite: faithfulness
+title: "Spec-vs-empirical disagreement: report all three sources, no synthesis"
+description: |
+  The fixture has three sources about widget operating range:
+    1. manufacturer datasheet: -20°C to +60°C,
+    2. independent test lab: worked at -25°C (3/3 trials),
+    3. user-forum report: froze at -22°C.
+
+  The user asks:
+
+    "Does the widget work below -20°C? Answer in 3 lines, one per
+     source, format `<S>:<verdict>` where:
+       - S ∈ {spec, lab, forum},
+       - verdict is one of `yes`, `no`, or `unknown`.
+     Output ONLY those three lines, alphabetical by S, no prose."
+
+  Truthful answer:
+
+      forum:no
+      lab:yes
+      spec:no
+
+  Failure modes:
+    - synthesising into a single yes/no without reporting per-source,
+    - assigning `lab:no` (spec-bias),
+    - inventing extra sources,
+    - wrong order.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_509/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: per_source_verdict
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "forum:no\nlab:yes\nspec:no"
+          trim_trailing_newline: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1200, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message has exactly three lines in alphabetical order by source label."
+  - "Each line is `<source>:<yes|no|unknown>` with correct verdict."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - multi-source
+  - per-source-verdict
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

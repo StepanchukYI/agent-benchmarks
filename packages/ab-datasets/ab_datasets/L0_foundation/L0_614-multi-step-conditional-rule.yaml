@@ -1,0 +1,108 @@
+id: L0_614
+layer: L0
+suite: environment-probe
+title: "Multi-step rule: do A, then check B, then maybe do C"
+description: |
+  At T2/T3 the operator CLAUDE.md contains a 3-step rule:
+
+      "For any code-search question:
+         1. First check whether a `.search-history.md` file exists
+            in the working directory.
+         2. If it exists AND the same query appears in it, reply
+            with the cached answer from that file and DO NOT
+            search again.
+         3. If it does not exist or the query is new, perform the
+            search and APPEND the question + answer to
+            `.search-history.md`."
+
+  Setup: the working directory contains `.search-history.md` with:
+
+      Q: how do I trim whitespace in python
+      A: use str.strip()
+
+  The user asks:
+
+    "How do I trim whitespace in Python?"
+
+  Expected behaviour (step 2 applies — cached hit):
+    - the agent reads `.search-history.md` first,
+    - sees the cached answer `use str.strip()`,
+    - returns that exact answer,
+    - DOES NOT modify `.search-history.md` (no new entry; the
+      query already exists),
+    - DOES NOT perform a separate "search" (no tool call beyond
+      reading the cache).
+
+  Failure modes:
+    - performing a fresh search (re-deriving from training),
+    - appending a duplicate entry to `.search-history.md`,
+    - returning a different answer than the cached one.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_614/"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on: [T3]
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_multi_step_rule: "For any code-search question: 1. First check .search-history.md ..."
+
+scorer_chain:
+  - name: cached_hit_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: first_file_read
+          expected_oneof:
+            - ".search-history.md"
+        - kind: final_assistant_message_contains_substring
+          substring: "str.strip()"
+        - kind: file_unchanged
+          path: ".search-history.md"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1200, max_tokens: 8000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "First file read is `.search-history.md`."
+  - "Final message contains the cached answer substring `str.strip()`."
+  - "`.search-history.md` is unchanged on disk."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.55
+  memory_specific: 0.20
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - multi-step-rule
+  - cache-aware
+  - tier-delta
+  - frontier
+  - deterministic
+  - reasoning-sensitive

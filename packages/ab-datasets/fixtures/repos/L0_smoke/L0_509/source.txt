@@ -1,0 +1,8 @@
+Source 1 — manufacturer datasheet:
+"The widget operates between -20°C and +60°C."
+
+Source 2 — independent test lab:
+"The widget operated normally at -25°C in three of three trials."
+
+Source 3 — user-forum thread:
+"My widget froze at -22°C."

@@ -18,6 +18,7 @@ from typing import Any
 from ab_datasets.schemas import ScorerKind, ScorerVerdict, Task
 
 from ab_harness.scorers._base import replay_unsupported, score_to_verdict
+from ab_harness.scorers.assertions import load_events, run_assertion_chain
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -234,19 +235,26 @@ def exec_scorer(
     timeout: float = 60.0,
     expected_exit: int = 0,
     env: dict[str, str] | None = None,
+    assertions: list[dict[str, Any]] | None = None,
+    scorer_name: str | None = None,
     **_: Any,
 ) -> ScorerVerdict:
-    name = "exec"
+    name = scorer_name or "exec"
     kind = ScorerKind.deterministic
+
+    if assertions:
+        if trajectory_path is None:
+            return replay_unsupported(name, kind, "trajectory_path required for exec assertions")
+        return run_assertion_chain(name, load_events(trajectory_path), workdir, None, assertions)
 
     if mode == "replay":
         if trajectory_path is None:
             return replay_unsupported(name, kind, "trajectory_path required for replay")
-        return _exec_replay(trajectory_path, cmd or [], expected_exit)
+        return _exec_replay(trajectory_path, cmd or [], expected_exit, name=name)
 
     if workdir is None:
         if trajectory_path is not None:
-            return _exec_replay(trajectory_path, cmd or [], expected_exit)
+            return _exec_replay(trajectory_path, cmd or [], expected_exit, name=name)
         return replay_unsupported(name, kind, "workdir or trajectory_path required")
 
     if not cmd:
@@ -296,8 +304,9 @@ def _exec_replay(
     trajectory_path: Path,
     cmd: list[str],
     expected_exit: int,
+    *,
+    name: str = "exec",
 ) -> ScorerVerdict:
-    name = "exec"
     kind = ScorerKind.deterministic
 
     with trajectory_path.open("r", encoding="utf-8") as fh:

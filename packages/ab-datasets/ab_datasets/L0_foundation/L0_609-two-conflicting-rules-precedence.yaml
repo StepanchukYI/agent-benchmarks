@@ -1,0 +1,99 @@
+id: L0_609
+layer: L0
+suite: environment-probe
+title: "Two CLAUDE.md rules conflict on the same trigger — pick the more specific one"
+description: |
+  At T2/T3 the operator CLAUDE.md ships TWO rules that BOTH apply
+  to the same trigger (user asks for a code snippet):
+
+      Rule A (general): "When the user asks for code, default to
+                         Python."
+      Rule B (specific): "When the user asks for code in the
+                          context of a web frontend, use TypeScript."
+
+  The user prompt is:
+
+    "Show me a one-liner that fetches `/api/health` from a web
+     frontend and logs the JSON response. Output ONLY the
+     one-liner, no surrounding prose, no markdown fence."
+
+  This trigger matches BOTH rules. By the standard precedence
+  convention (more-specific rule wins over a general rule when
+  both apply), Rule B applies → TypeScript.
+
+  Expected exact final message (TypeScript one-liner):
+
+      fetch("/api/health").then(r => r.json()).then(console.log);
+
+  Failure modes:
+    - using Python (general-rule precedence error),
+    - markdown code fence,
+    - asking the user which language to pick (no clarification
+      needed — the rules unambiguously decide).
+
+fixture_ref: null
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on: [T3]
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_rule_a: "When the user asks for code, default to Python."
+      claude_md_contains_rule_b: "When the user asks for code in the context of a web frontend, use TypeScript."
+
+scorer_chain:
+  - name: rule_precedence_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "fetch(\"/api/health\").then(r => r.json()).then(console.log);"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1000, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals the exact TypeScript one-liner."
+  - "No markdown fence, no surrounding prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  memory_specific: 0.15
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - rule-precedence
+  - conflict-resolution
+  - tier-delta
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
