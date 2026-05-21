@@ -118,6 +118,78 @@ def test_runner_unknown_scorer_records_error(tmp_path: Path) -> None:
     assert "error" in verdicts[0].detail
 
 
+def test_runner_schema_kind_wins_over_track_b_name(tmp_path: Path) -> None:
+    """A custom schema scorer name must not dispatch to Track-B assertions."""
+    (tmp_path / "config.json").write_text(
+        json.dumps({"name": "example-widget", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    task = Task(
+        id="L0_schema_collision",
+        layer=Layer.L0,
+        suite="runner",
+        title="t",
+        description="d",
+        config=TaskConfig(required_tier="T0", recommended_tier="T0"),
+        difficulty=Difficulty.easy,
+        scorer_chain=[
+            ScorerSpec(
+                name="preserved_name_and_version",
+                kind=ScorerKind.schema,
+                config={
+                    "target": "config.json",
+                    "schema": {
+                        "type": "object",
+                        "required": ["name", "version"],
+                        "properties": {
+                            "name": {"const": "example-widget"},
+                            "version": {
+                                "type": "string",
+                                "pattern": r"^[0-9]+\.[0-9]+\.[0-9]+$",
+                            },
+                        },
+                    },
+                },
+            )
+        ],
+    )
+
+    verdicts = run_scorer_chain(task=task, workdir=tmp_path, mode="run")
+
+    assert len(verdicts) == 1
+    assert verdicts[0].pass_ is True
+    assert verdicts[0].score == 1.0
+    assert verdicts[0].detail == {"errors": []}
+
+
+def test_runner_exec_kind_wins_over_track_b_name(tmp_path: Path) -> None:
+    """A custom exec scorer name must run the command, not an empty assertion chain."""
+    task = Task(
+        id="L0_exec_collision",
+        layer=Layer.L0,
+        suite="runner",
+        title="t",
+        description="d",
+        config=TaskConfig(required_tier="T0", recommended_tier="T0"),
+        difficulty=Difficulty.easy,
+        scorer_chain=[
+            ScorerSpec(
+                name="pytest_exec",
+                kind=ScorerKind.exec,
+                config={"cmd": ["python3", "-c", "print('ok')"], "expected_exit": 0},
+            )
+        ],
+    )
+
+    verdicts = run_scorer_chain(task=task, workdir=tmp_path, mode="run")
+
+    assert len(verdicts) == 1
+    assert verdicts[0].pass_ is True
+    assert verdicts[0].score == 1.0
+    assert isinstance(verdicts[0].detail, dict)
+    assert verdicts[0].detail["exit_code"] == 0
+
+
 def test_runner_replay_mode_no_workdir(tmp_path: Path) -> None:
     traj = tmp_path / "trajectory.jsonl"
     traj.write_text(

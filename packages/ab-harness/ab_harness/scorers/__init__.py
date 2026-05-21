@@ -120,9 +120,9 @@ SCORER_PILLAR_MAP: dict[str, str] = {
 
 
 def resolve_scorer(name: str, kind: ScorerKind) -> ScorerCallable | None:
-    if name in SCORER_REGISTRY:
-        return SCORER_REGISTRY[name]
-    return KIND_DEFAULT_REGISTRY.get(kind)
+    if kind in KIND_DEFAULT_REGISTRY:
+        return KIND_DEFAULT_REGISTRY[kind]
+    return SCORER_REGISTRY.get(name)
 
 
 def pillar_for(scorer_name: str) -> str:

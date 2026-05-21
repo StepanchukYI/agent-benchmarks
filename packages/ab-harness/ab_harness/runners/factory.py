@@ -15,9 +15,9 @@ Decision tree (top-down):
    proxies (GLM, Kimi, Qwen, MiniMax, DeepSeek).
 5. ``runner="openai-compat"`` → :class:`OpenAICompatRunner`. Catch-all
    for OpenAI + any chat-completions endpoint.
-6. Stubs (``codex-cli``, ``gemini-cli``, ``opencode``, ``pi-agent``,
-   ``hermes-agent``, ``nanobot``, ``cursor``) → :class:`StubRunner`
-   that fails fast with "not yet implemented" pointing at the spec.
+6. Stubs (``opencode``, ``pi-agent``, ``hermes-agent``, ``nanobot``,
+   ``cursor``) → :class:`StubRunner` that fails fast with "not yet
+   implemented" pointing at the spec.
 
 The factory ALSO looks up the model in the registry to pre-fill compat
 defaults (api_compat, local flag, vendor base_url) so callers can pass
@@ -36,6 +36,8 @@ from ab_harness.models import (
 from ab_harness.runners.anthropic_compat import AnthropicCompatRunner
 from ab_harness.runners.base import BaseRunner
 from ab_harness.runners.claude_code import ClaudeCodeRunner
+from ab_harness.runners.codex_cli import CodexCLIRunner
+from ab_harness.runners.gemini_cli import GeminiCLIRunner
 from ab_harness.runners.mock import MockRunner
 from ab_harness.runners.openai_compat import OpenAICompatRunner
 
@@ -71,14 +73,6 @@ class StubRunner(BaseRunner):
 
 # Map of stub scaffolds → human-readable status pointing at the spec.
 _STUB_REASONS: dict[str, str] = {
-    "codex-cli": (
-        "codex-cli runner pending; needs Codex CLI binary + stream-json shim. "
-        "See P1.7."
-    ),
-    "gemini-cli": (
-        "gemini-cli runner pending; needs Gemini CLI tool-call event shim. "
-        "See P1.9."
-    ),
     "opencode": (
         "opencode runner pending; uses OpenAI-compat wire under its own "
         "scaffold prompts. See P1.8."
@@ -136,6 +130,20 @@ def make_runner(
     if runner == "claude-code":
         # ClaudeCodeRunner uses the CLI; api_key is irrelevant here.
         return ClaudeCodeRunner(model=model, **extra)
+
+    if runner == "codex-cli":
+        # CodexCLIRunner shells out to `codex exec --json`; api_key irrelevant.
+        # ``effort`` maps to Codex's model_reasoning_effort config key.
+        effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
+        return CodexCLIRunner(model=model, reasoning_effort=effort, **extra)
+
+    if runner == "gemini-cli":
+        # GeminiCLIRunner shells out to `gemini --output-format stream-json`;
+        # OAuth or env (GEMINI_API_KEY / GOOGLE_GENAI_USE_VERTEXAI /
+        # _USE_GCA) is consumed by the binary itself — api_key irrelevant.
+        # Accept reasoning_effort for API symmetry; runner warn-logs.
+        effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
+        return GeminiCLIRunner(model=model, reasoning_effort=effort, **extra)
 
     if runner == "local" or local:
         resolved_base = base_url or (

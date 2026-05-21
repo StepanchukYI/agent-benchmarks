@@ -214,6 +214,17 @@ class ClaudeCodeRunner(BaseRunner):
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         task_id = getattr(task, "id", None) or "unknown"
 
+        # Look up the model's context window so the leaderboard can warn
+        # about window-exhaustion failures separately from capability ones.
+        # See docs/result-sensitivity-axes.md axis #7.
+        try:
+            from ab_harness.models import get_model_info
+
+            _model_info = get_model_info(self._model)
+            _ctx_window = _model_info.context_window if _model_info else None
+        except Exception:
+            _ctx_window = None
+
         started_at = _utc_now_iso()
         trajectory_writer.write_run_start(
             {
@@ -226,6 +237,19 @@ class ClaudeCodeRunner(BaseRunner):
                 "dataset_version": self._dataset_version,
                 "prompt_template_hash": self._prompt_template_hash,
                 "started_at": started_at,
+                # Sensitivity-axis fields (additive, all optional). See
+                # docs/result-sensitivity-axes.md for what each captures.
+                "sampling": None,  # claude CLI doesn't expose temperature flags
+                "reasoning": (
+                    {"effort": self._effort, "budget_tokens": None}
+                    if self._effort
+                    else None
+                ),
+                "system_prompt_verbatim": _SANDBOX_SYSTEM_PROMPT,
+                "model_context_window_tokens": _ctx_window,
+                "output_truncated": None,
+                "output_tokens_used": None,
+                "turn_cap": None,
             }
         )
 

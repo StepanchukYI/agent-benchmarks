@@ -10,7 +10,13 @@ from typing import Any
 
 import typer
 from ab_datasets.schemas import ScorerVerdict, Task, Tier
-from ab_harness.runners import ClaudeCodeRunner, MockRunner, make_runner
+from ab_harness.runners import (
+    ClaudeCodeRunner,
+    CodexCLIRunner,
+    GeminiCLIRunner,
+    MockRunner,
+    make_runner,
+)
 from ab_harness.sandbox import materialize
 from ab_harness.scorers.runner import run_scorer_chain
 from ab_harness.trajectory.splice import splice_scorer_events
@@ -43,16 +49,20 @@ def _make_runner(
 ) -> Any:
     """Map a CLI `--runner` string + `--model` to a BaseRunner.
 
-    Native fast paths first (claude-code CLI + mock); everything else
-    delegates to ``ab_harness.runners.make_runner`` which handles the
-    full scaffold/model matrix (anthropic-compat, openai-compat, local,
-    + stubs for codex-cli/gemini-cli/opencode/pi-agent/hermes-agent/
+    Native fast paths first (claude-code / codex-cli / gemini-cli + mock);
+    everything else delegates to ``ab_harness.runners.make_runner`` which
+    handles the full scaffold/model matrix (anthropic-compat,
+    openai-compat, local, + stubs for opencode/pi-agent/hermes-agent/
     nanobot/cursor).
     """
     if runner_name == "mock":
         return MockRunner(model=model)
     if runner_name in {"claude-code", "claude-code-cli", "claude"}:
         return ClaudeCodeRunner(model=model, effort=effort)
+    if runner_name in {"codex-cli", "codex"}:
+        return CodexCLIRunner(model=model, reasoning_effort=effort)
+    if runner_name in {"gemini-cli", "gemini"}:
+        return GeminiCLIRunner(model=model, reasoning_effort=effort)
     return make_runner(
         runner=runner_name,
         model=model,
