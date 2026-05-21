@@ -69,8 +69,30 @@ def device_start(client_id: str) -> dict[str, Any]:
         data={"client_id": client_id, "scope": "read:user"},
         headers={"Accept": "application/json"},
     )
+    # GitHub returns 200 + {"error": "..."} for app-config errors like
+    # `device_flow_disabled` (OAuth app missing the Device Flow toggle).
+    # Some failure modes also surface as 4xx with the same error shape.
+    # Either way: surface a useful message instead of letting a generic
+    # raise_for_status() bubble up as 500.
+    try:
+        payload = response.json()
+    except ValueError:
+        response.raise_for_status()
+        return {}
+    if isinstance(payload, dict) and "error" in payload:
+        from fastapi import HTTPException, status as http_status
+
+        err = payload.get("error", "unknown_error")
+        desc = payload.get("error_description") or "GitHub OAuth app rejected the device-flow request."
+        # device_flow_disabled is the maintainer's config issue, not the
+        # caller's: 503 communicates "service misconfigured", and FE can
+        # render the description verbatim.
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"GitHub OAuth: {err} — {desc}",
+        )
     response.raise_for_status()
-    return response.json()
+    return payload
 
 
 def device_poll(
