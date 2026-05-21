@@ -51,6 +51,7 @@ def test_stream_emits_progress_and_closes_on_completion(db_engine: object) -> No
             "models": ["m"],
             "tier": "T0",
             "repetitions": 1,
+            "dispatch_via_cli": True,
         },
         headers=_h(),
     ).json()
@@ -98,7 +99,7 @@ def test_stream_404_for_other_user(db_engine: object) -> None:
     client = TestClient(app)
     created = client.post(
         "/api/v1/runs",
-        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"]},
+        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"], "dispatch_via_cli": True},
         headers=_h("alice"),
     ).json()
     rid = created["run_ids"][0]

@@ -3,18 +3,24 @@ import { History, Play, RotateCcw, Terminal } from "lucide-react";
 import { SubNav } from "../components/shell/SubNav";
 import { PageHero } from "../components/shell/PageHero";
 import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
 import { TaskTree } from "../components/launcher/TaskTree";
 import { RunConfigurator } from "../components/launcher/RunConfigurator";
 import { ReplayMode } from "../components/launcher/ReplayMode";
 import { LiveRunBanner } from "../components/launcher/LiveRunBanner";
 import { useTasksList } from "../api/hooks";
+import { toState } from "../lib/ui-state";
 import type { Task } from "../lib/types";
 
 type Mode = "new" | "replay";
 
 export default function RunLauncher(): JSX.Element {
-  const { data: tasks } = useTasksList();
-  const defaultTask = (tasks ?? []).find((t) => t.id === "L1_001") ?? null;
+  const tasksQuery = useTasksList();
+  const tasksState = toState(tasksQuery);
+  const tasks = tasksState.kind === "ok" ? tasksState.value : [];
+  const defaultTask = tasks.find((t) => t.id === "L1_001") ?? null;
   const [task, setTask] = useState<Task | null>(defaultTask);
   const [mode, setMode] = useState<Mode>("new");
 
@@ -71,7 +77,27 @@ export default function RunLauncher(): JSX.Element {
             }
           />
 
-          {mode === "new" ? <RunConfigurator task={task} /> : <ReplayMode />}
+          {tasksState.kind === "loading" && <LoadingSkeleton rows={5} columns={2} />}
+          {tasksState.kind === "error" && (
+            <ErrorBanner
+              message={tasksState.message}
+              retry={() => tasksQuery.refetch()}
+            />
+          )}
+          {tasksState.kind === "empty" && (
+            <EmptyState
+              title="No tasks registered yet."
+              hint={
+                <>
+                  Run <span className="font-mono text-foreground-2">make schema-export</span> then drop a YAML under {" "}
+                  <span className="font-mono text-foreground-2">packages/ab-datasets/ab_datasets/L&lt;N&gt;_&lt;theme&gt;/</span>.
+                </>
+              }
+            />
+          )}
+          {tasksState.kind === "ok" && (
+            mode === "new" ? <RunConfigurator task={task} /> : <ReplayMode />
+          )}
         </div>
       </div>
     </>

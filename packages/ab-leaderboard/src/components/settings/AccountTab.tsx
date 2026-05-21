@@ -1,7 +1,11 @@
 import { Eye, Github } from "lucide-react";
-import { Panel, PanelHeader } from "../ui/Panel";
+import { useState } from "react";
+
+import { useMe, useSignOut } from "../../api/hooks";
 import { Button } from "../ui/Button";
+import { Panel, PanelHeader } from "../ui/Panel";
 import { PageHero } from "../shell/PageHero";
+import { SignInModal } from "./SignInModal";
 
 interface Toggle {
   label: string;
@@ -17,6 +21,13 @@ const TOGGLES: Toggle[] = [
 ];
 
 export function AccountTab(): JSX.Element {
+  const meQuery = useMe();
+  const signOut = useSignOut();
+  const [signInOpen, setSignInOpen] = useState(false);
+
+  const me = meQuery.data;
+  const initials = me ? me.handle.slice(0, 2).toUpperCase() : "??";
+
   return (
     <>
       <PageHero
@@ -28,22 +39,42 @@ export function AccountTab(): JSX.Element {
       <Panel>
         <PanelHeader title={<span className="inline-flex items-center gap-2"><Github className="size-3.5" /> GitHub identity</span>} />
         <div className="p-5 flex items-center gap-4">
-          <div className="size-12 grid place-items-center rounded-full bg-gradient-to-br from-accent to-indigo-500 text-white font-bold text-base">
-            EV
-          </div>
-          <div className="flex-1">
-            <div className="font-semibold text-[14px]">
-              Evgeniy <span className="text-muted-foreground font-normal">· @evgeniy</span>
-            </div>
-            <div className="text-[11.5px] text-muted-foreground mt-0.5">
-              Signed in via GitHub OAuth · scopes: <span className="font-mono">read:user, repo (public_repo)</span>
-            </div>
-            <div className="text-[11.5px] text-muted-foreground">
-              Connected 2026-04-08 · last sign-in 2 days ago
-            </div>
-          </div>
-          <Button>Re-authorize</Button>
-          <Button variant="destructive">Sign out</Button>
+          {meQuery.isLoading ? (
+            <div className="text-[12.5px] text-muted-foreground">Checking session…</div>
+          ) : me ? (
+            <>
+              <div className="size-12 grid place-items-center rounded-full bg-gradient-to-br from-accent to-indigo-500 text-white font-bold text-base">
+                {initials}
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-[14px]">
+                  {me.handle}
+                  <span className="text-muted-foreground font-normal"> · @{me.handle}</span>
+                </div>
+                <div className="text-[11.5px] text-muted-foreground mt-0.5">
+                  Signed in via GitHub OAuth · scopes: <span className="font-mono">read:user, public_repo</span>
+                </div>
+                <div className="text-[11.5px] text-muted-foreground">
+                  github_id: <span className="font-mono">{me.github_id}</span>
+                </div>
+              </div>
+              <Button onClick={() => setSignInOpen(true)}>Re-authorize</Button>
+              <Button variant="destructive" onClick={() => signOut.mutate()}>Sign out</Button>
+            </>
+          ) : (
+            <>
+              <div className="size-12 grid place-items-center rounded-full bg-panel-3 text-muted-foreground">
+                <Github className="size-5" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-[14px]">Not signed in</div>
+                <div className="text-[11.5px] text-muted-foreground mt-0.5">
+                  Sign in to register a results repo, publish runs, and see your trust tier.
+                </div>
+              </div>
+              <Button onClick={() => setSignInOpen(true)}>Sign in with GitHub</Button>
+            </>
+          )}
         </div>
       </Panel>
 
@@ -67,6 +98,8 @@ export function AccountTab(): JSX.Element {
           ))}
         </div>
       </Panel>
+
+      <SignInModal open={signInOpen} onOpenChange={setSignInOpen} />
     </>
   );
 }

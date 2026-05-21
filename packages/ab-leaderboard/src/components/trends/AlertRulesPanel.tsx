@@ -3,11 +3,15 @@ import { Panel, PanelHeader } from "../ui/Panel";
 import { Button } from "../ui/Button";
 import { StatusPill } from "../ui/StatusPill";
 import { Tag } from "../ui/Tag";
+import { EmptyState } from "../ui/EmptyState";
+import { ErrorBanner } from "../ui/ErrorBanner";
+import { LoadingSkeleton } from "../ui/LoadingSkeleton";
 import { useAlertRules } from "../../api/hooks";
+import { toState } from "../../lib/ui-state";
 
 export function AlertRulesPanel(): JSX.Element {
-  const { data: alertRules } = useAlertRules();
-  const rules = alertRules ?? [];
+  const alertsQuery = useAlertRules();
+  const state = toState(alertsQuery);
   return (
     <Panel>
       <PanelHeader
@@ -15,7 +19,23 @@ export function AlertRulesPanel(): JSX.Element {
         actions={<Button size="sm"><Plus className="size-3" /> New rule</Button>}
       />
       <div className="p-3.5 flex flex-col gap-2.5">
-        {rules.map((r) => (
+        {state.kind === "loading" && <LoadingSkeleton rows={3} columns={1} />}
+        {state.kind === "error" && (
+          <ErrorBanner message={state.message} retry={() => alertsQuery.refetch()} />
+        )}
+        {state.kind === "empty" && (
+          <EmptyState
+            title="No alert rules configured."
+            hint={
+              <>
+                Add a rule with{" "}
+                <span className="font-mono text-foreground-2">ab alerts add</span>{" "}
+                or use the New rule button.
+              </>
+            }
+          />
+        )}
+        {state.kind === "ok" && state.value.map((r) => (
           <div key={r.name} className="p-3 rounded-md border border-border bg-panel-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[12px]">{r.name}</span>

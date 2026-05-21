@@ -6,27 +6,37 @@ import { StatStrip, type Stat } from "../components/shell/StatStrip";
 import { Panel, PanelHeader } from "../components/ui/Panel";
 import { Button } from "../components/ui/Button";
 import { Avatar } from "../components/ui/Avatar";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
 import { TrendChart, useOperatorLegendData, useTrendLegendData } from "../components/charts/TrendChart";
 import { ParetoTrail } from "../components/charts/ParetoTrail";
 import { ScoreHeatmap } from "../components/charts/ScoreHeatmap";
 import { HotList } from "../components/trends/HotList";
 import { AlertRulesPanel } from "../components/trends/AlertRulesPanel";
 import { useOperators, useTrendsOverview, useTrendsRegressions } from "../api/hooks";
+import { toState } from "../lib/ui-state";
 
 type Range = "7d" | "30d" | "90d" | "custom";
 
 export default function Trends(): JSX.Element {
   const [range, setRange] = useState<Range>("30d");
   const [showOperators, setShowOperators] = useState(false);
-  const { data: overview } = useTrendsOverview();
-  const { data: regressionsData } = useTrendsRegressions("down");
-  const { data: improvementsData } = useTrendsRegressions("up");
-  const { data: operators } = useOperators();
+  const overviewQuery = useTrendsOverview();
+  const regressionsQuery = useTrendsRegressions("down");
+  const improvementsQuery = useTrendsRegressions("up");
+  const operatorsQuery = useOperators();
+
+  const overviewState = toState(overviewQuery, () => false);
+  const regressionsState = toState(regressionsQuery);
+  const improvementsState = toState(improvementsQuery);
+
   const trendLegend = useTrendLegendData();
   const operatorLegend = useOperatorLegendData();
-  const regressions = regressionsData ?? [];
-  const improvements = improvementsData ?? [];
-  const operatorList = operators ?? [];
+  const regressions = regressionsState.kind === "ok" ? regressionsState.value : [];
+  const improvements = improvementsState.kind === "ok" ? improvementsState.value : [];
+  const operatorList = operatorsQuery.data ?? [];
+  const overview = overviewState.kind === "ok" ? overviewState.value : null;
 
   const stats: Stat[] = [
     { label: <span className="inline-flex items-center gap-1.5"><AlertTriangle className="size-3 text-fail" /> Active regressions</span>, value: overview?.active_regressions ?? 0, unit: "P0", delta: "▲ 1 vs prev 30d", deltaValue: 1 },
@@ -35,6 +45,11 @@ export default function Trends(): JSX.Element {
     { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: overview?.alerts_fired_30d ?? 0, unit: "fired", delta: "9 actioned", deltaValue: 0 },
     { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: overview?.last_full_sweep_at ?? "", delta: "scheduled · 03:00 daily", deltaValue: 0 },
   ];
+
+  const overviewMissing =
+    overviewState.kind === "loading" ||
+    overviewState.kind === "error" ||
+    overview === null;
 
   return (
     <>
@@ -76,7 +91,29 @@ export default function Trends(): JSX.Element {
           }
         />
 
-        <StatStrip stats={stats} />
+        {overviewState.kind === "error" && (
+          <div className="px-5 pt-3">
+            <ErrorBanner
+              message={overviewState.message}
+              retry={() => overviewQuery.refetch()}
+            />
+          </div>
+        )}
+
+        {overviewMissing && overviewState.kind === "loading" ? (
+          <div className="px-5 pt-3"><LoadingSkeleton rows={1} columns={5} /></div>
+        ) : (
+          <StatStrip stats={stats} />
+        )}
+
+        {overviewState.kind === "empty" && (
+          <div className="px-5 pt-3">
+            <EmptyState
+              title="Trends appear after at least 7 days of runs."
+              hint="Keep submitting runs daily — drift detection kicks in once we have a baseline window."
+            />
+          </div>
+        )}
 
         <div className="p-5 flex flex-col gap-3.5">
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "1.7fr 1fr" }}>
@@ -126,8 +163,20 @@ export default function Trends(): JSX.Element {
             </Panel>
 
             <div className="flex flex-col gap-3.5">
-              <HotList kind="regression" items={regressions} />
-              <HotList kind="improvement" items={improvements} />
+              <HotList
+                kind="regression"
+                items={regressions}
+                state={regressionsState.kind}
+                errorMessage={regressionsState.kind === "error" ? regressionsState.message : undefined}
+                onRetry={() => regressionsQuery.refetch()}
+              />
+              <HotList
+                kind="improvement"
+                items={improvements}
+                state={improvementsState.kind}
+                errorMessage={improvementsState.kind === "error" ? improvementsState.message : undefined}
+                onRetry={() => improvementsQuery.refetch()}
+              />
             </div>
           </div>
 

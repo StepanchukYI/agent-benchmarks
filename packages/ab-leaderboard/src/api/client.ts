@@ -10,13 +10,39 @@
  */
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
+const TOKEN_STORAGE_KEY = "ab.session_token";
 
 function getBaseUrl(): string {
   return import.meta.env.AB_API_BASE_URL ?? DEFAULT_BASE_URL;
 }
 
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token === null) window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    else window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // ignore — storage may be unavailable
+  }
+}
+
 /** All endpoints, keyed by surface. Pure URL builders — no fetch coupling. */
 export const endpoints = {
+  /* ─── Auth ─── */
+  authClientId: () => "/auth/github/client-id",
+  authDeviceStart: () => "/auth/github/device-start",
+  authDevicePoll: () => "/auth/github/device-poll",
+  me: () => "/me",
+
   /* ─── Leaderboard ─── */
   leaderboard: (q?: {
     suites?: string[];
@@ -30,7 +56,7 @@ export const endpoints = {
 
   /* ─── Trends ─── */
   trends: (q?: { range?: "7d" | "30d" | "90d"; show_operators?: boolean }) =>
-    withQuery("/trends", q),
+    withQuery("/trends/series", q),
   trendsOverview: () => "/trends/overview",
   trendsRegressions: (q?: { direction?: "down" | "up"; window_days?: number }) =>
     withQuery("/trends/regressions", q),
@@ -67,6 +93,14 @@ export const endpoints = {
   alertsList: () => "/alerts",
   alertDetail: (id: string) => `/alerts/${encodeURIComponent(id)}`,
   alertsEvaluate: () => "/alerts/evaluate",
+
+  /* ─── Catalog ─── */
+  operators: () => "/operators",
+  models: () => "/models",
+
+  /* ─── Account ─── */
+  accountRepos: () => "/account/repos",
+  accountPrivacyRules: () => "/account/privacy-rules",
 } as const;
 
 function withQuery(
@@ -87,13 +121,15 @@ function withQuery(
 export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const base = getBaseUrl().replace(/\/$/, "");
   const suffix = path.startsWith("/") ? path : `/${path}`;
-  const response = await fetch(`${base}${suffix}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  };
+  const token = getStoredToken();
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${base}${suffix}`, { ...init, headers });
   if (!response.ok) {
     throw new ApiError(response.status, response.statusText, suffix);
   }

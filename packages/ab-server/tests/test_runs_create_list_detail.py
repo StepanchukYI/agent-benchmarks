@@ -36,6 +36,27 @@ def _h(user: str = "alice") -> dict[str, str]:
     return {"X-Test-User": user}
 
 
+def test_create_run_default_returns_422_with_cli_commands(db_engine: object) -> None:
+    """POST /runs without dispatch_via_cli=true → 422 + CLI command to copy."""
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/runs",
+        json={
+            "suites": ["L0_smoke"],
+            "task_ids": ["L0_001"],
+            "models": ["claude-sonnet-4-5"],
+            "tier": "T0",
+        },
+        headers=_h(),
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error"] == "server_side_dispatch_not_implemented"
+    assert detail["cli_commands"]
+    assert "ab run" in detail["cli_commands"][0]
+    assert "--model claude-sonnet-4-5" in detail["cli_commands"][0]
+
+
 def test_create_run_returns_run_ids_per_model(db_engine: object) -> None:
     client = TestClient(app)
     resp = client.post(
@@ -48,6 +69,7 @@ def test_create_run_returns_run_ids_per_model(db_engine: object) -> None:
             "dataset_version": "0.1.0",
             "repetitions": 2,
             "label": "test-launch",
+            "dispatch_via_cli": True,
         },
         headers=_h(),
     )
@@ -55,6 +77,8 @@ def test_create_run_returns_run_ids_per_model(db_engine: object) -> None:
     body = resp.json()
     assert len(body["run_ids"]) == 2
     assert body["label"] == "test-launch"
+    assert len(body["cli_commands"]) == 2
+    assert "ab run" in body["cli_commands"][0]
 
     # Each run has expected_total = 2 tasks * 2 repetitions = 4
     with Session(db_engine) as session:  # type: ignore[arg-type]
@@ -97,6 +121,7 @@ def test_list_runs_filter_by_status_and_pagination(db_engine: object) -> None:
                 "models": [f"model-{i}"],
                 "tier": "T0",
                 "repetitions": 1,
+                "dispatch_via_cli": True,
             },
             headers=_h(),
         )
@@ -139,6 +164,7 @@ def test_get_run_returns_detail_with_task_results(db_engine: object) -> None:
             "models": ["m"],
             "tier": "T0",
             "repetitions": 1,
+            "dispatch_via_cli": True,
         },
         headers=_h(),
     ).json()
@@ -186,7 +212,7 @@ def test_get_run_other_user_is_404(db_engine: object) -> None:
     client = TestClient(app)
     created = client.post(
         "/api/v1/runs",
-        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"]},
+        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"], "dispatch_via_cli": True},
         headers=_h("alice"),
     ).json()
     rid = created["run_ids"][0]
@@ -198,12 +224,12 @@ def test_list_runs_isolated_per_user(db_engine: object) -> None:
     client = TestClient(app)
     client.post(
         "/api/v1/runs",
-        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"]},
+        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"], "dispatch_via_cli": True},
         headers=_h("alice"),
     )
     client.post(
         "/api/v1/runs",
-        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"]},
+        json={"models": ["m"], "tier": "T0", "task_ids": ["L0_001"], "dispatch_via_cli": True},
         headers=_h("bob"),
     )
     a = client.get("/api/v1/runs", headers=_h("alice")).json()

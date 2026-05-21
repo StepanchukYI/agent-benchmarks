@@ -5,21 +5,26 @@ import { PageHero } from "../components/shell/PageHero";
 import { StatStrip, type Stat } from "../components/shell/StatStrip";
 import { Pill } from "../components/ui/Pill";
 import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
 import { FilterRail, type LeaderboardFilters } from "../components/leaderboard/FilterRail";
 import { LeaderboardMatrix } from "../components/leaderboard/LeaderboardMatrix";
 import { LeaderboardCards } from "../components/leaderboard/LeaderboardCards";
 import { RightRail } from "../components/leaderboard/RightRail";
 import { useTheme } from "../lib/theme";
 import { useLeaderboard, useModels, useSuites } from "../api/hooks";
+import { toState } from "../lib/ui-state";
 
 export default function Leaderboard(): JSX.Element {
   const { leaderboardView, setLeaderboardView } = useTheme();
-  const { data: models } = useModels();
-  const { data: suites } = useSuites();
-  const { data: leaderboard } = useLeaderboard({});
-  const modelList = models ?? [];
-  const suiteList = suites ?? [];
-  const rows = leaderboard?.rows ?? [];
+  const modelsQuery = useModels();
+  const suitesQuery = useSuites();
+  const leaderboardQuery = useLeaderboard({});
+  const modelList = modelsQuery.data ?? [];
+  const suiteList = suitesQuery.data ?? [];
+  const leaderboardState = toState(leaderboardQuery, (r) => r.rows.length === 0);
+  const rows = leaderboardState.kind === "ok" ? leaderboardState.value.rows : [];
   const [filters, setFilters] = useState<LeaderboardFilters>({
     suites: ["L0_smoke", "L1_memory_write", "L1_retrieval", "L2_mcp"],
     models: modelList.map((m) => m.id),
@@ -68,7 +73,7 @@ export default function Leaderboard(): JSX.Element {
               actions={
                 <>
                   <Pill tone="idle" size="sm">Last refresh 4m ago</Pill>
-                  <Button><RefreshCw className="size-3" /> Refresh</Button>
+                  <Button onClick={() => leaderboardQuery.refetch()}><RefreshCw className="size-3" /> Refresh</Button>
                   <div className="flex border border-border rounded-md overflow-hidden">
                     <Button
                       size="sm"
@@ -95,7 +100,29 @@ export default function Leaderboard(): JSX.Element {
             <StatStrip stats={stats} />
 
             <div className="p-5 flex-1">
-              {leaderboardView === "matrix" ? <LeaderboardMatrix /> : <LeaderboardCards />}
+              {leaderboardState.kind === "loading" && (
+                <LoadingSkeleton rows={6} columns={7} />
+              )}
+              {leaderboardState.kind === "error" && (
+                <ErrorBanner
+                  message={leaderboardState.message}
+                  retry={() => leaderboardQuery.refetch()}
+                />
+              )}
+              {leaderboardState.kind === "empty" && (
+                <EmptyState
+                  title="No verified runs yet."
+                  hint={
+                    <>
+                      Run <span className="font-mono text-foreground-2">ab register</span> + {" "}
+                      <span className="font-mono text-foreground-2">ab run --suite L0_smoke</span> to see scores here.
+                    </>
+                  }
+                />
+              )}
+              {leaderboardState.kind === "ok" && (
+                leaderboardView === "matrix" ? <LeaderboardMatrix /> : <LeaderboardCards />
+              )}
             </div>
           </div>
 

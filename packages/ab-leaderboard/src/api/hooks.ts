@@ -1,11 +1,20 @@
 /**
  * React Query hooks — one per `ab-server` endpoint.
  *
- * Behaviour: each hook calls the live endpoint, but supplies `placeholderData`
- * from `src/lib/mock-data.ts` so the UI renders immediately even when the
- * backend is unreachable. Once the live server replaces the placeholder, the
- * UI re-renders with real data. This lets the designer iterate without a live
- * `ab-server` running.
+ * Behaviour (post data-loading-honesty rewrite):
+ *
+ * - Hooks no longer set `placeholderData: mock`. The UI gets a real
+ *   loading/empty/error state via `src/lib/ui-state.ts::toState`.
+ * - `fetchOrMock` returns mock only in two cases:
+ *     1. `AB_USE_MOCK=1` is set — always mock.
+ *     2. The fetch fails at the network layer (TypeError raised by `fetch`,
+ *        i.e. DNS / connection refused) AND we are in dev mode
+ *        (`import.meta.env.DEV`). This preserves the "designer iterates
+ *        without a live server" workflow.
+ * - `ApiError` (any non-2xx HTTP code) is rethrown so react-query surfaces
+ *   an `error` and the UI renders `ErrorBanner`.
+ * - A successful 200 with an empty payload is returned as-is — consumers
+ *   render `EmptyState`, not mock data.
  *
  * To force-prefer mock data set `AB_USE_MOCK=1` in `.env.local`.
  */
@@ -44,18 +53,44 @@ import type {
 } from "../lib/types";
 
 const USE_MOCK = (import.meta.env.AB_USE_MOCK ?? "0") === "1";
+/** Dev mode — used to decide whether to mock-fallback on network-level errors. */
+const dev = import.meta.env.DEV === true;
 
+/**
+ * Fetch a live endpoint with controlled mock fallback semantics.
+ *
+ * - `AB_USE_MOCK=1` → always return `mock`.
+ * - HTTP error (`ApiError`) → propagate so react-query renders error state.
+ * - Network-layer failure (fetch throws non-`ApiError`, typically `TypeError`
+ *   from DNS / connection refused):
+ *     - in dev mode → fall back to `mock` so the designer can iterate.
+ *     - in prod → propagate so the user sees an honest error.
+ * - Successful 200 → return whatever the server sent (even if empty).
+ */
 function fetchOrMock<T>(path: string, mock: T): Promise<T> {
   if (USE_MOCK) return Promise.resolve(mock);
   return apiFetch<T>(path).catch((err: unknown) => {
     if (err instanceof ApiError) {
-      // The server is reachable but didn't have the resource — surface the
-      // error so the UI can show a 404/500 state. For now we surface mock.
-      return mock;
+      // Real HTTP error from the server — let react-query surface it.
+      throw err;
     }
-    // Network down — fall back to mock so designer can iterate.
-    return mock;
+    // Network-level failure (TypeError, AbortError, etc).
+    if (dev) return mock;
+    throw err;
   });
+}
+
+/**
+ * When `AB_USE_MOCK=1`, seed react-query with `initialData` so the query
+ * resolves synchronously to mock on the first render. This keeps the
+ * "designer iterates without a server" workflow snappy AND lets the test
+ * suite render data-rich pages without `await waitFor`.
+ *
+ * When `AB_USE_MOCK` is unset, returns `undefined` so the query starts in
+ * `isPending` and the UI shows a real loading state.
+ */
+function mockSeed<T>(mock: T): { initialData: T } | Record<string, never> {
+  return USE_MOCK ? { initialData: mock } : {};
 }
 
 /* ─── Leaderboard ────────────────────────────────────────────────────────── */
@@ -82,7 +117,7 @@ export function useLeaderboard(filters: {
   return useQuery({
     queryKey: ["leaderboard", filters],
     queryFn: () => fetchOrMock(endpoints.leaderboard(filters), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -101,7 +136,7 @@ export function useLeaderboardPareto() {
   return useQuery({
     queryKey: ["leaderboard", "pareto"],
     queryFn: () => fetchOrMock(endpoints.leaderboardPareto(), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -126,7 +161,7 @@ export function useTrendsOverview() {
   return useQuery({
     queryKey: ["trends", "overview"],
     queryFn: () => fetchOrMock(endpoints.trendsOverview(), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -145,7 +180,7 @@ export function useTrendsSeries(range: "7d" | "30d" | "90d" = "30d", showOperato
   return useQuery({
     queryKey: ["trends", range, { showOperators }],
     queryFn: () => fetchOrMock(endpoints.trends({ range, show_operators: showOperators }), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -154,7 +189,7 @@ export function useTrendsRegressions(direction: "down" | "up" = "down") {
   return useQuery({
     queryKey: ["trends", "regressions", direction],
     queryFn: () => fetchOrMock(endpoints.trendsRegressions({ direction }), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -165,7 +200,7 @@ export function useRunsList(status?: "scheduled" | "in_progress" | "recent") {
   return useQuery({
     queryKey: ["runs", "list", status ?? "any"],
     queryFn: () => fetchOrMock(endpoints.runsList({ status, limit: 50 }), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -199,8 +234,10 @@ export function useRunEstimate() {
           method: "POST",
           body: JSON.stringify(req),
         });
-      } catch {
-        return mock;
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        if (dev) return mock;
+        throw err;
       }
     },
   });
@@ -224,7 +261,7 @@ export function useTasksList() {
   return useQuery({
     queryKey: ["tasks", "list"],
     queryFn: () => fetchOrMock(endpoints.tasksList(), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -249,7 +286,7 @@ export function useTrajectory(runId: string | undefined, taskId: string | undefi
     queryKey: ["trajectory", runId, taskId],
     enabled: !!runId && !!taskId,
     queryFn: () => fetchOrMock(endpoints.runTrajectory(runId!, taskId!), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -259,7 +296,7 @@ export function useSubmissionPrivacyScan(submissionId: string | undefined) {
     queryKey: ["submission", submissionId, "privacy-scan"],
     enabled: !!submissionId,
     queryFn: () => fetchOrMock(endpoints.submissionPrivacyScan(submissionId!), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -270,7 +307,7 @@ export function useConnectedRepos() {
   return useQuery({
     queryKey: ["account", "repos"],
     queryFn: () => fetchOrMock("/account/repos", mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -279,7 +316,7 @@ export function useOperators() {
   return useQuery({
     queryKey: ["operators"],
     queryFn: () => fetchOrMock("/operators", mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -289,7 +326,7 @@ export function useModels() {
   return useQuery({
     queryKey: ["models"],
     queryFn: () => fetchOrMock("/models", MODELS),
-    placeholderData: MODELS,
+    ...mockSeed(MODELS),
   });
 }
 
@@ -299,7 +336,7 @@ export function useScrubberRules() {
   return useQuery({
     queryKey: ["privacy", "rules"],
     queryFn: () => fetchOrMock("/account/privacy-rules", SCRUBBER_RULES),
-    placeholderData: SCRUBBER_RULES,
+    ...mockSeed(SCRUBBER_RULES),
   });
 }
 
@@ -310,7 +347,7 @@ export function useAlertRules() {
   return useQuery({
     queryKey: ["alerts", "rules"],
     queryFn: () => fetchOrMock(endpoints.alertsList(), mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -327,7 +364,7 @@ export function useSuites() {
   return useQuery({
     queryKey: ["suites"],
     queryFn: () => fetchOrMock("/suites", mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -338,7 +375,7 @@ export function usePillars() {
   return useQuery({
     queryKey: ["pillars"],
     queryFn: () => fetchOrMock<readonly string[]>("/pillars", mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
   });
 }
 
@@ -353,6 +390,38 @@ export function useDefaultTrajectory() {
   return useQuery<Trajectory>({
     queryKey: ["trajectory", "default"],
     queryFn: () => fetchOrMock("/trajectories/default", mock),
-    placeholderData: mock,
+    ...mockSeed(mock),
+  });
+}
+
+/* ─── Auth (GitHub device flow + viewer identity) ────────────────────────── */
+
+import { fetchMe, signOut as _signOut } from "./auth";
+import type { MeResponse } from "./auth";
+import { useQueryClient } from "@tanstack/react-query";
+
+/**
+ * Current authenticated viewer. Returns null when no token / token rejected.
+ * Always refetches on mount so a fresh tab reflects a stale localStorage value.
+ */
+export function useMe() {
+  return useQuery<MeResponse | null>({
+    queryKey: ["auth", "me"],
+    queryFn: fetchMe,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useSignOut() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      _signOut();
+    },
+    onSuccess: () => {
+      qc.setQueryData(["auth", "me"], null);
+      qc.invalidateQueries();
+    },
   });
 }

@@ -48,6 +48,25 @@ class RunCreate(BaseModel):
     sandbox: str = "local"
     concurrency: int = 1
     label: str | None = None
+    # v1 ships ZERO server-side dispatch. To create a Run row, the caller
+    # MUST acknowledge they will run the benchmark locally via `ab run` and
+    # publish results via `ab publish`. Setting this to False (or omitting)
+    # makes POST /runs return 422 with the CLI command to copy.
+    dispatch_via_cli: bool = False
+
+
+def _build_cli_command(payload: RunCreate, model: str) -> str:
+    parts: list[str] = ["ab run", f"--model {model}", f"--tier {payload.tier}"]
+    if payload.suites:
+        parts.append(f"--suite {payload.suites[0]}")
+    if payload.task_ids:
+        for tid in payload.task_ids:
+            parts.append(f"--task {tid}")
+    if payload.repetitions > 1:
+        parts.append(f"--repetitions {payload.repetitions}")
+    if payload.dataset_version:
+        parts.append(f"--dataset-version {payload.dataset_version}")
+    return " ".join(parts)
 
 
 def _serialize_summary(run: Run, *, finished_count: int | None = None) -> dict[str, Any]:
@@ -96,11 +115,40 @@ def create_run(
     payload: Annotated[RunCreate, Body(...)],
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-) -> dict[str, Any]:
+) -> Any:
+    """Record a planned run.
+
+    v1 does NOT execute runs server-side — operators run benchmarks locally
+    via `ab run` and publish via `ab publish` (ADR-007). The UI's "Launch run"
+    button maps to "Copy CLI command" backed by this endpoint:
+
+    - When `dispatch_via_cli=false` (default): respond 422 with the CLI command
+      the operator should copy + reasoning. No DB write.
+    - When `dispatch_via_cli=true`: record one `Run` row per model with
+      `status="scheduled"` so the UI can display the planned run, and echo back
+      `cli_commands` so the operator can copy + paste into their shell.
+    """
     if not payload.models:
         raise HTTPException(status_code=400, detail="models must be non-empty")
     if payload.repetitions <= 0:
         raise HTTPException(status_code=400, detail="repetitions must be > 0")
+
+    cli_commands = [_build_cli_command(payload, m) for m in payload.models]
+
+    if not payload.dispatch_via_cli:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "server_side_dispatch_not_implemented",
+                "message": (
+                    "v1 does not execute runs server-side. Copy the CLI commands "
+                    "below into your shell, then `ab publish` to see results "
+                    "in the leaderboard. Re-POST with `dispatch_via_cli=true` to "
+                    "record the planned run in your dashboard."
+                ),
+                "cli_commands": cli_commands,
+            },
+        )
 
     primary_suite = payload.suites[0] if payload.suites else ""
     n_tasks = len(payload.task_ids) if payload.task_ids else 0
@@ -124,7 +172,12 @@ def create_run(
         session.refresh(run)
         run_ids.append(str(run.id))
 
-    return {"run_ids": run_ids, "label": payload.label}
+    return {
+        "run_ids": run_ids,
+        "label": payload.label,
+        "cli_commands": cli_commands,
+        "note": "Server does not execute runs; copy cli_commands locally then `ab publish`.",
+    }
 
 
 @router.get("/runs")

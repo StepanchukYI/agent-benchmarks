@@ -139,6 +139,120 @@ def _build_scorer(ev: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_READ_HINTS = ("read", "cat", "grep", "search", "list", "glob", "find", "view")
+_WRITE_HINTS = ("write", "edit", "create", "patch", "apply", "save", "put", "modify", "delete")
+
+
+def _first_tool_call_name(ev: dict[str, Any]) -> str | None:
+    calls = ev.get("tool_calls") or []
+    if not isinstance(calls, list) or not calls:
+        return None
+    head = calls[0]
+    if isinstance(head, dict):
+        name = head.get("name")
+        if isinstance(name, str):
+            return name
+    return None
+
+
+def _tool_label(ev: dict[str, Any]) -> str:
+    calls = ev.get("tool_calls") or []
+    if not isinstance(calls, list) or not calls:
+        return "tool"
+    parts: list[str] = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        name = call.get("name") or "tool"
+        args = call.get("args")
+        primary_arg: str | None = None
+        if isinstance(args, dict):
+            for k in ("path", "file_path", "filename", "target", "query"):
+                v = args.get(k)
+                if isinstance(v, str) and v:
+                    primary_arg = v
+                    break
+        parts.append(f"{name}({primary_arg})" if primary_arg else name)
+    return ", ".join(parts[:3])
+
+
+def _turn_kind_and_icon(ev: dict[str, Any], idx: int) -> tuple[str, str]:
+    """Classify a turn into designer's TurnEvent.kind + lucide icon."""
+    role = ev.get("role")
+    if role == "user":
+        return ("prompt", "user") if idx == 0 else ("thought", "brain")
+    if role == "tool":
+        return ("tool", "cube")
+    if role == "assistant":
+        tool_name = _first_tool_call_name(ev)
+        if tool_name is None:
+            return ("thought", "brain")
+        lowered = tool_name.lower()
+        if any(h in lowered for h in _WRITE_HINTS):
+            return ("write", "pencil")
+        if any(h in lowered for h in _READ_HINTS):
+            return ("read", "file-text")
+        return ("tool", "cube")
+    return ("thought", "brain")
+
+
+def _turn_meta(ev: dict[str, Any]) -> str:
+    """Compact subtext (tokens · latency)."""
+    tokens_out = ev.get("tokens_out", 0)
+    latency_ms = ev.get("latency_ms", 0)
+    parts: list[str] = []
+    if tokens_out:
+        parts.append(f"tokens {int(tokens_out)}")
+    if latency_ms:
+        parts.append(f"{int(latency_ms)} ms")
+    return " · ".join(parts) if parts else ""
+
+
+def _turn_to_event(ev: dict[str, Any], idx: int) -> dict[str, Any]:
+    kind, icon = _turn_kind_and_icon(ev, idx)
+    if kind in {"tool", "read", "write"}:
+        label = _tool_label(ev)
+    elif kind == "prompt":
+        label = "System prompt + task"
+    else:
+        text = ev.get("model_output") or ""
+        if isinstance(text, str):
+            stripped = text.strip().splitlines()[0] if text.strip() else "thought"
+            label = stripped[:80]
+        else:
+            label = "thought"
+    return {
+        "idx": ev.get("idx", idx),
+        "role": ev.get("role"),
+        "kind": kind,
+        "label": label,
+        "meta": _turn_meta(ev),
+        "icon": icon,
+    }
+
+
+def _scorer_to_event(ev: dict[str, Any], idx_offset: int) -> dict[str, Any]:
+    raw_kind = ev.get("kind") or ""
+    is_judge = raw_kind == "llm_judge"
+    name = ev.get("scorer_name") or raw_kind or "scorer"
+    score = ev.get("score")
+    pass_ = ev.get("pass")
+    if isinstance(score, (int, float)):
+        meta = f"score {score:.2f}"
+    elif pass_ is not None:
+        meta = "pass" if pass_ else "fail"
+    else:
+        meta = ""
+    return {
+        "idx": idx_offset,
+        "role": "system",
+        "kind": "judge" if is_judge else "verdict",
+        "label": f"LLM-judge: {name}" if is_judge else f"Scorer: {name}",
+        "meta": meta,
+        "icon": "scale" if is_judge else "check-circle-2",
+    }
+
+
 def assemble_trajectory_view(
     traj_path: Path,
     *,
@@ -151,6 +265,8 @@ def assemble_trajectory_view(
     run_end: dict[str, Any] | None = None
     turns: list[dict[str, Any]] = []
     scorers: list[dict[str, Any]] = []
+    designer_events: list[dict[str, Any]] = []
+    turn_idx_counter = 0
     for ev in events:
         kind = ev.get("event")
         if kind == "run_start":
@@ -159,8 +275,12 @@ def assemble_trajectory_view(
             run_end = ev
         elif kind == "turn":
             turns.append(_build_turn(ev))
+            designer_events.append(_turn_to_event(ev, turn_idx_counter))
+            turn_idx_counter += 1
         elif kind == "scorer":
             scorers.append(_build_scorer(ev))
+            designer_events.append(_scorer_to_event(ev, turn_idx_counter))
+            turn_idx_counter += 1
 
     header = _build_header(run_start, run_end)
 
@@ -187,6 +307,7 @@ def assemble_trajectory_view(
         "header": header,
         "turns": turns,
         "scorers": scorers,
+        "events": designer_events,
         "trust": trust,
         "pillars": pillars,
     }
