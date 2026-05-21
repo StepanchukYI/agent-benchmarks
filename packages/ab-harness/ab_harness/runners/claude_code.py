@@ -187,31 +187,55 @@ class ClaudeCodeRunner(BaseRunner):
                 self._isolated_env.cleanup()
             self._isolated_env = None
 
-    def _build_argv(self) -> list[str]:
-        # ``--bare`` is the critical isolation flag (verified against `claude
-        # --help` 2.1.139):
-        #   "Minimal mode: skip hooks, LSP, plugin sync, attribution,
-        #    auto-memory, background prefetches, keychain reads, and CLAUDE.md
-        #    auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Anthropic auth is
-        #    strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth
-        #    and keychain are never read)."
+    def _build_argv(self, *, empty_mcp_config_path: str | None = None) -> list[str]:
+        # Isolation strategy (verified against `claude --help` 2.1.139):
         #
-        # Without --bare, the CLI loads ~/.claude/{CLAUDE.md, skills/, agents/,
-        # settings.json}, reads the macOS keychain, and pulls operator context
-        # into the benchmark agent — contaminating T0/T2/T3 runs.
+        # We CANNOT use --bare with Claude Max — --bare disables keychain
+        # reads and rejects OAuth tokens (sk-ant-oat01-* from `claude
+        # setup-token` returns "Invalid API key" via the api.anthropic.com
+        # endpoint). Real HOME + keychain access is required for the Max
+        # subscription's claude.ai auth path.
+        #
+        # Instead we suppress per-user config surface with explicit flags:
+        #   --system-prompt          REPLACES the default — skips ~/.claude/
+        #                            CLAUDE.md memory merge.
+        #   --disable-slash-commands "Disable all skills" per --help. Blocks
+        #                            Skill auto-discovery + invocation.
+        #   --strict-mcp-config
+        #     --mcp-config <empty>   Only servers from --mcp-config; ignore
+        #                            ~/.claude/settings.json mcp entries.
+        #   --agents '{}'            Empty agent definitions; overrides
+        #                            ~/.claude/agents/.
+        #   --exclude-dynamic-system-prompt-sections — moves cwd/env/git
+        #                            sections into the first user message
+        #                            (we still see them, but they aren't
+        #                            mixed into the default prompt the model
+        #                            sees as system).
+        # Setting AB_CLAUDE_BARE=1 OPTS IN to --bare for ops with a real
+        # console.anthropic.com API key (pure pay-per-token billing).
         argv = [
             self._binary,
             "--print",
             "--output-format",
             "stream-json",
             "--verbose",
-            "--bare",
             "--dangerously-skip-permissions",
             "--model",
             self._model,
-            "--append-system-prompt",
+            "--system-prompt",
             _SANDBOX_SYSTEM_PROMPT,
+            "--disable-slash-commands",
+            "--agents",
+            "{}",
         ]
+        if empty_mcp_config_path:
+            argv.extend([
+                "--strict-mcp-config",
+                "--mcp-config",
+                empty_mcp_config_path,
+            ])
+        if os.environ.get("AB_CLAUDE_BARE") == "1":
+            argv.insert(5, "--bare")
         if self._effort:
             argv.extend(["--effort", self._effort])
         argv.extend(self._extra_args)
@@ -292,14 +316,29 @@ class ClaudeCodeRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Subprocess env isolation — strip operator env, fake HOME so the
-        # claude CLI does NOT auto-discover ~/.claude/{CLAUDE.md, skills,
-        # agents, settings.json}. Without this, T0 "vanilla" runs are
-        # contaminated by the operator's personal config; tokens in
-        # COMFY_*/OBSIDIAN_*/etc leak into the agent's tool environment.
-        # See _isolation.py for the whitelist + invariants.
-        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
-        argv = self._build_argv()
+        # Subprocess env isolation. claude-code keeps the operator's real
+        # HOME (Max subscription auth flows through macOS keychain +
+        # ~/.claude marker files; fake HOME breaks both). Contamination of
+        # ~/.claude/{CLAUDE.md, skills/, agents/, settings.json} is blocked
+        # at the CLI-flag layer instead (see _build_argv).
+        #
+        # Env whitelist still strips secret env vars (COMFY_*, OBSIDIAN_*,
+        # etc) — those would otherwise leak into the subprocess.
+        self._isolated_env = IsolatedEnv.build(
+            env_overrides=self._env_overrides,
+            use_fake_home=False,
+        )
+        # Stage an empty mcp-config alongside the IsolatedEnv tempdir so
+        # --strict-mcp-config has a valid file to point at. Cleanup is
+        # handled by IsolatedEnv.cleanup().
+        empty_mcp_path = self._isolated_env.fake_home / "mcp-empty.json"
+        try:
+            empty_mcp_path.write_text('{"mcpServers": {}}', encoding="utf-8")
+        except OSError:
+            empty_mcp_path = None  # type: ignore[assignment]
+        argv = self._build_argv(
+            empty_mcp_config_path=str(empty_mcp_path) if empty_mcp_path else None,
+        )
         self._proc = subprocess.Popen(
             argv,
             stdin=subprocess.PIPE,

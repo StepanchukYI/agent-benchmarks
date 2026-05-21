@@ -141,6 +141,7 @@ class IsolatedEnv:
         *,
         env_overrides: dict[str, str] | None = None,
         extra_keep: frozenset[str] | None = None,
+        use_fake_home: bool = True,
     ) -> "IsolatedEnv":
         """Return a fresh `IsolatedEnv` ready to hand to `subprocess.Popen`.
 
@@ -153,26 +154,47 @@ class IsolatedEnv:
             Optional additional whitelist keys, e.g. if a specific runner needs
             an environment variable the base whitelist doesn't cover. Avoid
             adding broad keys here; prefer the global whitelist.
+        use_fake_home:
+            When True (default), HOME + XDG dirs are redirected to a fresh
+            tempfile.mkdtemp(). Use this for runners where the CLI has no
+            session auth tied to ``~/...`` (codex / gemini / opencode / pi).
+
+            When False, the operator's real HOME is preserved. Use this for
+            ClaudeCodeRunner with Max-subscription auth: the claude CLI's
+            keychain entry and any ``~/.claude/.credentials`` marker need the
+            real HOME, and we suppress per-user config via explicit claude
+            CLI flags (--system-prompt, --disable-slash-commands,
+            --strict-mcp-config, --agents '{}') instead of HOME isolation.
+            Env whitelisting still strips secret env vars in this mode.
+
+            A `fake_home` directory is ALWAYS created (cheap) for misc tmp
+            artifacts like an empty mcp-config file that the runner can
+            point claude at; the caller is responsible for cleanup() either
+            way.
         """
         allow = ALLOWED_ENV_KEYS | (extra_keep or frozenset())
         env: dict[str, str] = {k: os.environ[k] for k in allow if k in os.environ}
 
-        # Fake HOME so the CLI's user-level config search misses the operator's
-        # real ~/.claude/ etc. We pre-create the .claude subdir so the binary
-        # doesn't have to mkdir into a path that might race with us.
+        # Always allocate a tempdir so the runner can stage helper files
+        # (empty mcp-config, empty CLAUDE.md, etc) and the cleanup path
+        # is symmetric.
         fake_home = Path(tempfile.mkdtemp(prefix="ab-isolated-home-"))
         (fake_home / ".claude").mkdir(parents=True, exist_ok=True)
-        env["HOME"] = str(fake_home)
-        env["USERPROFILE"] = str(fake_home)  # Windows parity, harmless on Unix
-
-        # XDG redirects so CLIs that follow the spec don't reach the
-        # operator's ~/.config / ~/.cache / ~/.local.
         (fake_home / ".config").mkdir(parents=True, exist_ok=True)
         (fake_home / ".cache").mkdir(parents=True, exist_ok=True)
         (fake_home / ".local" / "state").mkdir(parents=True, exist_ok=True)
-        env["XDG_CONFIG_HOME"] = str(fake_home / ".config")
-        env["XDG_CACHE_HOME"] = str(fake_home / ".cache")
-        env["XDG_STATE_HOME"] = str(fake_home / ".local" / "state")
+
+        if use_fake_home:
+            # Full HOME isolation. CLI's user-level config search misses
+            # operator's real ~/.claude/ etc. Best for runners that don't
+            # need keychain-backed session auth.
+            env["HOME"] = str(fake_home)
+            env["USERPROFILE"] = str(fake_home)  # Windows parity, harmless on Unix
+            env["XDG_CONFIG_HOME"] = str(fake_home / ".config")
+            env["XDG_CACHE_HOME"] = str(fake_home / ".cache")
+            env["XDG_STATE_HOME"] = str(fake_home / ".local" / "state")
+        # else: real HOME preserved (already in `env` via whitelist).
+        # Runner is responsible for blocking ~/.claude config via CLI flags.
 
         if env_overrides:
             env.update(env_overrides)

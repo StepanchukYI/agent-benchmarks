@@ -179,9 +179,21 @@ def test_scrub_home_replaces_user_home_with_tilde() -> None:
     assert _scrub_home("/Users/alice/project/file.txt", "/Users/alice") == "~/project/file.txt"
 
 
-def test_argv_contains_append_system_prompt() -> None:
+def test_argv_contains_system_prompt() -> None:
+    """``--system-prompt`` (full replace) rather than ``--append-system-prompt``.
+
+    See claude_code.py::_build_argv: we REPLACE the default system prompt so
+    the CLI does not merge in ~/.claude/CLAUDE.md memory. Pairing with
+    --disable-slash-commands + --strict-mcp-config + --agents '{}' blocks the
+    rest of the user-config surface while keeping keychain auth available
+    for Claude Max subscription runs.
+    """
     runner = ClaudeCodeRunner()
     argv = runner._build_argv()
-    assert "--append-system-prompt" in argv
-    idx = argv.index("--append-system-prompt")
+    assert "--system-prompt" in argv
+    idx = argv.index("--system-prompt")
     assert argv[idx + 1] == _SANDBOX_SYSTEM_PROMPT
+    # The other isolation flags must be present too.
+    assert "--disable-slash-commands" in argv
+    assert "--agents" in argv
+    assert argv[argv.index("--agents") + 1] == "{}"
