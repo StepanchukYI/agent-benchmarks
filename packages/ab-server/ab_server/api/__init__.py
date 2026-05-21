@@ -15,6 +15,7 @@ from ab_server.api import (
     runs,
     submissions,
     system,
+    tokens,
 )
 
 # Routers mounted under /api/v1 by main.py (except system.health which is at root).
@@ -30,6 +31,7 @@ v1_routers: list[APIRouter] = [
     alerts.router,
     catalog.router,
     account.router,
+    tokens.router,
     jobs.router,
 ]
 

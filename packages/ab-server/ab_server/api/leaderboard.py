@@ -55,6 +55,15 @@ def _parse_iso(value: str | None) -> datetime | None:
 _RANGE_TO_DAYS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
 
 
+_PillarLiteral = Literal[
+    "correctness",
+    "tool_skill",
+    "context_efficiency",
+    "latency_cost",
+    "memory_specific",
+]
+
+
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def get_leaderboard(
     session: Annotated[Session, Depends(get_session)],
@@ -70,6 +79,7 @@ def get_leaderboard(
     dataset_versions: Annotated[list[str] | None, Query()] = None,
     include_task_tags: Annotated[list[str] | None, Query()] = None,
     exclude_task_tags: Annotated[list[str] | None, Query()] = None,
+    pillar: Annotated[_PillarLiteral | None, Query()] = None,
 ) -> LeaderboardResponse:
     range_days: int | None = None
     if range is not None:
@@ -93,6 +103,7 @@ def get_leaderboard(
         range_days=range_days,
         include_task_tags=_split_csv(include_task_tags),
         exclude_task_tags=_split_csv(exclude_task_tags),
+        pillar=pillar,
     )
 
 

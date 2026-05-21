@@ -65,6 +65,15 @@ PILLARS: list[str] = [
     "Memory",
     "Latency $",
 ]
+# Maps the public API `pillar` query param (matches values of
+# ab_harness.scorers.SCORER_PILLAR_MAP) to the index into LeaderboardRow.scores.
+PILLAR_PARAM_TO_INDEX: dict[str, int] = {
+    "correctness": 0,
+    "context_efficiency": 1,
+    "tool_skill": 2,
+    "memory_specific": 3,
+    "latency_cost": 4,
+}
 _TRUST_RANK = {"self_reported": 0, "verified": 1, "official": 2}
 
 
@@ -701,6 +710,7 @@ def compute_leaderboard_response(
     range_days: int | None = None,
     include_task_tags: Sequence[str] | None = None,
     exclude_task_tags: Sequence[str] | None = None,
+    pillar: str | None = None,
 ) -> LeaderboardResponse:
     if range_days is not None and range_days > 0 and date_from is None:
         date_from = datetime.now(UTC) - timedelta(days=range_days)
@@ -923,7 +933,22 @@ def compute_leaderboard_response(
             )
         )
 
-    out_rows.sort(key=lambda r: (-sum(r.scores) / 5.0, r.model, r.operator))
+    if pillar is not None:
+        idx = PILLAR_PARAM_TO_INDEX.get(pillar)
+        if idx is None:
+            # Should be unreachable — FastAPI Literal validates upstream.
+            # Defensive guard against future drift between the route's
+            # Literal type and this map.
+            raise ValueError(f"Unknown pillar param: {pillar!r}")
+        out_rows.sort(
+            key=lambda r: (
+                -(r.scores[idx] if idx < len(r.scores) else 0.0),
+                r.model,
+                r.operator,
+            )
+        )
+    else:
+        out_rows.sort(key=lambda r: (-sum(r.scores) / 5.0, r.model, r.operator))
     return LeaderboardResponse(
         rows=out_rows,
         pillars=list(PILLARS),

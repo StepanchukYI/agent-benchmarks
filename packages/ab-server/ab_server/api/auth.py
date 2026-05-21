@@ -28,6 +28,22 @@ class _DevicePollRequest(BaseModel):
     device_code: str
 
 
+class _VisibilityUpdate(BaseModel):
+    public_profile: bool | None = None
+    share_runs: bool | None = None
+
+
+def _user_out(user: User) -> dict[str, Any]:
+    return {
+        "id": str(user.id),
+        "github_id": user.github_id,
+        "handle": user.handle,
+        "avatar_url": user.avatar_url,
+        "public_profile": user.public_profile,
+        "share_runs": user.share_runs,
+    }
+
+
 @router.get("/auth/github/client-id", response_model=_ClientIdResponse)
 def github_client_id() -> _ClientIdResponse:
     return _ClientIdResponse(client_id=Settings().github_client_id)
@@ -75,12 +91,27 @@ def github_callback() -> dict[str, str]:
 
 @router.get("/me")
 def me(user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
-    return {
-        "id": str(user.id),
-        "github_id": user.github_id,
-        "handle": user.handle,
-        "avatar_url": user.avatar_url,
-    }
+    return _user_out(user)
+
+
+@router.patch("/me/visibility")
+def update_me_visibility(
+    payload: Annotated[_VisibilityUpdate, Body(...)],
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    """Partial update of visibility toggles for the current user.
+
+    Body fields are all optional; only provided fields are applied.
+    """
+    if payload.public_profile is not None:
+        user.public_profile = payload.public_profile
+    if payload.share_runs is not None:
+        user.share_runs = payload.share_runs
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return _user_out(user)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
