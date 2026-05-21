@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 
 from ab_harness.models import get_model_info
 from ab_harness.pricing import estimate_cost_usd
+from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -173,6 +174,10 @@ class CodexCLIRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
+        # Subprocess isolation — see _isolation.py. Created per-run, released
+        # in cleanup(). Without this, ~/.codex/ user config leaks into the
+        # subprocess and arbitrary env tokens reach the agent.
+        self._isolated_env: Any = None
 
     def name(self) -> str:
         return "codex-cli"
@@ -197,6 +202,10 @@ class CodexCLIRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
+        if self._isolated_env is not None:
+            with contextlib.suppress(OSError):
+                self._isolated_env.cleanup()
+            self._isolated_env = None
 
     def _build_argv(self) -> list[str]:
         # Note flag positioning: ``--ask-for-approval`` lives on the parent ``codex``
@@ -293,7 +302,11 @@ class CodexCLIRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        env = os.environ.copy()
+        # Isolation barrier — see _isolation.py. Codex CLI auto-loads
+        # ~/.codex/config.toml + ~/.codex/auth and reads OPENAI_*/CODEX_*
+        # env. We whitelist only the keys the CLI strictly needs and point
+        # HOME at a fresh temp dir per run.
+        self._isolated_env = IsolatedEnv.build()
         argv = self._build_argv()
 
         # Spawn defensively: if the binary is missing, write a clean run_end
@@ -306,7 +319,7 @@ class CodexCLIRunner(BaseRunner):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(workdir),
-                env=env,
+                env=self._isolated_env.env,
                 text=True,
                 bufsize=1,
             )

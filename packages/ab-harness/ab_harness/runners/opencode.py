@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from ab_harness.models import get_model_info
 from ab_harness.pricing import estimate_cost_usd
+from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -174,6 +175,10 @@ class OpencodeRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
+        # Subprocess isolation — see _isolation.py. opencode auto-loads
+        # ~/.config/opencode/ + ~/.local/share/opencode/, and the operator's
+        # env carries arbitrary tokens. Drop both.
+        self._isolated_env: Any = None
 
     def name(self) -> str:
         return "opencode"
@@ -198,6 +203,10 @@ class OpencodeRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
+        if self._isolated_env is not None:
+            with contextlib.suppress(OSError):
+                self._isolated_env.cleanup()
+            self._isolated_env = None
 
     def _thinking_value(self) -> str | None:
         if not self._effort:
@@ -314,9 +323,8 @@ class OpencodeRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        env = os.environ.copy()
-        if self._env_overrides:
-            env.update(self._env_overrides)
+        # Isolation barrier — see _isolation.py.
+        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
 
         argv = self._build_argv(workdir=workdir)
         # Append the prompt as the trailing positional. opencode reads
@@ -333,7 +341,7 @@ class OpencodeRunner(BaseRunner):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(workdir),
-                env=env,
+                env=self._isolated_env.env,
                 text=True,
                 bufsize=1,
             )

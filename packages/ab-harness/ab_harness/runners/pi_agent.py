@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Any
 
 from ab_harness.models import get_model_info
 from ab_harness.pricing import estimate_cost_usd
+from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -166,6 +167,9 @@ class PiAgentRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
+        # Subprocess isolation — see _isolation.py. pi auto-loads ~/.pi/ user
+        # config (skills, extensions, themes). Drop it + arbitrary env tokens.
+        self._isolated_env: Any = None
 
     def name(self) -> str:
         return "pi-agent"
@@ -190,6 +194,10 @@ class PiAgentRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
+        if self._isolated_env is not None:
+            with contextlib.suppress(OSError):
+                self._isolated_env.cleanup()
+            self._isolated_env = None
 
     def _build_argv(self, prompt: str) -> list[str]:
         argv: list[str] = [
@@ -283,9 +291,8 @@ class PiAgentRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        env = os.environ.copy()
-        if self._env_overrides:
-            env.update(self._env_overrides)
+        # Isolation barrier — see _isolation.py.
+        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
         argv = self._build_argv(prompt)
 
         # Spawn defensively: if the binary is missing, write a clean
@@ -299,7 +306,7 @@ class PiAgentRunner(BaseRunner):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(workdir),
-                env=env,
+                env=self._isolated_env.env,
                 text=True,
                 bufsize=1,
             )

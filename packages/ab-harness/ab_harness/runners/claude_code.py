@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ab_harness.pricing import estimate_cost_usd
+from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -151,6 +152,11 @@ class ClaudeCodeRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
+        # IsolatedEnv created per run_task and released in cleanup() — keeps
+        # the operator's ~/.claude/* (CLAUDE.md, skills, agents,
+        # settings.json) and secrets in COMFY_*/OBSIDIAN_*/etc env vars from
+        # leaking into the benchmark agent's subprocess.
+        self._isolated_env: Any = None
 
     def name(self) -> str:
         return "claude-code-cli"
@@ -175,14 +181,31 @@ class ClaudeCodeRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
+        # Release the fake HOME from IsolatedEnv. Idempotent.
+        if self._isolated_env is not None:
+            with contextlib.suppress(OSError):
+                self._isolated_env.cleanup()
+            self._isolated_env = None
 
     def _build_argv(self) -> list[str]:
+        # ``--bare`` is the critical isolation flag (verified against `claude
+        # --help` 2.1.139):
+        #   "Minimal mode: skip hooks, LSP, plugin sync, attribution,
+        #    auto-memory, background prefetches, keychain reads, and CLAUDE.md
+        #    auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Anthropic auth is
+        #    strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth
+        #    and keychain are never read)."
+        #
+        # Without --bare, the CLI loads ~/.claude/{CLAUDE.md, skills/, agents/,
+        # settings.json}, reads the macOS keychain, and pulls operator context
+        # into the benchmark agent — contaminating T0/T2/T3 runs.
         argv = [
             self._binary,
             "--print",
             "--output-format",
             "stream-json",
             "--verbose",
+            "--bare",
             "--dangerously-skip-permissions",
             "--model",
             self._model,
@@ -269,13 +292,13 @@ class ClaudeCodeRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        env = os.environ.copy()
-        # Per-runner env overrides (e.g. ANTHROPIC_BASE_URL +
-        # ANTHROPIC_AUTH_TOKEN for vendor-routed Anthropic-compat
-        # endpoints). Applied on top of os.environ.copy() so caller
-        # always wins over the user's shell.
-        if self._env_overrides:
-            env.update(self._env_overrides)
+        # Subprocess env isolation — strip operator env, fake HOME so the
+        # claude CLI does NOT auto-discover ~/.claude/{CLAUDE.md, skills,
+        # agents, settings.json}. Without this, T0 "vanilla" runs are
+        # contaminated by the operator's personal config; tokens in
+        # COMFY_*/OBSIDIAN_*/etc leak into the agent's tool environment.
+        # See _isolation.py for the whitelist + invariants.
+        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
         argv = self._build_argv()
         self._proc = subprocess.Popen(
             argv,
@@ -283,7 +306,7 @@ class ClaudeCodeRunner(BaseRunner):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=str(workdir),
-            env=env,
+            env=self._isolated_env.env,
             text=True,
             bufsize=1,
         )

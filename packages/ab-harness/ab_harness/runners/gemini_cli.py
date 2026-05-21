@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from ab_harness.models import get_model_info
 from ab_harness.pricing import estimate_cost_usd
+from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
@@ -155,6 +156,10 @@ class GeminiCLIRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
+        # Subprocess isolation — see _isolation.py. Without this the gemini
+        # CLI auto-loads ~/.gemini/ user config and the operator's
+        # GOOGLE_*/GEMINI_* env (plus arbitrary tokens) reach the agent.
+        self._isolated_env: Any = None
 
     def name(self) -> str:
         return "gemini-cli"
@@ -179,6 +184,10 @@ class GeminiCLIRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
+        if self._isolated_env is not None:
+            with contextlib.suppress(OSError):
+                self._isolated_env.cleanup()
+            self._isolated_env = None
 
     def _build_argv(self) -> list[str]:
         # Gemini CLI flags verified against 0.20.2 `gemini --help`.
@@ -274,7 +283,10 @@ class GeminiCLIRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        env = os.environ.copy()
+        # Isolation barrier — see _isolation.py. Drop ~/.gemini/ user config,
+        # GOOGLE_*/GEMINI_* operator env unrelated to the run, and arbitrary
+        # secrets (COMFY_*/OBSIDIAN_*/etc).
+        self._isolated_env = IsolatedEnv.build()
         argv = self._build_argv()
         try:
             self._proc = subprocess.Popen(
@@ -283,7 +295,7 @@ class GeminiCLIRunner(BaseRunner):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(workdir),
-                env=env,
+                env=self._isolated_env.env,
                 text=True,
                 bufsize=1,
             )
