@@ -36,6 +36,26 @@ scorer_chain:
     config:
       patterns_path: "docs/privacy-patterns.yaml"
 
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 30
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 20000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
 acceptance_criteria:
   - "File `notes/greeting.txt` exists at the sandbox working directory after the run."
   - "Bytes of the file equal exactly `Hello, Example.\\n` with no other content."

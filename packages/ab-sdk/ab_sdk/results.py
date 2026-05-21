@@ -7,7 +7,7 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from ab_datasets.schemas import ScorerVerdict, Trajectory
+from ab_datasets.schemas import ScorerVerdict, Task, Trajectory
 from pydantic import BaseModel, ConfigDict, Field
 
 from .manifest import read_metadata, write_metadata
@@ -15,6 +15,38 @@ from .manifest import read_metadata, write_metadata
 TRAJECTORY_FILE = "trajectory.jsonl"
 SCORES_FILE = "scores.json"
 METADATA_FILE = "metadata.yaml"
+
+# The canonical pillar list — must match the keys task YAMLs declare under
+# `weights:` (see ab_datasets/schemas/task.py and the build spec §6).
+_PILLARS: tuple[str, ...] = (
+    "correctness",
+    "tool_skill",
+    "context_efficiency",
+    "latency_cost",
+    "memory_specific",
+)
+
+# Fallback pillar map. The authoritative map lives in
+# `ab_harness.scorers.SCORER_PILLAR_MAP`; we import it lazily inside
+# build_scores_payload so ab-sdk does not take a hard dep on ab-harness.
+# This constant is the safety net when ab-harness is not installed
+# (e.g. server-side validation of an uploaded scores.json).
+_FALLBACK_PILLAR_MAP: dict[str, str] = {
+    "file_diff": "correctness",
+    "schema": "correctness",
+    "schema_validator": "correctness",
+    "exec": "correctness",
+    "readme_exact": "correctness",
+    "test_file_unchanged": "correctness",
+    "state_diff": "correctness",
+    "privacy_check": "correctness",
+    "llm_judge": "correctness",
+    "tool_skill": "tool_skill",
+    "context_efficiency": "context_efficiency",
+    "latency_cost": "latency_cost",
+    "memory_check": "memory_specific",
+    "memory_specific": "memory_specific",
+}
 
 _REQUIRED_METADATA_KEYS = (
     "model",
@@ -48,6 +80,7 @@ class ScoresFile(BaseModel):
     dataset_version: str
     verdicts: list[ScorerVerdict] = Field(default_factory=list)
     total_score: float = 0.0
+    per_pillar: dict[str, float] = Field(default_factory=dict)
     pass_: bool = Field(default=False, alias="pass")
 
 
@@ -87,6 +120,43 @@ def _trajectory_to_events(trajectory: Trajectory) -> list[dict[str, Any]]:
     return events
 
 
+def _load_pillar_map() -> dict[str, str]:
+    """Try the authoritative map in ab-harness; fall back to the local copy.
+
+    ab-sdk is a lower layer than ab-harness, so we import lazily. In packaged
+    environments where ab-harness is not installed (e.g. server-side
+    validators), the fallback keeps aggregation working.
+    """
+    try:
+        from ab_harness.scorers import SCORER_PILLAR_MAP  # type: ignore[import-not-found]
+
+        return dict(SCORER_PILLAR_MAP)
+    except ImportError:
+        return dict(_FALLBACK_PILLAR_MAP)
+
+
+def _pillar_for(scorer_name: str, pillar_map: dict[str, str]) -> str:
+    """Resolve a scorer name to a pillar; unknown scorers default to correctness."""
+    return pillar_map.get(scorer_name, "correctness")
+
+
+def _compute_per_pillar(
+    verdicts: list[ScorerVerdict],
+    pillar_map: dict[str, str],
+) -> dict[str, float]:
+    """Group verdicts by pillar; return {pillar: mean(scores)}.
+
+    Pillars with no verdicts are omitted; callers that need a complete
+    record per task pillar should consult task.weights and treat missing
+    entries as 0.
+    """
+    buckets: dict[str, list[float]] = {}
+    for v in verdicts:
+        pillar = _pillar_for(v.scorer_name, pillar_map)
+        buckets.setdefault(pillar, []).append(float(v.score))
+    return {p: float(fmean(scores)) for p, scores in buckets.items()}
+
+
 def build_scores_payload(
     *,
     run_id: str,
@@ -95,11 +165,50 @@ def build_scores_payload(
     tier: str,
     dataset_version: str,
     verdicts: list[ScorerVerdict],
+    task: Task | None = None,
 ) -> dict[str, Any]:
-    """Compute the scores.json dict from a verdict list (single source of truth)."""
-    scores = [v.score for v in verdicts]
-    total_score = float(fmean(scores)) if scores else 0.0
-    all_pass = all(v.pass_ for v in verdicts) if verdicts else False
+    """Compute the scores.json dict from a verdict list (single source of truth).
+
+    Aggregation rules:
+
+    * Verdicts are grouped by pillar via ab_harness.scorers.SCORER_PILLAR_MAP
+      (with a local fallback). Pillars are: ``correctness``, ``tool_skill``,
+      ``context_efficiency``, ``latency_cost``, ``memory_specific``. Each
+      pillar's score is the mean of its verdict scores.
+    * If ``task`` is given and ``task.weights`` is non-empty, the overall
+      ``total_score`` is ``sum(weights[pillar] * pillar_score)``. Pillars
+      declared in ``weights`` with no verdict are treated as 0 (missing
+      coverage is penalized). Pillars present in verdicts but absent from
+      ``weights`` are recorded in ``per_pillar`` but do not contribute to
+      ``total_score``.
+    * If ``task`` is ``None`` or ``task.weights`` is empty, fall back to the
+      legacy unweighted mean of all verdict scores (backward compatible).
+    * ``pass`` is True iff every verdict passes AND ``total_score >= 0.5``;
+      the second clause is consistent with prior behaviour because the old
+      mean was also >= 0.5 exactly when at least half the verdicts passed.
+
+    ``per_pillar`` always reflects the mean of verdict scores per pillar that
+    actually saw a verdict; callers that need a fixed-shape record can pad
+    with zeros for pillars listed in ``task.weights`` but missing here.
+    """
+    pillar_map = _load_pillar_map()
+    per_pillar = _compute_per_pillar(verdicts, pillar_map)
+
+    weights: dict[str, float] = dict(task.weights) if task and task.weights else {}
+
+    if weights:
+        total_score = 0.0
+        for pillar, weight in weights.items():
+            pillar_score = per_pillar.get(pillar, 0.0)
+            total_score += float(weight) * float(pillar_score)
+    else:
+        # Backward-compat path: unweighted mean over verdict scores.
+        scores = [v.score for v in verdicts]
+        total_score = float(fmean(scores)) if scores else 0.0
+
+    all_verdicts_pass = all(v.pass_ for v in verdicts) if verdicts else False
+    overall_pass = all_verdicts_pass and total_score >= 0.5
+
     return {
         "run_id": run_id,
         "task_id": task_id,
@@ -107,14 +216,16 @@ def build_scores_payload(
         "tier": tier,
         "dataset_version": dataset_version,
         "verdicts": [v.model_dump(mode="json", by_alias=True) for v in verdicts],
-        "total_score": total_score,
-        "pass": all_pass,
+        "total_score": float(total_score),
+        "per_pillar": per_pillar,
+        "pass": overall_pass,
     }
 
 
 def _build_scores_payload(
     trajectory: Trajectory,
     verdicts: list[ScorerVerdict],
+    task: Task | None = None,
 ) -> dict[str, Any]:
     tier_val = trajectory.tier.value if hasattr(trajectory.tier, "value") else trajectory.tier
     return build_scores_payload(
@@ -124,6 +235,7 @@ def _build_scores_payload(
         tier=str(tier_val),
         dataset_version=trajectory.dataset_version,
         verdicts=verdicts,
+        task=task,
     )
 
 
@@ -132,8 +244,14 @@ def write_run_dir(
     trajectory: Trajectory,
     metadata: dict[str, Any],
     scorer_verdicts: list[ScorerVerdict] | None = None,
+    task: Task | None = None,
 ) -> None:
-    """Write trajectory.jsonl, scores.json, and metadata.yaml into run_dir."""
+    """Write trajectory.jsonl, scores.json, and metadata.yaml into run_dir.
+
+    When ``task`` is supplied, scores.json is aggregated using the task's
+    weight pillars (see ``build_scores_payload``). Otherwise the legacy
+    unweighted mean is used.
+    """
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,7 +264,7 @@ def write_run_dir(
     effective_verdicts = (
         scorer_verdicts if scorer_verdicts is not None else list(trajectory.scorer_verdicts)
     )
-    payload = _build_scores_payload(trajectory, effective_verdicts)
+    payload = _build_scores_payload(trajectory, effective_verdicts, task=task)
     with (run_dir / SCORES_FILE).open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
         fh.write("\n")

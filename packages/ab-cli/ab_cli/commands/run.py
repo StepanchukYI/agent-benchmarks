@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from ab_datasets.schemas import ScorerVerdict, Tier
+from ab_datasets.schemas import ScorerVerdict, Task, Tier
 from ab_harness.runners import ClaudeCodeRunner, MockRunner
 from ab_harness.sandbox import materialize
 from ab_harness.scorers.runner import run_scorer_chain
@@ -48,6 +48,7 @@ def _scores_payload(
     tier: str,
     dataset_version: str,
     verdicts: list[ScorerVerdict],
+    task: Task | None = None,
 ) -> dict[str, Any]:
     payload = build_scores_payload(
         run_id=run_id,
@@ -56,6 +57,7 @@ def _scores_payload(
         tier=tier,
         dataset_version=dataset_version,
         verdicts=verdicts,
+        task=task,
     )
     return payload
 
@@ -129,6 +131,7 @@ def run(
             tier=tier_enum.value,
             dataset_version=dataset_version,
             verdicts=verdicts,
+            task=t,
         )
         with (run_dir / SCORES_FILE).open("w", encoding="utf-8") as fh:
             json.dump(scores, fh, ensure_ascii=False, indent=2)

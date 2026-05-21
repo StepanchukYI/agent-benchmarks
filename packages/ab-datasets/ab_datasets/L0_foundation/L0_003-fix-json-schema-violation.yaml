@@ -50,6 +50,26 @@ scorer_chain:
     config:
       patterns_path: "docs/privacy-patterns.yaml"
 
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 30
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 20000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
 acceptance_criteria:
   - "`config.json` validates against `schema.json` with no errors."
   - "The `name` field equals `example-widget` (unchanged from the fixture)."
