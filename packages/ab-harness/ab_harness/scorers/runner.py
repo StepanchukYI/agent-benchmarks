@@ -48,7 +48,12 @@ def run_scorer_chain(
             continue
 
         kwargs: dict[str, Any] = dict(spec.config or {})
-        kwargs["mode"] = effective_mode
+        # ``mode`` may already carry a scorer-specific comparison hint (e.g.
+        # schema_scorer's ``mode: json_value_equals``). Use setdefault so we
+        # don't clobber the YAML value. Scorers that distinguish run/replay
+        # via the ``mode`` key still get the harness's run/replay signal when
+        # YAML doesn't override.
+        kwargs.setdefault("mode", effective_mode)
 
         try:
             verdict = scorer(
