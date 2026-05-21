@@ -23,7 +23,6 @@ from ab_harness.scorers.file_invariants import (
 )
 from ab_harness.scorers.latency_cost import latency_cost_scorer
 from ab_harness.scorers.llm_judge import llm_judge_scorer
-from ab_harness.scorers.memory_check import memory_check_scorer
 from ab_harness.scorers.privacy_check import privacy_check_scorer
 from ab_harness.scorers.schema import schema_scorer
 from ab_harness.scorers.state_diff import state_diff_scorer
@@ -44,7 +43,6 @@ SCORER_REGISTRY: dict[str, ScorerCallable] = {
     "tool_skill": tool_skill_scorer,
     "context_efficiency": context_efficiency_scorer,
     "latency_cost": latency_cost_scorer,
-    "memory_check": memory_check_scorer,
 }
 
 KIND_DEFAULT_REGISTRY: dict[ScorerKind, ScorerCallable] = {
@@ -78,7 +76,9 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "tool_skill": "tool_skill",
     "context_efficiency": "context_efficiency",
     "latency_cost": "latency_cost",
-    "memory_check": "memory_specific",
+    # memory_check and other L1+ scorers are added by task-authoring agents
+    # alongside their L1+ task YAMLs. This file is the central registry;
+    # entries land here when those tasks land.
     "memory_specific": "memory_specific",
 }
 
@@ -105,7 +105,6 @@ __all__ = [
     "file_diff_scorer",
     "latency_cost_scorer",
     "llm_judge_scorer",
-    "memory_check_scorer",
     "pillar_for",
     "privacy_check_scorer",
     "readme_exact_scorer",

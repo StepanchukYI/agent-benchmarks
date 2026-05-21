@@ -18,6 +18,8 @@ from typing import Any
 from sqlalchemy import case, select
 from sqlmodel import Session
 
+from ab_server.alerts.delivery import dispatch_alert
+from ab_server.config import Settings
 from ab_server.models.alert import AlertRule
 from ab_server.models.run import Run
 from ab_server.models.submission import Submission
@@ -119,8 +121,15 @@ def evaluate_alert(
     *,
     now: datetime | None = None,
     commit: bool = True,
+    settings: Settings | None = None,
+    dispatch: bool = True,
 ) -> bool:
     """Evaluate the rule. Updates last_evaluated_at always; last_fired_at on fire.
+
+    When the rule fires AND ``dispatch`` is True, fan out to the configured
+    channels via ``alerts.delivery.dispatch_alert``. Delivery is best-effort:
+    channel failures are logged and DO NOT block the eval or roll back the
+    last_fired_at stamp.
 
     Returns True if the alert fires, False otherwise.
     """
@@ -145,10 +154,13 @@ def evaluate_alert(
     )
 
     fired = False
+    delta_pct = 0.0
     if cur_mean is not None and prev_mean is not None and n_cur > 0 and n_prev > 0:
-        delta = _delta_pct(cur_mean, prev_mean)
+        delta_pct = _delta_pct(cur_mean, prev_mean)
         threshold = abs(rule.threshold_pct)
-        if (rule.direction == "down" and delta <= -threshold) or (rule.direction == "up" and delta >= threshold):
+        if (rule.direction == "down" and delta_pct <= -threshold) or (
+            rule.direction == "up" and delta_pct >= threshold
+        ):
             fired = True
 
     rule.last_evaluated_at = now
@@ -159,6 +171,34 @@ def evaluate_alert(
         session.add(rule)
         session.commit()
         session.refresh(rule)
+
+    if fired and dispatch:
+        # Settings() reads from env on construction. Cheap (<1ms) but pass an
+        # explicit object from the caller to avoid the dotenv hit in hot loops.
+        cfg = settings or Settings()
+        try:
+            dispatch_alert(
+                rule,
+                {
+                    "current_mean": cur_mean,
+                    "previous_mean": prev_mean,
+                    "delta_pct": delta_pct,
+                    "n_current": n_cur,
+                    "n_previous": n_prev,
+                    "fired_at": now.isoformat(),
+                },
+                settings=cfg,
+            )
+        except Exception:
+            # dispatch_alert is itself best-effort and catches per-channel
+            # errors; this guard only catches catastrophic failures (e.g.
+            # import errors, missing settings fields).
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "alert dispatch raised for rule %s; eval is unaffected", rule.id
+            )
+
     return fired
 
 

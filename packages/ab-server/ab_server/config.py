@@ -54,3 +54,15 @@ class Settings(BaseSettings):
     sync_rescore_batch_size: int = 5
     # "text" (human-friendly) or "json" (one-line JSON per record).
     log_format: str = "text"
+
+    # SMTP for alert email channel. Empty smtp_host disables email delivery
+    # (channels of type "email" are skipped with a warning). All other knobs
+    # are mainstream SMTP defaults; smtp_starttls is honored only when
+    # smtp_use_ssl is False (RFC 3207).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_ssl: bool = False
+    smtp_starttls: bool = True
