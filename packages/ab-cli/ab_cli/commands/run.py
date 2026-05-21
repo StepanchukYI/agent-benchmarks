@@ -15,6 +15,7 @@ from ab_harness.runners import (
     CodexCLIRunner,
     GeminiCLIRunner,
     MockRunner,
+    PiAgentRunner,
     make_runner,
 )
 from ab_harness.sandbox import materialize
@@ -66,6 +67,10 @@ def _make_runner(
         return CodexCLIRunner(model=model, reasoning_effort=effort)
     if runner_name in {"gemini-cli", "gemini"}:
         return GeminiCLIRunner(model=model, reasoning_effort=effort)
+    if runner_name in {"pi-agent", "pi"}:
+        return PiAgentRunner(
+            model=model, effort=effort, env_overrides=env_overrides
+        )
     return make_runner(
         runner=runner_name,
         model=model,

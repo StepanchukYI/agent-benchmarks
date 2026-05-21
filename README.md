@@ -22,18 +22,73 @@ uv run ab run --suite L0_smoke --runner mock --tier T0 --results-root ./results
 ls results/                                     # 5 spec-conforming run dirs
 ```
 
-Real run against Claude Code (requires `claude` CLI + `ANTHROPIC_API_KEY`):
+### Interactive picker
 
 ```bash
-uv run ab run --suite L0_smoke --runner claude-code --model claude-sonnet-4-5 --tier T0
+uv run ab wizard
 ```
 
-Publish to the live leaderboard (after `ab register`):
+Walks numbered prompts: runner → model → effort → suite → tier → optional
+task. Prints the equivalent `ab run` invocation and (optionally) executes
+it. Use `--dry` to just print the command.
+
+### Helper scripts
+
+```bash
+scripts/run_quick.sh                          # claude-sonnet × low × L0_smoke
+MODEL=claude-haiku-4-5 EFFORT=high scripts/run_quick.sh L0_001
+
+# Matrix: model × effort × task → /tmp/ab-matrix-<utc>/
+MODELS="claude-sonnet-4-5 claude-haiku-4-5" \
+EFFORTS="low high" \
+TASKS="L0_001 L0_002 L0_003 L0_004 L0_005" \
+  scripts/run_matrix.sh
+
+# Local backend + leaderboard FE
+scripts/serve_local.sh                        # API :8000, FE :5173
+```
+
+### Supported runners
+
+```
+claude-code        Anthropic Claude Code (claude CLI)
+codex-cli          OpenAI Codex CLI (codex)
+gemini-cli         Google Gemini CLI (gemini)
+opencode           OpenCode CLI (opencode.ai)
+pi-agent           Pi coding agent (pi.dev)
+anthropic-compat   Zhipu / MiniMax / Moonshot / DeepSeek (HTTP)
+openai-compat      OpenAI / any /v1/chat/completions vendor
+local              Ollama / LM Studio / vLLM / llama.cpp
+mock               No live calls — smoke only
+```
+
+### Vendor-routed Claude Code (Chinese vendors via `ANTHROPIC_BASE_URL`)
+
+```bash
+# GLM via claude-code scaffold:
+uv run ab run --suite L0_smoke --task L0_001 --runner claude-code \
+       --model GLM-5.1 --tier T0 \
+       --vendor zhipu --env ANTHROPIC_AUTH_TOKEN=$GLM_API_KEY
+
+# MiniMax via claude-code scaffold:
+uv run ab run --suite L0_smoke --task L0_001 --runner claude-code \
+       --model MiniMax-M2.7 --tier T0 \
+       --vendor minimax --env ANTHROPIC_AUTH_TOKEN=$MINIMAX_API_KEY
+```
+
+`--vendor` resolves to the canonical base URL from
+`ab_harness.models.VENDOR_BASE_URLS` (anthropic / zhipu / moonshot /
+minimax / deepseek). Tokens never come from the shell — pass them via
+`--env`.
+
+### Publish to the live leaderboard
 
 ```bash
 uv run ab register https://github.com/<you>/ab-results --server http://localhost:8000
 uv run ab publish --server http://localhost:8000
 ```
+
+Friend-flow walkthrough: [`docs/friend-onboarding.md`](docs/friend-onboarding.md).
 
 ---
 

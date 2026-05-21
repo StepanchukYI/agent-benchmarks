@@ -8,7 +8,7 @@ import pytest
 from ab_cli.main import app
 from typer.testing import CliRunner
 
-COMMANDS = ["register", "run", "publish", "replay", "submit", "evolve"]
+COMMANDS = ["register", "run", "publish", "replay", "submit", "evolve", "wizard"]
 
 # Strip ANSI escapes (Typer's rich help colorizes when rendered to a real PTY,
 # but CI runners with narrower terminals also wrap long option names across

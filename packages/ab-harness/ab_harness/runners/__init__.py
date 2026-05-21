@@ -8,6 +8,7 @@ from ab_harness.runners.factory import StubRunner, make_runner, supported_runner
 from ab_harness.runners.gemini_cli import GeminiCLIRunner
 from ab_harness.runners.mock import MockRunner
 from ab_harness.runners.openai_compat import OpenAICompatRunner
+from ab_harness.runners.pi_agent import PiAgentRunner
 
 __all__ = [
     "AnthropicCompatRunner",
@@ -17,6 +18,7 @@ __all__ = [
     "GeminiCLIRunner",
     "MockRunner",
     "OpenAICompatRunner",
+    "PiAgentRunner",
     "StubRunner",
     "make_runner",
     "supported_runners",

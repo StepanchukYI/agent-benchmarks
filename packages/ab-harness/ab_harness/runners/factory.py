@@ -40,6 +40,7 @@ from ab_harness.runners.codex_cli import CodexCLIRunner
 from ab_harness.runners.gemini_cli import GeminiCLIRunner
 from ab_harness.runners.mock import MockRunner
 from ab_harness.runners.openai_compat import OpenAICompatRunner
+from ab_harness.runners.pi_agent import PiAgentRunner
 
 
 class StubRunner(BaseRunner):
@@ -76,9 +77,6 @@ _STUB_REASONS: dict[str, str] = {
     "opencode": (
         "opencode runner pending; uses OpenAI-compat wire under its own "
         "scaffold prompts. See P1.8."
-    ),
-    "pi-agent": (
-        "pi-agent runner pending; Inflection PI scaffold + system rules."
     ),
     "hermes-agent": (
         "hermes-agent runner pending; Nous Research Hermes agentic loop."
@@ -144,6 +142,15 @@ def make_runner(
         # Accept reasoning_effort for API symmetry; runner warn-logs.
         effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
         return GeminiCLIRunner(model=model, reasoning_effort=effort, **extra)
+
+    if runner == "pi-agent":
+        # PiAgentRunner shells out to `pi --mode json --print`; vendor API
+        # keys are consumed by the binary itself via env (ANTHROPIC_API_KEY,
+        # OPENAI_API_KEY, etc.) — api_key irrelevant on the runner.
+        # ``effort`` maps to Pi's --thinking levels (off/minimal/low/medium/
+        # high/xhigh).
+        effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
+        return PiAgentRunner(model=model, effort=effort, **extra)
 
     if runner == "local" or local:
         resolved_base = base_url or (

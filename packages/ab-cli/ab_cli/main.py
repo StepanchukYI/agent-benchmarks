@@ -12,6 +12,7 @@ from .commands.replay import replay
 from .commands.run import run
 from .commands.submit import submit
 from .commands.task import task_app
+from .commands.wizard import wizard
 from .ui import console
 
 app = typer.Typer(
@@ -51,6 +52,7 @@ app.command("publish", help="Commit and push results to the registered repo.")(p
 app.command("replay", help="Replay a remote commit on a fresh runner.")(replay)
 app.command("submit", help="Self-report a submission (legacy push, ADR-007 fallback).")(submit)
 app.command("evolve", help="Run a generation of the L5 auto-evolution loop.")(evolve)
+app.command("wizard", help="Interactive runner / model / effort / suite picker.")(wizard)
 app.add_typer(task_app, name="task", help="Validate / list / dry-run tasks.")
 
 
