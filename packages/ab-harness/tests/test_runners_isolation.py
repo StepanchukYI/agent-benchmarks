@@ -185,3 +185,63 @@ def test_native_runners_use_isolation() -> None:
         # tighter check is that env=os.environ.copy() is NOT passed to Popen.
         # The cleanest way is to ensure the runner has _isolated_env wiring.)
         assert "_isolated_env" in text, f"{name} must track an IsolatedEnv"
+
+
+def test_subscription_runners_keep_real_home() -> None:
+    """Runners whose CLI uses subscription auth (claude Max, codex ChatGPT,
+    gemini OAuth, opencode multi-provider login, pi multi-provider login)
+    must preserve the operator's real HOME so the keychain / oauth_creds /
+    auth.json files are reachable. Pinned via source-grep for
+    ``use_fake_home=False``."""
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    for name in ["claude_code.py", "codex_cli.py", "gemini_cli.py", "opencode.py", "pi_agent.py"]:
+        text = (runners_dir / name).read_text()
+        assert "use_fake_home=False" in text, (
+            f"{name} must call IsolatedEnv.build(use_fake_home=False) so "
+            f"subscription auth keeps working. Without this, the CLI cannot "
+            f"reach ~/.{name.split('_')[0]}/ login state and the bench fails "
+            f"with 'Not logged in'."
+        )
+
+
+def test_claude_argv_blocks_user_config_via_flags() -> None:
+    """ClaudeCodeRunner must use claude CLI flags to block user-level
+    contamination (since fake HOME would break Max auth). Pin the four
+    critical flags."""
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    text = (runners_dir / "claude_code.py").read_text()
+    for flag in [
+        '"--system-prompt"',          # REPLACES default → blocks ~/.claude/CLAUDE.md
+        '"--disable-slash-commands"', # blocks Skills
+        '"--agents"',                 # '{}' overrides ~/.claude/agents/
+        '"--strict-mcp-config"',      # blocks ~/.claude MCPs
+    ]:
+        assert flag in text, f"claude_code.py must build argv with {flag}"
+
+
+def test_pi_argv_blocks_user_config_via_flags() -> None:
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    text = (runners_dir / "pi_agent.py").read_text()
+    assert '"--system-prompt"' in text, "pi must REPLACE the default system prompt"
+    assert '"--no-extensions"' in text, "pi must disable extension discovery"
+    assert '"--no-session"' in text, "pi must run ephemeral (no session)"
+
+
+def test_codex_argv_uses_strict_config() -> None:
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    text = (runners_dir / "codex_cli.py").read_text()
+    assert '"--strict-config"' in text, "codex must use --strict-config"
+    assert "shell_environment_policy.inherit=core" in text, (
+        "codex must restrict child-shell env passthrough via "
+        "shell_environment_policy.inherit=core override."
+    )
+
+
+def test_gemini_argv_blocks_extensions() -> None:
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    text = (runners_dir / "gemini_cli.py").read_text()
+    # We pass -e with a non-matching sentinel name to load NO extensions.
+    assert '"-e"' in text and "__ab_isolated__" in text, (
+        "gemini must pass -e with a non-matching sentinel to block all "
+        "user-installed extensions."
+    )

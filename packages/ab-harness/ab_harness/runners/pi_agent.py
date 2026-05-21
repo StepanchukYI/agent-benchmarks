@@ -200,15 +200,24 @@ class PiAgentRunner(BaseRunner):
             self._isolated_env = None
 
     def _build_argv(self, prompt: str) -> list[str]:
+        # Isolation flags (verified against `pi --help`):
+        #   --system-prompt REPLACES the default coding-assistant prompt,
+        #                   blocking pi's own context contamination + any
+        #                   user-level addon prompts.
+        #   --no-extensions Disables extension discovery (pi's Skill
+        #                   equivalent). Built-in tools (read/bash/edit/
+        #                   write) still work.
+        #   --no-session    Ephemeral; nothing persists across runs.
         argv: list[str] = [
             self._binary,
             "--mode",
             "json",
             "--print",
             "--no-session",
+            "--no-extensions",
             "--model",
             self._model,
-            "--append-system-prompt",
+            "--system-prompt",
             _SANDBOX_SYSTEM_PROMPT,
         ]
         if self._provider:
@@ -291,8 +300,14 @@ class PiAgentRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Isolation barrier — see _isolation.py.
-        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
+        # Isolation barrier — see _isolation.py. Preserve real HOME so pi's
+        # per-provider login state (~/.pi/, plus per-provider OAuth caches
+        # like ~/.claude/ for Anthropic via pi) stays reachable. Env
+        # whitelist still strips secret env vars (COMFY_/OBSIDIAN_/etc).
+        self._isolated_env = IsolatedEnv.build(
+            env_overrides=self._env_overrides,
+            use_fake_home=False,
+        )
         argv = self._build_argv(prompt)
 
         # Spawn defensively: if the binary is missing, write a clean

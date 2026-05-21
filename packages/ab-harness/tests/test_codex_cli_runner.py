@@ -163,9 +163,14 @@ def test_runner_argv_reasoning_effort_via_config(monkeypatch: pytest.MonkeyPatch
     runner = CodexCLIRunner(model="gpt-5.4", reasoning_effort="high")
     argv = runner._build_argv()
     # Codex CLI exposes reasoning effort via the generic -c key=value override.
+    # The argv carries multiple `-c` entries (one for isolation env policy,
+    # one for reasoning effort). Look for the model-reasoning one specifically.
     assert "-c" in argv
-    cidx = argv.index("-c")
-    assert argv[cidx + 1] == "model_reasoning_effort=high"
+    assert "model_reasoning_effort=high" in argv
+    cidx = argv.index("model_reasoning_effort=high")
+    assert argv[cidx - 1] == "-c"
+    # Isolation env-passthrough lock is also expected.
+    assert "shell_environment_policy.inherit=core" in argv
 
 
 def test_runner_emits_expected_events(

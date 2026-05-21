@@ -130,9 +130,12 @@ def test_runner_argv_contains_required_flags(monkeypatch: pytest.MonkeyPatch) ->
     assert "--no-session" in argv
     assert "--model" in argv
     assert argv[argv.index("--model") + 1] == "claude-sonnet-4-7"
-    assert "--append-system-prompt" in argv
-    # Sandbox preamble must be passed via --append-system-prompt verbatim.
-    assert argv[argv.index("--append-system-prompt") + 1] == _SANDBOX_SYSTEM_PROMPT
+    assert "--system-prompt" in argv
+    # Sandbox preamble REPLACES default (blocks pi's own coding-assistant
+    # framing + any user-level addons). Pair with --no-extensions which is
+    # also asserted by the isolation test suite.
+    assert argv[argv.index("--system-prompt") + 1] == _SANDBOX_SYSTEM_PROMPT
+    assert "--no-extensions" in argv
     # Prompt is the trailing positional.
     assert argv[-1] == "hello prompt"
 

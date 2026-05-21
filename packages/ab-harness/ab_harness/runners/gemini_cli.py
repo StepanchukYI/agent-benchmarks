@@ -195,6 +195,18 @@ class GeminiCLIRunner(BaseRunner):
         # --dangerously-skip-permissions). No --non-interactive flag
         # exists; non-interactive is implied by `-p/--prompt` or
         # stdin-piped input.
+        #
+        # Isolation: ``-e __ab_isolated__`` passes an extension name that
+        # doesn't exist, which gemini interprets as "use these extensions"
+        # → matches none → no extensions loaded. This blocks user-installed
+        # extensions from contaminating the agent. ``--include-directories``
+        # not used (cwd=/tmp/<run>/workdir already scopes context).
+        #
+        # KNOWN LIMITATION: gemini-cli does not expose a flag to suppress
+        # ~/.gemini/settings.json or a user-level GEMINI.md load. For full
+        # isolation with non-subscription auth, set GEMINI_API_KEY directly
+        # and the operator can opt into `use_fake_home=True` via env
+        # (AB_GEMINI_ISOLATE_HOME=1) in a future patch.
         argv = [
             self._binary,
             "--output-format",
@@ -202,6 +214,8 @@ class GeminiCLIRunner(BaseRunner):
             "--model",
             self._model,
             "--yolo",
+            "-e",
+            "__ab_isolated__",
         ]
         argv.extend(self._extra_args)
         return argv
@@ -283,10 +297,12 @@ class GeminiCLIRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Isolation barrier — see _isolation.py. Drop ~/.gemini/ user config,
-        # GOOGLE_*/GEMINI_* operator env unrelated to the run, and arbitrary
-        # secrets (COMFY_*/OBSIDIAN_*/etc).
-        self._isolated_env = IsolatedEnv.build()
+        # Isolation barrier — see _isolation.py. Preserve real HOME so
+        # gemini's Google OAuth login state (~/.gemini/oauth_creds.json)
+        # stays reachable. Env whitelist strips secret env vars
+        # (COMFY_/OBSIDIAN_/etc). User-level memory blocked at the argv
+        # layer via `-e` (empty extension list) — see _build_argv.
+        self._isolated_env = IsolatedEnv.build(use_fake_home=False)
         argv = self._build_argv()
         try:
             self._proc = subprocess.Popen(

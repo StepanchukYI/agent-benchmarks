@@ -323,8 +323,21 @@ class OpencodeRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Isolation barrier — see _isolation.py.
-        self._isolated_env = IsolatedEnv.build(env_overrides=self._env_overrides)
+        # Isolation barrier — see _isolation.py. Preserve real HOME so
+        # opencode's per-provider login state under ~/.config/opencode/
+        # stays reachable. Env whitelist strips secret env vars
+        # (COMFY_/OBSIDIAN_/etc).
+        #
+        # KNOWN LIMITATION: opencode CLI as of v1.x exposes no flag to
+        # suppress its user-level config (no --no-config, no
+        # --strict-config). The AGENTS.md staged in workdir REPLACES the
+        # default agent prompt only inside the cwd-scoped session; user
+        # extensions / skills under ~/.config/opencode/skills/ may still
+        # load. Filed as a known surface; track for opencode v2.
+        self._isolated_env = IsolatedEnv.build(
+            env_overrides=self._env_overrides,
+            use_fake_home=False,
+        )
 
         argv = self._build_argv(workdir=workdir)
         # Append the prompt as the trailing positional. opencode reads

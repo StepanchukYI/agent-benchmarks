@@ -221,6 +221,9 @@ class CodexCLIRunner(BaseRunner):
             "workspace-write",
             "--skip-git-repo-check",
             "--ephemeral",
+            "--strict-config",
+            "-c",
+            "shell_environment_policy.inherit=core",
             "--model",
             self._model,
         ]
@@ -302,11 +305,14 @@ class CodexCLIRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Isolation barrier — see _isolation.py. Codex CLI auto-loads
-        # ~/.codex/config.toml + ~/.codex/auth and reads OPENAI_*/CODEX_*
-        # env. We whitelist only the keys the CLI strictly needs and point
-        # HOME at a fresh temp dir per run.
-        self._isolated_env = IsolatedEnv.build()
+        # Isolation barrier — see _isolation.py. Preserve real HOME so
+        # codex's ChatGPT Plus/Pro subscription auth (~/.codex/auth.json
+        # + macOS keychain "OpenAI Codex") stays reachable. Env whitelist
+        # strips secret env vars (COMFY_/OBSIDIAN_/etc). Per-run config
+        # overrides via --strict-config + -c shell_environment_policy.inherit
+        # = core block ~/.codex/config.toml from injecting arbitrary tool
+        # rules into the agent's session.
+        self._isolated_env = IsolatedEnv.build(use_fake_home=False)
         argv = self._build_argv()
 
         # Spawn defensively: if the binary is missing, write a clean run_end
