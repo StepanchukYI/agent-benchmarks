@@ -45,6 +45,28 @@ def ingest_runs(
         passed = bool(run.scores.get("pass"))
         status_value = "passed" if passed else "failed"
 
+        # Per-pillar scores live in scores.json["per_pillar"] (written by the
+        # local runner; key names match SCORER_PILLAR_MAP values). Without
+        # this, TaskResult.score_correctness / score_context_eff / ... stay
+        # at the model default of 0.0 and the leaderboard aggregates render
+        # every pillar as 0.0% even when individual submissions scored well.
+        per_pillar = run.scores.get("per_pillar") or {}
+        # Cost + latency come from the trajectory's run_end / cost_usd
+        # aggregate — older ingest code read from metadata.yaml where they
+        # weren't present. Fall back to scores.json fields too.
+        cost_usd = float(
+            run.metadata.get("cost_usd")
+            or run.scores.get("cost_usd")
+            or run.scores.get("total_cost_usd")
+            or 0.0
+        )
+        latency_ms = int(
+            run.metadata.get("latency_ms")
+            or run.scores.get("latency_ms")
+            or run.scores.get("total_latency_ms")
+            or 0
+        )
+
         task_result = TaskResult(
             submission_id=submission.id,
             task_id=run.task_id,
@@ -54,8 +76,13 @@ def ingest_runs(
             tier_hash=str(run.metadata.get("tier_hash") or ""),
             status=status_value,
             score_total=score_total,
-            cost_usd=float(run.metadata.get("cost_usd") or 0.0),
-            latency_ms=int(run.metadata.get("latency_ms") or 0),
+            score_correctness=float(per_pillar.get("correctness") or 0.0),
+            score_context_eff=float(per_pillar.get("context_efficiency") or 0.0),
+            score_tool_skill=float(per_pillar.get("tool_skill") or 0.0),
+            score_memory=float(per_pillar.get("memory_specific") or 0.0),
+            score_latency=float(per_pillar.get("latency_cost") or 0.0),
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
             trajectory_blob_ref=str(run.path / "trajectory.jsonl"),
         )
         session.add(task_result)
