@@ -55,6 +55,39 @@ class Totals(BaseModel):
     score: float = 0.0
 
 
+class SamplingConfig(BaseModel):
+    """Sampling-knob values the model was called with.
+
+    Recorded in trajectory `run_start` so the leaderboard can normalise
+    cross-runner comparisons against the recommended defaults
+    (temperature=0, top_p=1.0, max_output_tokens >= 4096, stream=False).
+    See `docs/result-sensitivity-axes.md` axes #2, #3, #10.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: float | None = None
+    top_p: float | None = None
+    top_k: int | None = None
+    max_output_tokens: int | None = None
+    stream: bool | None = None
+
+
+class ReasoningConfig(BaseModel):
+    """Reasoning / thinking budget the model was instructed to use.
+
+    See `docs/result-sensitivity-axes.md` axis #1 — same model with
+    `thinking=off` vs `thinking=high` differs 20-40% on reasoning-
+    sensitive tasks. Both fields optional; runners that don't expose
+    reasoning controls leave both None.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    effort: Literal["off", "low", "medium", "high", "xhigh", "auto"] | None = None
+    budget_tokens: int | None = None
+
+
 class Trajectory(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
@@ -72,3 +105,22 @@ class Trajectory(BaseModel):
     turns: list[Turn] = Field(default_factory=list)
     scorer_verdicts: list[ScorerVerdict] = Field(default_factory=list)
     totals: Totals | None = None
+    # ── Sensitivity-axis fields (additive, all optional) ─────────────
+    # See docs/result-sensitivity-axes.md. Build spec §12: never remove
+    # fields. New fields default to None so old trajectories validate.
+    sampling: SamplingConfig | None = None
+    reasoning: ReasoningConfig | None = None
+    # The verbatim system prompt the model received. Captures both the
+    # harness-injected default ("You are a helpful assistant") AND the
+    # tier-injected operator CLAUDE.md. Source of truth for axis #11.
+    system_prompt_verbatim: str | None = None
+    # Model's context window in tokens. Filled from MODEL_REGISTRY at
+    # runner construction; lets the leaderboard mark window-exhausted
+    # runs as `n/a` rather than failure. Axis #7.
+    model_context_window_tokens: int | None = None
+    # Output truncation signals. Axis #3.
+    output_truncated: bool | None = None
+    output_tokens_used: int | None = None
+    # Per-task max-turn budget (declared by task YAML scorer or by the
+    # runner's hard cap). Axis #12.
+    turn_cap: int | None = None

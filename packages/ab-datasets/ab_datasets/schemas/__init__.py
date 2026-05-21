@@ -1,4 +1,4 @@
-from .submission import Submission
+from .submission import AgentConfig, Submission
 from .task import (
     Difficulty,
     Fixture,
@@ -12,13 +12,24 @@ from .task import (
     Visibility,
 )
 from .tier import Tier, TierManifest
-from .trajectory import RunStatus, ScorerVerdict, Totals, Trajectory, Turn
+from .trajectory import (
+    ReasoningConfig,
+    RunStatus,
+    SamplingConfig,
+    ScorerVerdict,
+    Totals,
+    Trajectory,
+    Turn,
+)
 
 __all__ = [
+    "AgentConfig",
     "Difficulty",
     "Fixture",
     "Layer",
+    "ReasoningConfig",
     "RunStatus",
+    "SamplingConfig",
     "ScorerChain",
     "ScorerKind",
     "ScorerSpec",
