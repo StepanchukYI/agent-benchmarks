@@ -125,6 +125,7 @@ class ClaudeCodeRunner(BaseRunner):
         dataset_version: str = _DEFAULT_DATASET_VERSION,
         prompt_template_hash: str | None = None,
         effort: str | None = None,
+        env_overrides: dict[str, str] | None = None,
     ) -> None:
         self._model = model
         self._binary = binary
@@ -134,6 +135,19 @@ class ClaudeCodeRunner(BaseRunner):
         # Maps to claude CLI's --effort. Recorded in trajectory.reasoning.
         # Valid values per `claude --help`: low|medium|high|xhigh|max.
         self._effort = effort
+        # Per-run env overrides — set on the subprocess on top of
+        # os.environ.copy(). Use this to point claude CLI at any
+        # Anthropic-compat endpoint (Zhipu GLM, MiniMax, Kimi, DeepSeek)
+        # without touching the user's shell config:
+        #   env_overrides={
+        #     "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+        #     "ANTHROPIC_AUTH_TOKEN": "<token>",
+        #     "ANTHROPIC_MODEL": "GLM-5.1",
+        #   }
+        # Auth tokens MUST come from the caller; this class doesn't read
+        # vendor-specific env (no AUTH_TOKEN_GLM auto-lookup) — privacy
+        # boundary: we never imprint operator credentials into commits.
+        self._env_overrides = dict(env_overrides or {})
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
@@ -256,6 +270,12 @@ class ClaudeCodeRunner(BaseRunner):
         before_snapshot = snapshot(workdir)
 
         env = os.environ.copy()
+        # Per-runner env overrides (e.g. ANTHROPIC_BASE_URL +
+        # ANTHROPIC_AUTH_TOKEN for vendor-routed Anthropic-compat
+        # endpoints). Applied on top of os.environ.copy() so caller
+        # always wins over the user's shell.
+        if self._env_overrides:
+            env.update(self._env_overrides)
         argv = self._build_argv()
         self._proc = subprocess.Popen(
             argv,

@@ -123,14 +123,65 @@ python scripts/ingest_local_runs.py --results-root ~/.ab/results \
 
 ## Adding new (model, effort) combos
 
+### Direct API runner (Anthropic-compat)
+
 ```bash
 ab run --suite L0_smoke --task L0_001 \
        --runner anthropic-compat --model glm-4.6 --tier T0 \
        --base-url https://open.bigmodel.cn/api/anthropic \
        --api-key $GLM_API_KEY
-# Then ingest → leaderboard picks up a new row.
 ```
 
-Same flow for `--runner local --model gemma3-27b` (set up Ollama
-locally, no API key needed — the runner uses
-`http://localhost:11434/v1`).
+Single-prompt completion only — no agentic tool-calling loop yet.
+
+### Vendor-routed claude-code (RECOMMENDED for honest cross-vendor bench)
+
+`claude` CLI itself supports `ANTHROPIC_BASE_URL` env. Run the SAME
+scaffold (claude-code) against ANY Anthropic-compat vendor by setting
+the env at subprocess level. ab run wraps this via `--vendor` +
+`--env` flags so you don't have to fiddle with shell-rc wrappers:
+
+```bash
+# Zhipu GLM via claude-code scaffold:
+ab run --suite L0_smoke --task L0_001 --tier T0 \
+       --runner claude-code --model GLM-5.1 \
+       --vendor zhipu \
+       --env ANTHROPIC_AUTH_TOKEN=$GLM_API_KEY \
+       --env CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+# MiniMax via claude-code scaffold:
+ab run --suite L0_smoke --task L0_001 --tier T0 \
+       --runner claude-code --model MiniMax-M2.7 \
+       --vendor minimax \
+       --env ANTHROPIC_AUTH_TOKEN=$MINIMAX_API_KEY \
+       --env CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+# Same shape for Moonshot Kimi (--vendor moonshot) +
+# DeepSeek (--vendor deepseek).
+```
+
+`--vendor <name>` resolves to the canonical base URL in
+`ab_harness.models.VENDOR_BASE_URLS` (anthropic | zhipu | moonshot |
+minimax | deepseek). You supply the auth token explicitly via --env
+— ab never reads vendor-specific keys from the shell to keep the
+privacy boundary clean.
+
+### Local runner
+
+```bash
+ab run --runner local --model gemma3-27b --tier T0 --suite L0_smoke --task L0_001
+# Uses http://localhost:11434/v1 (Ollama). LM Studio / vLLM /
+# llama.cpp work via --base-url override.
+```
+
+### codex-cli / gemini-cli scaffolds
+
+```bash
+# OpenAI Codex via codex-cli (CLI must be installed):
+ab run --runner codex-cli --model gpt-5.4 --effort low --tier T0 ...
+
+# Google Gemini via gemini-cli (CLI must be installed):
+ab run --runner gemini-cli --model gemini-3-pro --tier T0 ...
+```
+
+Then ingest → leaderboard picks up new rows automatically.

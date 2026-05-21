@@ -46,6 +46,7 @@ def _make_runner(
     base_url: str | None = None,
     system_prompt: str | None = None,
     effort: str | None = None,
+    env_overrides: dict[str, str] | None = None,
 ) -> Any:
     """Map a CLI `--runner` string + `--model` to a BaseRunner.
 
@@ -58,7 +59,9 @@ def _make_runner(
     if runner_name == "mock":
         return MockRunner(model=model)
     if runner_name in {"claude-code", "claude-code-cli", "claude"}:
-        return ClaudeCodeRunner(model=model, effort=effort)
+        return ClaudeCodeRunner(
+            model=model, effort=effort, env_overrides=env_overrides
+        )
     if runner_name in {"codex-cli", "codex"}:
         return CodexCLIRunner(model=model, reasoning_effort=effort)
     if runner_name in {"gemini-cli", "gemini"}:
@@ -134,6 +137,27 @@ def run(
             "their own reasoning controls in a future commit."
         ),
     ),
+    env: list[str] | None = typer.Option(
+        None,
+        "--env",
+        help=(
+            "KEY=VALUE env override passed to the runner's subprocess. "
+            "Repeatable. Used to point claude-code CLI at vendor-routed "
+            "Anthropic-compat endpoints (Zhipu, MiniMax, Kimi, DeepSeek): "
+            "--env ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic "
+            "--env ANTHROPIC_AUTH_TOKEN=$GLM_KEY "
+            "--env ANTHROPIC_MODEL=GLM-5.1"
+        ),
+    ),
+    vendor: str | None = typer.Option(
+        None,
+        help=(
+            "Shortcut to set ANTHROPIC_BASE_URL from the model registry. "
+            "Values: anthropic | zhipu | minimax | moonshot | deepseek. "
+            "Auth token must be passed separately via --env "
+            "ANTHROPIC_AUTH_TOKEN=$VENDOR_KEY."
+        ),
+    ),
     results_root: Path = typer.Option(
         Path.home() / ".ab" / "results",
         help=(
@@ -175,6 +199,22 @@ def run(
         materialized = materialize(_tier_root_default(), tier_enum, t, workdir)
         seed_workdir_from_fixture(t, workdir)
 
+        # Build env_overrides from --env KEY=VAL pairs + --vendor shortcut.
+        env_overrides: dict[str, str] = {}
+        for pair in env or []:
+            if "=" not in pair:
+                console.print(
+                    f"[red]--env requires KEY=VALUE, got {pair!r}[/red]"
+                )
+                raise typer.Exit(2)
+            k, _, v = pair.partition("=")
+            env_overrides[k.strip()] = v
+        if vendor:
+            from ab_harness.models import vendor_base_url
+
+            env_overrides.setdefault("ANTHROPIC_BASE_URL", vendor_base_url(vendor))
+            env_overrides.setdefault("ANTHROPIC_MODEL", model)
+
         runner_obj = _make_runner(
             runner,
             model,
@@ -182,6 +222,7 @@ def run(
             base_url=base_url,
             system_prompt=system_prompt,
             effort=effort,
+            env_overrides=env_overrides or None,
         )
         runner_obj.prepare(materialized)
 

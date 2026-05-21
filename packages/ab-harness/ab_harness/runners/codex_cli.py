@@ -155,9 +155,6 @@ def _resolve_codex_version(binary: str = "codex") -> str:
 class CodexCLIRunner(BaseRunner):
     """Drives the `codex exec --json` CLI and normalizes events into the trajectory protocol."""
 
-    # Codex's accepted reasoning-effort levels. ``None`` means "leave at config default".
-    _VALID_EFFORTS: frozenset[str] = frozenset({"minimal", "low", "medium", "high", "xhigh"})
-
     def __init__(
         self,
         model: str = "gpt-5.4",
