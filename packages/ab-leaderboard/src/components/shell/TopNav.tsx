@@ -11,19 +11,23 @@ import { SignInModal } from "../settings/SignInModal";
 
 interface TopNavProps {
   /** Counts for the top tab badges. */
-  counts?: Partial<Record<"runs" | "tasks", number>>;
+  counts?: Partial<Record<"tasks", number>>;
 }
 
 interface TabDef {
   to: string;
   label: string;
-  countKey?: "runs" | "tasks";
+  countKey?: "tasks";
 }
 
+// `/runs` intentionally absent — `ab run` is a local CLI flow; the
+// server can't execute agents on the user's behalf. When we ship the
+// "My published submissions" view (auth-gated, sourced from
+// /account/repos × /submissions), add it back here as a distinct tab
+// (e.g. "Submissions").
 const TABS: TabDef[] = [
-  { to: "/runs", label: "Runs", countKey: "runs" },
-  { to: "/tasks", label: "Tasks", countKey: "tasks" },
   { to: "/leaderboard", label: "Leaderboard" },
+  { to: "/tasks", label: "Tasks", countKey: "tasks" },
   { to: "/trends", label: "Trends" },
   { to: "/settings", label: "Settings" },
 ];

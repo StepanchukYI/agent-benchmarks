@@ -4,8 +4,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import Leaderboard from "../pages/Leaderboard";
-import RunLauncher from "../pages/RunLauncher";
 import Settings from "../pages/Settings";
+import Tasks from "../pages/Tasks";
 import TrajectoryViewer from "../pages/TrajectoryViewer";
 import Trends from "../pages/Trends";
 import { queryClient } from "../lib/queryClient";
@@ -32,9 +32,9 @@ describe("Pages — smoke", () => {
     expect(screen.getByText(/Mean correctness/i)).toBeDefined();
   });
 
-  it("renders Run Launcher with task tree + configurator", () => {
-    render(withRoute("/runs", <RunLauncher />));
-    expect(screen.getByRole("heading", { name: /Run launcher/i })).toBeDefined();
+  it("renders Tasks library with the task tree", () => {
+    render(withRoute("/tasks", <Tasks />));
+    expect(screen.getByRole("heading", { name: /Task library/i })).toBeDefined();
   });
 
   it("renders Trajectory viewer with the provenance breadcrumb", () => {
