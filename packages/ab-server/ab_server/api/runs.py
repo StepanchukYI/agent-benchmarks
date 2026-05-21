@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -296,17 +296,22 @@ def get_run(
     return summary
 
 
-def _make_session_factory():
+def _make_session_factory(request: Request):
     """Build a session factory that honors test dependency overrides.
 
     Tests override `get_session` to point at a temp SQLite file. The SSE
     generator can't call the dependency directly (no DI machinery once the
     response is returned), so we capture the override (or the default) at
     request time and reuse it on each poll tick.
-    """
-    from ab_server.main import app as _app  # local import avoids cycle
 
-    override = _app.dependency_overrides.get(get_session)
+    Resolves overrides via ``request.app.dependency_overrides`` — this is
+    the SAME app instance FastAPI used to inject ``get_session`` into the
+    enclosing endpoint, so tests that create a fresh ``create_app()`` are
+    honored. The prior implementation imported ``ab_server.main.app`` at
+    call time, which captured the module-level singleton even when the
+    test had built its own app via the factory.
+    """
+    override = request.app.dependency_overrides.get(get_session)
     if override is not None:
         def _factory() -> Session:
             gen = override()
@@ -371,11 +376,12 @@ async def _stream_progress(
 @router.get("/runs/{id}/stream")
 def stream_run(
     id: str,
+    request: Request,
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> StreamingResponse:
     run = _load_run(session, id, user)
-    factory = _make_session_factory()
+    factory = _make_session_factory(request)
     return StreamingResponse(
         _stream_progress(run.id, datetime.now(UTC), factory),
         media_type="text/event-stream",

@@ -21,11 +21,17 @@ _DEVICE_CODE_PATH = "/login/device/code"
 _ACCESS_TOKEN_PATH = "/login/oauth/access_token"
 _USER_PATH = "/user"
 
-# Process-wide singleton httpx client, guarded by _LOCK. Under gunicorn with
-# threaded workers (or async concurrency) the naive ``if _GH_CLIENT is None:
-# _GH_CLIENT = httpx.Client(...)`` pattern can race and leak file descriptors
-# when two threads both see None and each construct a new client. The
-# double-checked-locking pattern below is the standard fix.
+# Per-process singleton httpx client, guarded by _LOCK.
+#
+# Scope: this lock guards concurrency WITHIN one process. Under gunicorn -w N
+# the workers are forked, each with its own _GH_CLIENT = None — that's fine,
+# every worker independently owns its httpx.Client. Inside a single worker,
+# FastAPI may dispatch multiple in-flight requests on the asyncio loop (and,
+# under starlette's threadpool, multiple OS threads) that all hit the lazy
+# initializer. Without the lock, two concurrent callers can both see None,
+# both construct a Client, and one of those Clients leaks (no .close()).
+# The double-checked-locking pattern below is CPython-safe because the GIL
+# orders the inner None-check vs the assignment.
 _GH_CLIENT: httpx.Client | None = None
 _LOCK = threading.Lock()
 

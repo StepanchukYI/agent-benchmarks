@@ -339,8 +339,14 @@ def resolve_submission_paths(
         ) from exc
     traj_path = candidate
     # Size cap: refuse oversized trajectories before reading them into memory.
-    # stat() is cheap and avoids OOM on a hostile or malformed submission.
-    if traj_path.exists() and traj_path.stat().st_size > _TRAJECTORY_MAX_BYTES:
+    # Single stat() call (no separate exists() check) avoids a TOCTOU window
+    # where a symlink could be swapped between exists() and stat(). Missing
+    # file falls through to the caller's own 404 handling.
+    try:
+        size = traj_path.stat().st_size
+    except (FileNotFoundError, OSError):
+        size = 0
+    if size > _TRAJECTORY_MAX_BYTES:
         # 413 is the same status either way; the constant name changed in
         # starlette 0.36+. Use the integer to avoid the deprecation warning
         # without forcing a starlette pin.
