@@ -25,6 +25,7 @@ import {
   useTrendsSeries,
 } from "../api/hooks";
 import { toState } from "../lib/ui-state";
+import { deltaArrow } from "../lib/format";
 
 type Range = "7d" | "30d" | "90d" | "custom";
 type TrendsTab = "overview" | "by_suite" | "by_model" | "alerts" | "ci_gate";
@@ -51,9 +52,23 @@ export default function Trends(): JSX.Element {
   const operatorList = operatorsQuery.data ?? [];
   const overview = overviewState.kind === "ok" ? overviewState.value : null;
 
+  const regressionsDelta = overview?.active_regressions_delta_30d ?? null;
+  const improvementsDelta = overview?.improvements_delta_30d ?? null;
   const stats: Stat[] = [
-    { label: <span className="inline-flex items-center gap-1.5"><AlertTriangle className="size-3 text-fail" /> Active regressions</span>, value: overview?.active_regressions ?? 0, unit: "P0", delta: "▲ 1 vs prev 30d", deltaValue: 1 },
-    { label: <span className="inline-flex items-center gap-1.5"><TrendingUp className="size-3 text-pass" /> Improvements</span>, value: overview?.improvements ?? 0, unit: "tracked", delta: "▲ 2", deltaValue: 2 },
+    {
+      label: <span className="inline-flex items-center gap-1.5"><AlertTriangle className="size-3 text-fail" /> Active regressions</span>,
+      value: overview?.active_regressions ?? 0,
+      unit: "P0",
+      delta: regressionsDelta == null ? undefined : `${deltaArrow(regressionsDelta)} ${regressionsDelta} vs prev 30d`,
+      deltaValue: regressionsDelta,
+    },
+    {
+      label: <span className="inline-flex items-center gap-1.5"><TrendingUp className="size-3 text-pass" /> Improvements</span>,
+      value: overview?.improvements ?? 0,
+      unit: "tracked",
+      delta: improvementsDelta == null ? undefined : `${deltaArrow(improvementsDelta)} ${improvementsDelta}`,
+      deltaValue: improvementsDelta,
+    },
     { label: <span className="inline-flex items-center gap-1.5"><Check className="size-3 text-pass" /> CI gate</span>, value: overview?.ci_gate.status ?? "passing", unit: "last 48h", delta: `${overview?.ci_gate.blocked_merges ?? 0} blocked merges`, deltaValue: 0 },
     { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: overview?.alerts_fired_30d ?? 0, unit: "fired", delta: "9 actioned", deltaValue: 0 },
     { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: overview?.last_full_sweep_at ?? "", delta: "scheduled · 03:00 daily", deltaValue: 0 },

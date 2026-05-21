@@ -15,6 +15,8 @@ import { RightRail } from "../components/leaderboard/RightRail";
 import { useTheme } from "../lib/theme";
 import { useLeaderboard, useModels, useSuites } from "../api/hooks";
 import { toState } from "../lib/ui-state";
+import { deltaArrow } from "../lib/format";
+import type { LeaderboardSummary } from "../lib/types";
 
 type PillarFilter = "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
 
@@ -27,7 +29,6 @@ export default function Leaderboard(): JSX.Element {
   const [activePillar, setActivePillar] = useState<PillarFilter | null>(null);
   const leaderboardQuery = useLeaderboard({ pillar: activePillar ?? undefined });
   const leaderboardState = toState(leaderboardQuery, (r) => r.rows.length === 0);
-  const rows = leaderboardState.kind === "ok" ? leaderboardState.value.rows : [];
   const [filters, setFilters] = useState<LeaderboardFilters>({
     suites: suiteList.map((s) => s.id),
     models: modelList.map((m) => m.id),
@@ -36,17 +37,8 @@ export default function Leaderboard(): JSX.Element {
     datasetCurrentOnly: true,
     dateRange: "7d",
   });
-  const meanC = rows.length > 0 ? rows.reduce((acc, r) => acc + (r.scores[0] ?? 0), 0) / rows.length : 0;
-  const totalRuns = rows.reduce((acc, r) => acc + r.runs, 0);
-  const totalCost = rows.reduce((acc, r) => acc + r.sweep_cost * r.runs * 0.1, 0);
-
-  const stats: Stat[] = [
-    { label: "Mean correctness", value: meanC.toFixed(1), unit: "/100", delta: "▲ 1.4 vs prev 7d", deltaValue: 1.4 },
-    { label: "Runs in window", value: totalRuns.toLocaleString(), delta: "▲ 312", deltaValue: 1 },
-    { label: "Total cost", value: "$" + totalCost.toFixed(2), delta: "▼ 4.10", deltaValue: -4.1 },
-    { label: "Best correctness", value: "claude-opus-4-1", unit: "89.4", delta: "▲ 1.2", deltaValue: 1.2 },
-    { label: "Best $/correctness", value: "minimax-m2", unit: "$0.11", delta: "· stable", deltaValue: 0 },
-  ];
+  const summary = leaderboardQuery.data?.summary ?? null;
+  const stats: Stat[] = buildLeaderboardStats(summary);
 
   return (
     <>
@@ -134,4 +126,75 @@ export default function Leaderboard(): JSX.Element {
       </div>
     </>
   );
+}
+
+/**
+ * Build the StatStrip rows from the server `summary` block. Falls back to
+ * `—` placeholders when summary is null (no runs in window). Deltas use the
+ * shared `deltaArrow` helper so colour tone (`deltaValue`) and arrow stay
+ * in sync; null deltas render as blank with neutral tone.
+ *
+ * Correctness values from the server are 0..1; we render as % with one
+ * decimal. Cost efficiency is USD (model spend / mean correctness).
+ */
+function buildLeaderboardStats(summary: LeaderboardSummary | null): Stat[] {
+  if (!summary) {
+    return [
+      { label: "Mean correctness", value: "—", unit: "%", deltaValue: null },
+      { label: "Runs in window", value: "—", deltaValue: null },
+      { label: "Best correctness", value: "—", deltaValue: null },
+      { label: "Best $/correctness", value: "—", deltaValue: null },
+    ];
+  }
+
+  const meanCorrDelta = summary.mean_correctness_delta;
+  const runsDelta = summary.runs_count_delta;
+  const bestCorrDelta = summary.best_correctness_delta;
+  const bestCostDelta = summary.best_cost_efficiency_delta;
+
+  return [
+    {
+      label: "Mean correctness",
+      value: (summary.mean_correctness * 100).toFixed(1),
+      unit: "%",
+      delta:
+        meanCorrDelta == null
+          ? undefined
+          : `${deltaArrow(meanCorrDelta)} ${(meanCorrDelta * 100).toFixed(1)} vs prev 7d`,
+      deltaValue: meanCorrDelta,
+    },
+    {
+      label: "Runs in window",
+      value: summary.runs_count_window.toLocaleString(),
+      delta:
+        runsDelta == null ? undefined : `${deltaArrow(runsDelta)} ${runsDelta}`,
+      deltaValue: runsDelta,
+    },
+    {
+      label: "Best correctness",
+      value: summary.best_correctness_model ?? "—",
+      unit:
+        summary.best_correctness_value == null
+          ? undefined
+          : (summary.best_correctness_value * 100).toFixed(1),
+      delta:
+        bestCorrDelta == null
+          ? undefined
+          : `${deltaArrow(bestCorrDelta)} ${(bestCorrDelta * 100).toFixed(1)}`,
+      deltaValue: bestCorrDelta,
+    },
+    {
+      label: "Best $/correctness",
+      value: summary.best_cost_efficiency_model ?? "—",
+      unit:
+        summary.best_cost_efficiency_value_usd == null
+          ? undefined
+          : `$${summary.best_cost_efficiency_value_usd.toFixed(2)}`,
+      delta:
+        bestCostDelta == null
+          ? undefined
+          : `${deltaArrow(bestCostDelta)} ${bestCostDelta.toFixed(2)}`,
+      deltaValue: bestCostDelta,
+    },
+  ];
 }

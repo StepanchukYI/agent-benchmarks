@@ -113,6 +113,25 @@ export interface DatasetPin {
   behind: number;
 }
 
+/**
+ * Aggregate metrics for the current leaderboard window. Mirrors
+ * `ab_server.leaderboard.schemas.LeaderboardSummary`. Correctness values are
+ * 0..1 (FE renders as %). `*_delta` is null when there are no runs in the
+ * previous window.
+ */
+export interface LeaderboardSummary {
+  mean_correctness: number;
+  mean_correctness_delta: number | null;
+  runs_count_window: number;
+  runs_count_delta: number | null;
+  best_correctness_model: string | null;
+  best_correctness_value: number | null;
+  best_correctness_delta: number | null;
+  best_cost_efficiency_model: string | null;
+  best_cost_efficiency_value_usd: number | null;
+  best_cost_efficiency_delta: number | null;
+}
+
 export interface LeaderboardRow {
   /** Model id. */
   model: string;

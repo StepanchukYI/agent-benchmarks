@@ -44,6 +44,7 @@ import type {
   ApiTokenCreated,
   ApiTokenSummary,
   LeaderboardRow,
+  LeaderboardSummary,
   Operator,
   RegistryRepo,
   RegressionItem,
@@ -101,6 +102,8 @@ function mockSeed<T>(mock: T): { initialData: T } | Record<string, never> {
 export interface LeaderboardResponse {
   rows: LeaderboardRow[];
   pillars: readonly string[];
+  /** Aggregate metrics for the current window. Null when no runs. */
+  summary?: LeaderboardSummary | null;
   generated_at: string;
 }
 
@@ -152,6 +155,10 @@ export interface TrendsOverview {
   ci_gate: { status: "passing" | "failing"; blocked_merges: number };
   alerts_fired_30d: number;
   last_full_sweep_at: string;
+  /** Δ vs prior 30d window. Null when no prior window data. */
+  active_regressions_delta_30d: number | null;
+  /** Δ vs prior 30d window. Null when no prior window data. */
+  improvements_delta_30d: number | null;
 }
 
 interface TrendsOverviewServer {
@@ -161,12 +168,21 @@ interface TrendsOverviewServer {
   ci_gate_blocked_merges_48h?: number;
   alerts_count_window?: number;
   last_full_sweep_at?: string | null;
+  active_regressions_delta_30d?: number | null;
+  improvements_delta_30d?: number | null;
 }
 
 function normalizeTrendsOverview(
   resp: TrendsOverview | TrendsOverviewServer,
 ): TrendsOverview {
-  if ("ci_gate" in resp && resp.ci_gate) return resp as TrendsOverview;
+  if ("ci_gate" in resp && resp.ci_gate) {
+    const r = resp as TrendsOverview;
+    return {
+      ...r,
+      active_regressions_delta_30d: r.active_regressions_delta_30d ?? null,
+      improvements_delta_30d: r.improvements_delta_30d ?? null,
+    };
+  }
   const s = resp as TrendsOverviewServer;
   return {
     active_regressions: s.active_regressions_count ?? 0,
@@ -177,6 +193,8 @@ function normalizeTrendsOverview(
     },
     alerts_fired_30d: s.alerts_count_window ?? 0,
     last_full_sweep_at: s.last_full_sweep_at ?? "",
+    active_regressions_delta_30d: s.active_regressions_delta_30d ?? null,
+    improvements_delta_30d: s.improvements_delta_30d ?? null,
   };
 }
 
@@ -187,6 +205,8 @@ export function useTrendsOverview() {
     ci_gate: { status: "passing", blocked_merges: 0 },
     alerts_fired_30d: 12,
     last_full_sweep_at: "9h ago",
+    active_regressions_delta_30d: 1,
+    improvements_delta_30d: 2,
   };
   return useQuery<TrendsOverview>({
     queryKey: ["trends", "overview"],
