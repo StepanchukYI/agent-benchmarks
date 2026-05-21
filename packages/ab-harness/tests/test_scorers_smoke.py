@@ -27,10 +27,13 @@ def test_registry_has_all_scorers():
         assert name in SCORER_REGISTRY
 
 
-def test_llm_judge_stub_passes():
+def test_llm_judge_no_task_returns_error_verdict():
+    """Stub removed (P2.11). With no task arg the scorer returns a clean
+    error verdict instead of crashing — task-authoring contract guard."""
     verdict = llm_judge_scorer()
-    assert verdict.pass_ is True
-    assert verdict.score == 1.0
+    assert verdict.pass_ is False
+    assert verdict.score == 0.0
+    assert "task required" in verdict.detail["error"]
 
 
 def test_all_scorers_callable():

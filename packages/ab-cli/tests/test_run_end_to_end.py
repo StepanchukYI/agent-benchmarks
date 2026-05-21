@@ -87,7 +87,11 @@ def test_ab_run_full_l0_smoke_mock(results_dir: Path) -> None:
     assert result.exit_code in {0, 1}, result.output
 
     run_dirs = _list_run_dirs(results_dir)
-    assert len(run_dirs) == 5, f"expected 5 run dirs for L0 smoke; got {len(run_dirs)}"
+    # The L0_smoke suite grows with the backlog (target 20 per build spec §2).
+    # Require at least the original five smoke tasks but accept more.
+    assert len(run_dirs) >= 5, (
+        f"expected ≥5 run dirs for L0_smoke; got {len(run_dirs)}"
+    )
 
     seen_task_ids: set[str] = set()
     for rd in run_dirs:
@@ -95,7 +99,9 @@ def test_ab_run_full_l0_smoke_mock(results_dir: Path) -> None:
         assert issues == [], f"{rd}: {issues}"
         with (rd / "scores.json").open() as fh:
             seen_task_ids.add(json.load(fh)["task_id"])
-    assert seen_task_ids == {"L0_001", "L0_002", "L0_003", "L0_004", "L0_005"}
+    assert {"L0_001", "L0_002", "L0_003", "L0_004", "L0_005"}.issubset(seen_task_ids), (
+        f"missing original five from seen_task_ids={sorted(seen_task_ids)}"
+    )
 
 
 def test_ab_run_unknown_task_exits_nonzero(results_dir: Path) -> None:
