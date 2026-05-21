@@ -23,8 +23,14 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "api_tokens",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("user_id", sa.Uuid(), nullable=False),
+        # NOTE: id + user_id are String(36), not sa.Uuid(), to match the
+        # baseline `0001_initial.py` which declared all primary keys as
+        # String(36). Postgres rejects FK from UUID → VARCHAR(36) with
+        # "foreign key constraint cannot be implemented"; SQLite tolerates
+        # both as TEXT. Keep this in sync with 0001 for every FK to
+        # users.id / registered_repos.id / etc.
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("token_hash", sa.String(), nullable=False),
         sa.Column("prefix", sa.String(), nullable=False),

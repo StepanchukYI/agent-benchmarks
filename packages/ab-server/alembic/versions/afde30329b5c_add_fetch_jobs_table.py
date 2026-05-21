@@ -31,8 +31,14 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "fetch_jobs",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("repo_id", sa.Uuid(), nullable=False),
+        # NOTE: id + repo_id are String(36), not sa.Uuid(), to match the
+        # baseline `0001_initial.py` which declared all primary keys as
+        # String(36). On Postgres a UUID column cannot FK against a
+        # VARCHAR(36) column ("foreign key constraint cannot be implemented");
+        # on SQLite both render as TEXT so the bug only surfaces under
+        # Postgres. Keep this type in sync with 0001 for every new FK.
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("repo_id", sa.String(length=36), nullable=False),
         sa.Column("status", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("max_attempts", sa.Integer(), nullable=False),
