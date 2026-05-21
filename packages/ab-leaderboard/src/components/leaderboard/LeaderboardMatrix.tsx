@@ -35,7 +35,7 @@ export function LeaderboardMatrix(): JSX.Element {
   const rows = leaderboard?.rows ?? [];
   const pillars = leaderboard?.pillars ?? PILLARS;
   const modelList: Model[] = models ?? [];
-  const trends: Record<string, number[]> = trendsSeries?.per_model ?? {};
+  const trends: Record<string, (number | null)[]> = trendsSeries?.per_model ?? {};
 
   const sorted = [...rows].sort((a, b) => {
     const sgn = sort.dir === "desc" ? -1 : 1;
@@ -108,7 +108,7 @@ export function LeaderboardMatrix(): JSX.Element {
                   ))}
                   <Td numeric className="pr-4">
                     <Sparkline
-                      data={trends[r.model] ?? []}
+                      data={(trends[r.model] ?? []).filter((v): v is number => v != null)}
                       width={84}
                       height={20}
                       color={VENDOR_HEX[m.vendor]}

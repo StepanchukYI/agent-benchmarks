@@ -244,10 +244,13 @@ export default function Trends(): JSX.Element {
   );
 }
 
-function seriesSummary(values: number[]): { last: number; delta: number } {
-  if (!values.length) return { last: 0, delta: 0 };
-  const last = values[values.length - 1] ?? 0;
-  const first = values[0] ?? last;
+function seriesSummary(values: (number | null)[]): { last: number; delta: number } {
+  // Skip null buckets (days with no runs). Δ compares first vs last
+  // populated day, not raw array ends.
+  const present = values.filter((v): v is number => v != null);
+  if (!present.length) return { last: 0, delta: 0 };
+  const last = present[present.length - 1]!;
+  const first = present[0]!;
   return { last, delta: last - first };
 }
 

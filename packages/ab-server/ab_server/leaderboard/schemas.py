@@ -90,8 +90,9 @@ class LeaderboardResponse(BaseModel):
 
 
 class TrendsSeriesResponse(BaseModel):
-    per_model: dict[str, list[float]] = Field(default_factory=dict)
-    per_operator: dict[str, list[float]] = Field(default_factory=dict)
+    # None entries = days with no runs (gaps), not zero scores.
+    per_model: dict[str, list[float | None]] = Field(default_factory=dict)
+    per_operator: dict[str, list[float | None]] = Field(default_factory=dict)
     window_days: int = 0
 
 

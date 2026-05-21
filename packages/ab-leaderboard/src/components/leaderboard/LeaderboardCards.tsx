@@ -23,7 +23,7 @@ export function LeaderboardCards(): JSX.Element {
   const rows = leaderboard?.rows ?? [];
   const pillars = leaderboard?.pillars ?? PILLARS;
   const modelList = models ?? [];
-  const trends: Record<string, number[]> = trendsSeries?.per_model ?? {};
+  const trends: Record<string, (number | null)[]> = trendsSeries?.per_model ?? {};
 
   return (
     <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))" }}>
@@ -101,7 +101,7 @@ export function LeaderboardCards(): JSX.Element {
                   <span className="font-mono ml-1">{r.latency_s.toFixed(1)}s</span>
                 </div>
               </div>
-              <Sparkline data={trends[r.model] ?? []} width={84} height={18} color={color} fill />
+              <Sparkline data={(trends[r.model] ?? []).filter((v): v is number => v != null)} width={84} height={18} color={color} fill />
             </div>
           </div>
         );

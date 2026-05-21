@@ -22,14 +22,42 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
   const { data: models } = useModels();
   const { data: trendsSeries } = useTrendsSeries("30d", showOperators);
   const modelList: Model[] = models ?? [];
-  const perModel: Record<string, number[]> = trendsSeries?.per_model ?? {};
-  const perOperator: Record<string, number[]> = trendsSeries?.per_operator ?? {};
+  // Series values can be null for days with no runs (gaps). Keep null in the
+  // working type so we can break the polyline instead of dropping to zero.
+  const perModel: Record<string, (number | null)[]> = trendsSeries?.per_model ?? {};
+  const perOperator: Record<string, (number | null)[]> = trendsSeries?.per_operator ?? {};
   const pad = { l: 36, r: 16, t: 14, b: 28 };
   const days = 30;
   const xPx = (i: number): number => pad.l + (i / (days - 1)) * (width - pad.l - pad.r);
   const yMin = 55;
   const yMax = 95;
   const yPx = (v: number): number => height - pad.b - ((v - yMin) / (yMax - yMin)) * (height - pad.t - pad.b);
+
+  // Build an SVG path that breaks at null gaps (M starts a fresh segment
+  // after every missing day) instead of interpolating through 0.
+  const pathFromSeries = (data: (number | null)[]): string => {
+    let d = "";
+    let penDown = false;
+    data.forEach((v, i) => {
+      if (v == null) {
+        penDown = false;
+        return;
+      }
+      const cmd = penDown ? "L" : "M";
+      d += `${cmd}${xPx(i).toFixed(1)},${yPx(v).toFixed(1)} `;
+      penDown = true;
+    });
+    return d.trim();
+  };
+
+  // Last non-null point — for the end-of-line label/dot.
+  const lastPoint = (data: (number | null)[]): [number, number] | null => {
+    for (let i = data.length - 1; i >= 0; i--) {
+      const v = data[i];
+      if (v != null) return [xPx(i), yPx(v)];
+    }
+    return null;
+  };
 
   const opLines = showOperators
     ? Object.entries(perOperator)
@@ -54,16 +82,12 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
         </g>
       ))}
 
-      {/* Anomaly window callout */}
-      <rect x={xPx(17)} y={pad.t} width={xPx(21) - xPx(17)} height={height - pad.t - pad.b} fill="hsl(var(--warn) / 0.10)" />
-      <text x={(xPx(17) + xPx(21)) / 2} y={pad.t + 10} textAnchor="middle" fontSize="9" className="fill-warn">anomaly window</text>
-
       {modelList.map((m) => {
         const data = perModel[m.id];
         if (!data) return null;
-        const pts = data.map<[number, number]>((v, i) => [xPx(i), yPx(v)]);
-        const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-        const last = pts[pts.length - 1]!;
+        const d = pathFromSeries(data);
+        const last = lastPoint(data);
+        if (!d || !last) return null;
         const color = VENDOR_HEX[m.vendor];
         return (
           <g key={m.id}>
@@ -77,9 +101,9 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
       })}
 
       {opLines.map((s) => {
-        const pts = s.data.map<[number, number]>((v, i) => [xPx(i), yPx(v)]);
-        const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-        const last = pts[pts.length - 1]!;
+        const d = pathFromSeries(s.data);
+        const last = lastPoint(s.data);
+        if (!d || !last) return null;
         return (
           <g key={s.handle}>
             <path d={d} stroke={s.color} strokeWidth="1.1" strokeDasharray="4 3" fill="none" opacity={0.7} />

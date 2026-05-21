@@ -222,8 +222,9 @@ export function useTrendsOverview() {
 }
 
 export interface TrendsSeriesResponse {
-  per_model: Record<string, number[]>;
-  per_operator: Record<string, number[]>;
+  // null = day with no runs (gap), not a zero score.
+  per_model: Record<string, (number | null)[]>;
+  per_operator: Record<string, (number | null)[]>;
   window_days: number;
 }
 

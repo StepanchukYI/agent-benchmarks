@@ -1331,16 +1331,20 @@ def compute_trends_series(
             op_bucket = operator_buckets.setdefault(op, [[] for _ in range(window_days)])
             op_bucket[idx].append(score_val)
 
-    per_model: dict[str, list[float]] = {}
+    # Empty day-buckets are None (gap), NOT 0.0. Plotting 0.0 for a day with
+    # no runs drags the line to the x-axis and makes a single real data
+    # point look like a flat-at-zero line with an invisible spike. None lets
+    # the FE chart render a proper gap / connect across missing days.
+    per_model: dict[str, list[float | None]] = {}
     for model, buckets in model_buckets.items():
         per_model[model] = [
-            (sum(b) / len(b) if b else 0.0) for b in buckets
+            (sum(b) / len(b) if b else None) for b in buckets
         ]
-    per_operator: dict[str, list[float]] = {}
+    per_operator: dict[str, list[float | None]] = {}
     if show_operators:
         for op, buckets in operator_buckets.items():
             per_operator[op] = [
-                (sum(b) / len(b) if b else 0.0) for b in buckets
+                (sum(b) / len(b) if b else None) for b in buckets
             ]
 
     return TrendsSeriesResponse(
