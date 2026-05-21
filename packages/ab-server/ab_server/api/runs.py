@@ -441,6 +441,13 @@ def get_trajectory(
     traj_path, repo, task_result = resolve_submission_paths(
         session, submission, settings.fetcher_cache_dir
     )
+    # Public-repo gate: trajectory contents (tool calls, file diffs, model
+    # output) must not leak from private repos to anonymous callers who
+    # guess a run+task id pair. 404 (not 403) to avoid confirming existence.
+    if repo is None or not repo.is_public:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="trajectory not found"
+        )
     if not traj_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

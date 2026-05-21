@@ -122,13 +122,7 @@ def get_submission(
     id: str,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, Any]:
-    try:
-        sub_id = UUID(id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found") from exc
-    submission = session.get(Submission, sub_id)
-    if submission is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    submission = _resolve_submission(session, id)
     task_result = session.exec(
         select(TaskResult).where(TaskResult.submission_id == submission.id)
     ).first()
@@ -147,12 +141,24 @@ def get_submission(
 
 
 def _resolve_submission(session: Session, id: str) -> Submission:
+    """Resolve a submission by id, enforcing the public-repo gate.
+
+    Detail endpoints (get_submission / trajectory / privacy-scan) must NOT
+    expose submissions from private repos — the list endpoint already
+    filters on RegisteredRepo.is_public, and these by-id handlers used to
+    skip that check, leaking private-repo trajectory + verdict contents to
+    anyone who could guess a submission UUID. Returns 404 (not 403) so the
+    existence of a private submission isn't confirmed.
+    """
     try:
         sub_id = UUID(id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found") from exc
     submission = session.get(Submission, sub_id)
     if submission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    repo = session.get(RegisteredRepo, submission.registered_repo_id)
+    if repo is None or not repo.is_public:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     return submission
 

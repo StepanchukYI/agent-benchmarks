@@ -155,3 +155,54 @@ def test_create_empty_name_rejected(db_engine: object) -> None:
         headers=_h("alice"),
     )
     assert resp.status_code == 400
+
+
+def test_minted_token_authenticates(db_engine: object) -> None:
+    """A minted API token must authenticate via Authorization: Bearer.
+
+    Regression for the audit finding: get_current_user only checked
+    User.session_token and never consulted ApiToken.token_hash, so every
+    token from POST /account/tokens was dead on arrival.
+    """
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/account/tokens",
+        json={"name": "ci-publish"},
+        headers=_h("alice"),
+    )
+    assert created.status_code == 201, created.text
+    plaintext = created.json()["token"]
+
+    # Use ONLY the Bearer token (no X-Test-User), so the real token path
+    # in get_current_user is exercised even with AB_TEST_AUTH=1.
+    resp = client.get(
+        "/api/v1/account/tokens",
+        headers={"Authorization": f"Bearer {plaintext}"},
+    )
+    assert resp.status_code == 200, (
+        f"minted API token must authenticate, got {resp.status_code}: {resp.text}"
+    )
+    # last_used_at should now be set on the token row.
+    item = resp.json()[0]
+    assert item["last_used_at"] is not None
+
+
+def test_revoked_token_rejected(db_engine: object) -> None:
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/account/tokens",
+        json={"name": "ci-temp"},
+        headers=_h("alice"),
+    )
+    plaintext = created.json()["token"]
+    token_id = created.json()["id"]
+    # Revoke it.
+    client.delete(f"/api/v1/account/tokens/{token_id}", headers=_h("alice"))
+    # Now the bearer must be rejected.
+    resp = client.get(
+        "/api/v1/account/tokens",
+        headers={"Authorization": f"Bearer {plaintext}"},
+    )
+    assert resp.status_code == 401, (
+        f"revoked token must 401, got {resp.status_code}"
+    )

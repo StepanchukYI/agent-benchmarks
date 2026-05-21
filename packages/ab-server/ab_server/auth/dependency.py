@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from ab_server.auth.github_oauth import hash_session_token
 from ab_server.config import Settings
 from ab_server.db import get_session
-from ab_server.models import User
+from ab_server.models import ApiToken, User
 
 
 def _bearer_token(request: Request) -> str | None:
@@ -38,17 +38,36 @@ def get_current_user(
 
     token_hash = hash_session_token(token)
     user = session.exec(select(User).where(User.session_token == token_hash)).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
-    if user.session_expires_at is not None:
-        expires = user.session_expires_at
-        if expires.tzinfo is None:
-            expires = expires.replace(tzinfo=UTC)
-        if expires < datetime.now(UTC):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="session expired"
-            )
-    return user
+    if user is not None:
+        if user.session_expires_at is not None:
+            expires = user.session_expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=UTC)
+            if expires < datetime.now(UTC):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="session expired"
+                )
+        return user
+
+    # Fall back to a long-lived API token (minted via POST /account/tokens).
+    # ApiToken uses the same sha256(plaintext) scheme as session tokens, so
+    # the same `token_hash` lookup works. Without this branch, every minted
+    # API token is dead on arrival — the Tokens UI/CLI can create them but
+    # they authenticate nothing.
+    api_token = session.exec(
+        select(ApiToken)
+        .where(ApiToken.token_hash == token_hash)
+        .where(ApiToken.revoked_at.is_(None))  # type: ignore[union-attr]
+    ).first()
+    if api_token is not None:
+        api_token.last_used_at = datetime.now(UTC)
+        session.add(api_token)
+        session.commit()
+        owner = session.exec(select(User).where(User.id == api_token.user_id)).first()
+        if owner is not None:
+            return owner
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
 
 
 def _ensure_test_user(session: Session, handle: str) -> User:
