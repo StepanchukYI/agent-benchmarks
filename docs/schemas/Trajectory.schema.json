@@ -1,5 +1,45 @@
 {
   "$defs": {
+    "ReasoningConfig": {
+      "additionalProperties": false,
+      "description": "Reasoning / thinking budget the model was instructed to use.\n\nSee `docs/result-sensitivity-axes.md` axis #1 \u2014 same model with\n`thinking=off` vs `thinking=high` differs 20-40% on reasoning-\nsensitive tasks. Both fields optional; runners that don't expose\nreasoning controls leave both None.",
+      "properties": {
+        "budget_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Tokens"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "auto"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effort"
+        }
+      },
+      "title": "ReasoningConfig",
+      "type": "object"
+    },
     "RunStatus": {
       "enum": [
         "completed",
@@ -9,6 +49,74 @@
       ],
       "title": "RunStatus",
       "type": "string"
+    },
+    "SamplingConfig": {
+      "additionalProperties": false,
+      "description": "Sampling-knob values the model was called with.\n\nRecorded in trajectory `run_start` so the leaderboard can normalise\ncross-runner comparisons against the recommended defaults\n(temperature=0, top_p=1.0, max_output_tokens >= 4096, stream=False).\nSee `docs/result-sensitivity-axes.md` axes #2, #3, #10.",
+      "properties": {
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
+        },
+        "stream": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stream"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temperature"
+        },
+        "top_k": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top K"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top P"
+        }
+      },
+      "title": "SamplingConfig",
+      "type": "object"
     },
     "ScorerKind": {
       "enum": [
@@ -232,6 +340,42 @@
       "title": "Model",
       "type": "string"
     },
+    "model_context_window_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Context Window Tokens"
+    },
+    "output_tokens_used": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Tokens Used"
+    },
+    "output_truncated": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Truncated"
+    },
     "prompt_template_hash": {
       "anyOf": [
         {
@@ -244,9 +388,31 @@
       "default": null,
       "title": "Prompt Template Hash"
     },
+    "reasoning": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReasoningConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "run_id": {
       "title": "Run Id",
       "type": "string"
+    },
+    "sampling": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SamplingConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "scorer_verdicts": {
       "items": {
@@ -270,6 +436,18 @@
         }
       ],
       "default": null
+    },
+    "system_prompt_verbatim": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "System Prompt Verbatim"
     },
     "task_id": {
       "title": "Task Id",
@@ -300,6 +478,18 @@
         }
       ],
       "default": null
+    },
+    "turn_cap": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Turn Cap"
     },
     "turns": {
       "items": {

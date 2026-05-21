@@ -1,5 +1,179 @@
 {
   "$defs": {
+    "AgentConfig": {
+      "additionalProperties": false,
+      "description": "Cross-submission knob snapshot for sensitivity-aware filtering.\n\nMirrors the per-run values in `Trajectory.sampling` /\n`Trajectory.reasoning`. Submission carries them too so the\nleaderboard can filter without re-opening the trajectory.\n\nSee `docs/result-sensitivity-axes.md` for the full inventory of\naxes (12 secondary axes; this captures the structural ones).",
+      "properties": {
+        "model_context_window_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Context Window Tokens"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasoningConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sampling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SamplingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "system_prompt_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Prompt Sha256"
+        },
+        "turn_cap": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Cap"
+        }
+      },
+      "title": "AgentConfig",
+      "type": "object"
+    },
+    "ReasoningConfig": {
+      "additionalProperties": false,
+      "description": "Reasoning / thinking budget the model was instructed to use.\n\nSee `docs/result-sensitivity-axes.md` axis #1 \u2014 same model with\n`thinking=off` vs `thinking=high` differs 20-40% on reasoning-\nsensitive tasks. Both fields optional; runners that don't expose\nreasoning controls leave both None.",
+      "properties": {
+        "budget_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Tokens"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "auto"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effort"
+        }
+      },
+      "title": "ReasoningConfig",
+      "type": "object"
+    },
+    "SamplingConfig": {
+      "additionalProperties": false,
+      "description": "Sampling-knob values the model was called with.\n\nRecorded in trajectory `run_start` so the leaderboard can normalise\ncross-runner comparisons against the recommended defaults\n(temperature=0, top_p=1.0, max_output_tokens >= 4096, stream=False).\nSee `docs/result-sensitivity-axes.md` axes #2, #3, #10.",
+      "properties": {
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
+        },
+        "stream": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stream"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temperature"
+        },
+        "top_k": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top K"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top P"
+        }
+      },
+      "title": "SamplingConfig",
+      "type": "object"
+    },
     "ScorerKind": {
       "enum": [
         "deterministic",
@@ -75,6 +249,17 @@
   },
   "additionalProperties": false,
   "properties": {
+    "agent_config": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "dataset_version": {
       "title": "Dataset Version",
       "type": "string"

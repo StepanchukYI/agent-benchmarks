@@ -50,7 +50,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-
 # Env keys allowed through the isolation barrier. Anything outside this list is
 # dropped before the subprocess sees it.
 #
@@ -142,7 +141,7 @@ class IsolatedEnv:
         env_overrides: dict[str, str] | None = None,
         extra_keep: frozenset[str] | None = None,
         use_fake_home: bool = True,
-    ) -> "IsolatedEnv":
+    ) -> IsolatedEnv:
         """Return a fresh `IsolatedEnv` ready to hand to `subprocess.Popen`.
 
         Parameters

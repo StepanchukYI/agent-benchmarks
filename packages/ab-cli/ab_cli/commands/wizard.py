@@ -21,7 +21,6 @@ from ab_harness.models import (
 
 from ..ui import console
 
-
 _RUNNERS_FRIENDLY: dict[str, str] = {
     "claude-code": "Anthropic Claude Code (claude CLI)",
     "codex-cli":   "OpenAI Codex CLI (codex)",

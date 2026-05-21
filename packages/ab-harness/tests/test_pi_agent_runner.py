@@ -168,14 +168,14 @@ def test_runner_argv_includes_provider_when_set(monkeypatch: pytest.MonkeyPatch)
 
 def test_pi_thinking_levels_match_cli_documented_set() -> None:
     # Hard guard: the harness's known set must stay 1:1 with Pi's CLI.
-    assert _PI_THINKING_LEVELS == {
+    assert {
         "off",
         "minimal",
         "low",
         "medium",
         "high",
         "xhigh",
-    }
+    } == _PI_THINKING_LEVELS
 
 
 def test_runner_emits_expected_events(

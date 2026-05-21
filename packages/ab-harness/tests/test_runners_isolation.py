@@ -13,7 +13,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-
 from ab_harness.runners._isolation import ALLOWED_ENV_KEYS, IsolatedEnv
 
 

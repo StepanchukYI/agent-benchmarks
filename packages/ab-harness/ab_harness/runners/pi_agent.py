@@ -52,7 +52,6 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import os
 import subprocess
 import threading
 import time
@@ -486,10 +485,7 @@ class PiAgentRunner(BaseRunner):
                     elif raw_output is None:
                         # Pi may put errors in `error.message`.
                         err = event.get("error")
-                        if isinstance(err, dict):
-                            detail = err.get("message") or ""
-                        else:
-                            detail = ""
+                        detail = err.get("message") or "" if isinstance(err, dict) else ""
                     else:
                         detail = json.dumps(raw_output, ensure_ascii=False)
                     tool_turn = {
