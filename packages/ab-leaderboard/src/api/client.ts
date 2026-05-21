@@ -129,6 +129,14 @@ export async function apiFetch<T = unknown>(path: string, init?: RequestInit): P
   if (token && !headers["Authorization"]) {
     headers["Authorization"] = `Bearer ${token}`;
   }
+  // Dev convenience: when AB_TEST_USER is set, send X-Test-User so
+  // server's AB_TEST_AUTH=1 lets us call auth-gated endpoints without a real
+  // GitHub OAuth flow. Never set this in production.
+  const testUser = (import.meta.env as Record<string, string | undefined>)
+    .AB_TEST_USER;
+  if (testUser && !headers["X-Test-User"]) {
+    headers["X-Test-User"] = testUser;
+  }
   const response = await fetch(`${base}${suffix}`, { ...init, headers });
   if (!response.ok) {
     throw new ApiError(response.status, response.statusText, suffix);

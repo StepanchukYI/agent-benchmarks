@@ -150,6 +150,32 @@ export interface TrendsOverview {
   last_full_sweep_at: string;
 }
 
+interface TrendsOverviewServer {
+  active_regressions_count?: number;
+  improvements_count?: number;
+  ci_gate_status?: "passing" | "failing";
+  ci_gate_blocked_merges_48h?: number;
+  alerts_count_window?: number;
+  last_full_sweep_at?: string | null;
+}
+
+function normalizeTrendsOverview(
+  resp: TrendsOverview | TrendsOverviewServer,
+): TrendsOverview {
+  if ("ci_gate" in resp && resp.ci_gate) return resp as TrendsOverview;
+  const s = resp as TrendsOverviewServer;
+  return {
+    active_regressions: s.active_regressions_count ?? 0,
+    improvements: s.improvements_count ?? 0,
+    ci_gate: {
+      status: s.ci_gate_status ?? "passing",
+      blocked_merges: s.ci_gate_blocked_merges_48h ?? 0,
+    },
+    alerts_fired_30d: s.alerts_count_window ?? 0,
+    last_full_sweep_at: s.last_full_sweep_at ?? "",
+  };
+}
+
 export function useTrendsOverview() {
   const mock: TrendsOverview = {
     active_regressions: 3,
@@ -158,9 +184,15 @@ export function useTrendsOverview() {
     alerts_fired_30d: 12,
     last_full_sweep_at: "9h ago",
   };
-  return useQuery({
+  return useQuery<TrendsOverview>({
     queryKey: ["trends", "overview"],
-    queryFn: () => fetchOrMock(endpoints.trendsOverview(), mock),
+    queryFn: async () => {
+      const resp = await fetchOrMock<TrendsOverview | TrendsOverviewServer>(
+        endpoints.trendsOverview(),
+        mock,
+      );
+      return normalizeTrendsOverview(resp);
+    },
     ...mockSeed(mock),
   });
 }
@@ -206,9 +238,15 @@ export function useTrendsRegressions(direction: "down" | "up" = "down") {
 
 export function useRunsList(status?: "scheduled" | "in_progress" | "recent") {
   const mock: RunSummary[] = RECENT_RUNS;
-  return useQuery({
+  return useQuery<RunSummary[]>({
     queryKey: ["runs", "list", status ?? "any"],
-    queryFn: () => fetchOrMock(endpoints.runsList({ status, limit: 50 }), mock),
+    queryFn: async () => {
+      const resp = await fetchOrMock<
+        RunSummary[] | { items: RunSummary[] }
+      >(endpoints.runsList({ status, limit: 50 }), mock);
+      if (Array.isArray(resp)) return resp;
+      return (resp?.items ?? []) as RunSummary[];
+    },
     ...mockSeed(mock),
   });
 }

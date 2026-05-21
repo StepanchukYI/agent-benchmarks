@@ -18,15 +18,18 @@ export default function Tasks(): JSX.Element {
   const tasks = tasksState.kind === "ok" ? tasksState.value : [];
   const defaultTask = tasks.find((t) => t.id === "L1_001") ?? null;
   const [task, setTask] = useState<Task | null>(defaultTask);
+  const pilotCount = tasks.filter((t) => t.layer === "L0").length;
+  const privateCount = tasks.filter((t) => (t as { visibility?: string }).visibility === "private").length;
+  const evolvedCount = tasks.filter((t) => t.layer === "L5").length;
   return (
     <>
       <SubNav
         crumbs={[{ label: "Tasks" }, { label: "Library", current: true }]}
         tabs={[
-          { id: "all", label: "All", active: true, count: 159 },
-          { id: "pilot", label: "Pilot", count: 12 },
-          { id: "private", label: "Private", count: 5 },
-          { id: "evolved", label: "L5 evolved", count: 0 },
+          { id: "all", label: "All", active: true, count: tasks.length },
+          { id: "pilot", label: "L0", count: pilotCount },
+          { id: "private", label: "Private", count: privateCount },
+          { id: "evolved", label: "L5 evolved", count: evolvedCount },
         ]}
       />
       <div className="flex flex-1 min-h-0">
