@@ -446,8 +446,21 @@ class ClaudeCodeRunner(BaseRunner):
             _ensure_atexit_hook()
             self._hidden_user_config = _hide_user_config_files()
             _ATEXIT_REGISTRY.extend(self._hidden_user_config)
+        # Also block git from reading operator's ~/.gitconfig — otherwise
+        # `git config user.email` inside the agent's Bash leaks the
+        # operator's git email (per Git 2.32+ semantics, GIT_CONFIG_GLOBAL
+        # = /dev/null fully replaces the user config). Adding regardless
+        # of hide-flag is fine: benchmark agents never need the operator's
+        # git identity.
+        git_isolation = {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "EMAIL": "anonymous@bench.local",
+        }
+        env_with_git_iso: dict[str, str] = {**git_isolation, **self._env_overrides}
         self._isolated_env = IsolatedEnv.build(
-            env_overrides=self._env_overrides,
+            env_overrides=env_with_git_iso,
             use_fake_home=False,
         )
         # Stage an empty mcp-config alongside the IsolatedEnv tempdir so
