@@ -4,12 +4,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from statistics import fmean
 from typing import Any
 
 from ab_datasets.loaders import load_task
 from ab_datasets.schemas import ScorerVerdict, Task, TrustTier
 from ab_harness.scorers.runner import run_scorer_chain
+from ab_sdk.results import compute_total_score
 from sqlmodel import Session, select
 
 from ab_server.config import Settings
@@ -73,7 +73,10 @@ def rescore_submission(session: Session, submission: Submission) -> RescoreRepor
         return _failure(submission, f"scorer chain raised: {exc}")
 
     has_unsupported = _has_replay_unsupported(verdicts)
-    rescored_total = _verdict_mean(verdicts)
+    # MUST match the write-path aggregation in ab_sdk.results.build_scores_payload
+    # — otherwise weighted tasks would never reach the verified trust tier even
+    # when the agent's behavior is identical on the second pass.
+    rescored_total, _ = compute_total_score(verdicts, task)
     if self_total < _RELATIVE_FLOOR:
         # Absolute scale: score axis is 0-1, so 0.01 absolute == 1% relative.
         discrepancy = abs(rescored_total - self_total)
@@ -161,12 +164,6 @@ def _has_replay_unsupported(verdicts: list[ScorerVerdict]) -> bool:
         if detail.get("replay_unsupported"):
             return True
     return False
-
-
-def _verdict_mean(verdicts: list[ScorerVerdict]) -> float:
-    if not verdicts:
-        return 0.0
-    return float(fmean(v.score for v in verdicts))
 
 
 def _decide_tier(

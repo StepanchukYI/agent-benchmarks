@@ -160,6 +160,50 @@ def _compute_per_pillar(
     return {p: float(fmean(scores)) for p, scores in buckets.items()}
 
 
+def compute_total_score(
+    verdicts: list[ScorerVerdict],
+    task: Task | None = None,
+) -> tuple[float, dict[str, float]]:
+    """Single source of truth for weighted total + per-pillar score.
+
+    Both ``build_scores_payload`` (write path) and the server's rescoring
+    engine (read path) must produce the same number when given identical
+    verdicts — otherwise the verified trust tier becomes unreachable for
+    any task with non-uniform ``weights``.
+
+    Returns ``(total_score, per_pillar)``. ``total_score`` is the weighted
+    sum when ``task.weights`` is present; otherwise the unweighted mean of
+    verdict scores (backward compatibility).
+    """
+    pillar_map = _load_pillar_map()
+    per_pillar = _compute_per_pillar(verdicts, pillar_map)
+
+    weights: dict[str, float] = dict(task.weights) if task and task.weights else {}
+
+    if weights:
+        for pillar, weight in weights.items():
+            if float(weight) < 0:
+                raise ValueError(
+                    f"negative weight not allowed: weights[{pillar!r}]={weight}"
+                )
+        weight_sum = sum(float(w) for w in weights.values())
+        if weight_sum < 1e-9:
+            weights = {}  # zero-sum → fall back to unweighted
+        # off-by-much is the caller's problem; we proceed silently here
+        # (warning logged in build_scores_payload to avoid double-logging).
+
+    if weights:
+        total_score = 0.0
+        for pillar, weight in weights.items():
+            pillar_score = per_pillar.get(pillar, 0.0)
+            total_score += float(weight) * float(pillar_score)
+    else:
+        scores = [v.score for v in verdicts]
+        total_score = float(fmean(scores)) if scores else 0.0
+
+    return total_score, per_pillar
+
+
 def build_scores_payload(
     *,
     run_id: str,
@@ -194,27 +238,15 @@ def build_scores_payload(
     actually saw a verdict; callers that need a fixed-shape record can pad
     with zeros for pillars listed in ``task.weights`` but missing here.
     """
-    pillar_map = _load_pillar_map()
-    per_pillar = _compute_per_pillar(verdicts, pillar_map)
-
-    weights: dict[str, float] = dict(task.weights) if task and task.weights else {}
-
-    # Validate weights: any negative is a hard error (YAML typo or hostile
-    # input); zero-sum or off-1.0 sums are author errors but recoverable.
-    if weights:
-        for pillar, weight in weights.items():
-            if float(weight) < 0:
-                raise ValueError(
-                    f"negative weight not allowed: weights[{pillar!r}]={weight}"
-                )
-        weight_sum = sum(float(w) for w in weights.values())
-        if weight_sum == 0:
+    # Sum-of-weights warning lives here (write path) — once per task.
+    if task and task.weights:
+        weight_sum = sum(float(w) for w in task.weights.values())
+        if weight_sum < 1e-9:
             _log.warning(
                 "task.weights sum to zero (task_id=%s); falling back to "
                 "unweighted mean",
                 task_id,
             )
-            weights = {}  # trigger backward-compat path below
         elif weight_sum > 1.05 or weight_sum < 0.95:
             _log.warning(
                 "task.weights sum to %.4f (task_id=%s); expected ~1.0 — "
@@ -223,16 +255,7 @@ def build_scores_payload(
                 task_id,
             )
 
-    if weights:
-        total_score = 0.0
-        for pillar, weight in weights.items():
-            pillar_score = per_pillar.get(pillar, 0.0)
-            total_score += float(weight) * float(pillar_score)
-    else:
-        # Backward-compat path: unweighted mean over verdict scores.
-        scores = [v.score for v in verdicts]
-        total_score = float(fmean(scores)) if scores else 0.0
-
+    total_score, per_pillar = compute_total_score(verdicts, task)
     all_verdicts_pass = all(v.pass_ for v in verdicts) if verdicts else False
     overall_pass = all_verdicts_pass and total_score >= 0.5
 

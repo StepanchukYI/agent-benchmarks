@@ -23,6 +23,7 @@ dependencies = [
     "gunicorn>=21.2",
     "ab-datasets",
     "ab-harness",
+    "ab-sdk",
 ]
 
 [project.optional-dependencies]

@@ -53,7 +53,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ab:${POSTGRES_PASSWORD}@postgres:5432/ab}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${AB_DOMAIN}}
-      TRUST_PROXY: ${AB_TRUST_PROXY:-1}
+      AB_TRUST_PROXY: ${AB_TRUST_PROXY:-1}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       FETCHER_CACHE_DIR: /app/.cache/agent-benchmarks/fetcher

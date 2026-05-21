@@ -84,10 +84,19 @@ def list_submissions(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
-    stmt = select(Submission, TaskResult).join(
-        TaskResult,
-        TaskResult.submission_id == Submission.id,
-        isouter=True,
+    # Always join RegisteredRepo so we can enforce is_public on every row.
+    # Private repo submissions must only surface via owner-scoped endpoints,
+    # which this is not. Pre-fix this filter only fired when ?operator= was
+    # set, leaking private rows on the unfiltered list view.
+    stmt = (
+        select(Submission, TaskResult)
+        .join(
+            TaskResult,
+            TaskResult.submission_id == Submission.id,
+            isouter=True,
+        )
+        .join(RegisteredRepo, RegisteredRepo.id == Submission.registered_repo_id)
+        .where(RegisteredRepo.is_public == True)  # noqa: E712 — SQL bool
     )
     if tier:
         stmt = stmt.where(Submission.tier == tier)
@@ -98,16 +107,8 @@ def list_submissions(
     if suite:
         stmt = stmt.where(TaskResult.suite == suite)
     if operator:
-        stmt = (
-            stmt.join(
-                RegisteredRepo, RegisteredRepo.id == Submission.registered_repo_id
-            )
-            .join(User, User.id == RegisteredRepo.user_id)
-            .where(User.handle == operator)
-            # Never leak submissions from a private repo through the
-            # public operator-filter; private rows must only surface via
-            # owner-scoped endpoints (which this is not).
-            .where(RegisteredRepo.is_public == True)  # noqa: E712 — SQL bool
+        stmt = stmt.join(User, User.id == RegisteredRepo.user_id).where(
+            User.handle == operator
         )
 
     stmt = stmt.order_by(Submission.ingested_at.desc()).offset(offset).limit(limit)

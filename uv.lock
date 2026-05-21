@@ -137,6 +137,7 @@ source = { editable = "packages/ab-server" }
 dependencies = [
     { name = "ab-datasets" },
     { name = "ab-harness" },
+    { name = "ab-sdk" },
     { name = "alembic" },
     { name = "authlib" },
     { name = "fastapi" },
@@ -159,6 +160,7 @@ dev = [
 requires-dist = [
     { name = "ab-datasets", editable = "packages/ab-datasets" },
     { name = "ab-harness", editable = "packages/ab-harness" },
+    { name = "ab-sdk", editable = "packages/ab-sdk" },
     { name = "alembic", specifier = ">=1.13" },
     { name = "authlib", specifier = ">=1.3" },
     { name = "fastapi", specifier = ">=0.110" },

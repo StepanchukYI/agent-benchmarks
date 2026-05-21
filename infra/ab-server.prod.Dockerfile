@@ -55,13 +55,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # - postgresql-client: provides pg_isready used by the entrypoint
 # - curl: healthcheck probe
 # - ca-certificates: outbound TLS (GitHub API, etc.)
-# Build tools and git are intentionally absent from the runtime image.
+# - git: required by fetcher/git.py (clone/fetch user results repos)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libpq5 \
         postgresql-client \
         curl \
         ca-certificates \
+        git \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 ab \
     && useradd --system --uid 10001 --gid ab --home-dir /app --shell /usr/sbin/nologin ab
