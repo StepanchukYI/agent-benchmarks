@@ -21,6 +21,27 @@ from ab_harness.scorers._base import score_to_verdict
 _HIT_CAP = 50
 _DEFAULT_PATTERNS_PATH = Path(__file__).resolve().parents[3].parent / "docs" / "privacy-patterns.yaml"
 
+_EXCLUDED_PATTERNS = {
+    "path_segments": ("/__pycache__/",),
+    "extensions": (".pyc", ".pyo"),
+    "top_level_dirs": (".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules"),
+}
+
+
+def _is_excluded(rel_path: str) -> bool:
+    norm = rel_path.replace("\\", "/")
+    if norm.startswith("./"):
+        norm = norm[2:]
+    probe = "/" + norm
+    for seg in _EXCLUDED_PATTERNS["path_segments"]:
+        if seg in probe:
+            return True
+    for ext in _EXCLUDED_PATTERNS["extensions"]:
+        if norm.endswith(ext):
+            return True
+    first = norm.split("/", 1)[0]
+    return first in _EXCLUDED_PATTERNS["top_level_dirs"]
+
 
 @dataclass(frozen=True)
 class _Pattern:
@@ -164,6 +185,8 @@ def _scan_workdir(workdir: Path, patterns: list[_Pattern]) -> list[dict[str, Any
         if not path.is_file():
             continue
         rel = str(path.relative_to(workdir))
+        if _is_excluded(rel):
+            continue
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
         except OSError:

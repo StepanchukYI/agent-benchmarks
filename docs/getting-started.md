@@ -14,7 +14,7 @@ make demo-mock              # local-only, no API key needed
 make demo-claude-code       # requires `claude` CLI + ANTHROPIC_API_KEY
 ```
 
-Either path emits `./results/<utc>-<runid>/` with a valid `trajectory.jsonl`, `scores.json`, and `metadata.yaml`.
+Either path emits `<results_root>/<utc>-<runid>/` with a valid `trajectory.jsonl`, `scores.json`, and `metadata.yaml`. By default `results_root` is `~/.ab/results` (kept outside the repo so runners like Claude Code don't auto-discover the parent `CLAUDE.md` / skills / MCPs). Pass `--results-root <path>` to override — CI and the Makefile demo targets pin an explicit path.
 
 ## Prereqs
 

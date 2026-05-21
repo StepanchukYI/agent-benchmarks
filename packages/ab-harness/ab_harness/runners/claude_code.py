@@ -23,9 +23,76 @@ if TYPE_CHECKING:
 
 _DEFAULT_DATASET_VERSION = "ab-datasets==0.0.1"
 
+_SANDBOX_SYSTEM_PROMPT = (
+    "You are an isolated benchmark agent. The only valid scope of your work "
+    "is the current working directory. Do not read or write any path outside "
+    "the cwd. Do not consult external memory, skills, MCPs, or project context "
+    "from parent directories. Treat the task description below as the sole "
+    "specification. Do not ask questions; produce the requested artifact(s) "
+    "directly. When the task is complete, stop."
+)
+
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _scrub_workdir(value: Any, workdir_abs: str) -> Any:
+    """Recursively replace occurrences of workdir absolute path with `./` form."""
+    if not workdir_abs:
+        return value
+    prefix = workdir_abs + "/"
+    if isinstance(value, str):
+        if value == workdir_abs:
+            return "."
+        if value.startswith(prefix):
+            return "./" + value[len(prefix):]
+        return value.replace(prefix, "./").replace(workdir_abs, ".")
+    if isinstance(value, dict):
+        return {k: _scrub_workdir(v, workdir_abs) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_workdir(v, workdir_abs) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_workdir(v, workdir_abs) for v in value)
+    return value
+
+
+def _scrub_home(value: Any, home_abs: str) -> Any:
+    """Recursively replace occurrences of the user home absolute path with `~`."""
+    if not home_abs:
+        return value
+    prefix = home_abs + "/"
+    if isinstance(value, str):
+        if value == home_abs:
+            return "~"
+        if value.startswith(prefix):
+            return "~/" + value[len(prefix):]
+        return value.replace(prefix, "~/").replace(home_abs, "~")
+    if isinstance(value, dict):
+        return {k: _scrub_home(v, home_abs) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_home(v, home_abs) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_home(v, home_abs) for v in value)
+    return value
+
+
+def _scrub_turn(turn: dict[str, Any], workdir_abs: str) -> dict[str, Any]:
+    """Scrub workdir paths from tool_calls[].args and tool_returns[] strings."""
+    home_abs = str(Path.home())
+    tool_calls = turn.get("tool_calls") or []
+    for tc in tool_calls:
+        if isinstance(tc, dict) and "args" in tc:
+            scrubbed = _scrub_workdir(tc.get("args"), workdir_abs)
+            tc["args"] = _scrub_home(scrubbed, home_abs)
+    tool_returns = turn.get("tool_returns") or []
+    for i, tr in enumerate(tool_returns):
+        if isinstance(tr, dict):
+            tool_returns[i] = {
+                k: _scrub_home(_scrub_workdir(v, workdir_abs), home_abs)
+                for k, v in tr.items()
+            }
+    return turn
 
 
 def _resolve_claude_version() -> str:
@@ -100,6 +167,8 @@ class ClaudeCodeRunner(BaseRunner):
             "--dangerously-skip-permissions",
             "--model",
             self._model,
+            "--append-system-prompt",
+            _SANDBOX_SYSTEM_PROMPT,
         ]
         argv.extend(self._extra_args)
         return argv
@@ -132,6 +201,7 @@ class ClaudeCodeRunner(BaseRunner):
             raise ValueError("workdir is required")
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
+        workdir_abs = str(workdir.resolve())
 
         prompt = build_prompt(task)
         run_id = f"run-{uuid.uuid4().hex[:12]}"
@@ -219,7 +289,7 @@ class ClaudeCodeRunner(BaseRunner):
 
                 if etype == "assistant":
                     if buffered_assistant is not None:
-                        trajectory_writer.write_turn(buffered_assistant)
+                        trajectory_writer.write_turn(_scrub_turn(buffered_assistant, workdir_abs))
                         idx += 1
                     buffered_assistant = self._build_assistant_turn(event, idx, latency_ms)
                     totals_tokens_in += buffered_assistant["tokens_in"]
@@ -230,11 +300,11 @@ class ClaudeCodeRunner(BaseRunner):
 
                 if etype == "user":
                     if buffered_assistant is not None:
-                        trajectory_writer.write_turn(buffered_assistant)
+                        trajectory_writer.write_turn(_scrub_turn(buffered_assistant, workdir_abs))
                         idx += 1
                         buffered_assistant = None
                     turn_payload = self._build_user_tool_turn(event, idx, latency_ms)
-                    trajectory_writer.write_turn(turn_payload)
+                    trajectory_writer.write_turn(_scrub_turn(turn_payload, workdir_abs))
                     totals_latency_ms += turn_payload["latency_ms"]
                     idx += 1
                     continue
@@ -246,7 +316,7 @@ class ClaudeCodeRunner(BaseRunner):
             self._proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             if buffered_assistant is not None:
-                trajectory_writer.write_turn(buffered_assistant)
+                trajectory_writer.write_turn(_scrub_turn(buffered_assistant, workdir_abs))
                 idx += 1
                 buffered_assistant = None
             self.cleanup()
@@ -264,7 +334,7 @@ class ClaudeCodeRunner(BaseRunner):
         except Exception:
             if buffered_assistant is not None:
                 with contextlib.suppress(Exception):
-                    trajectory_writer.write_turn(buffered_assistant)
+                    trajectory_writer.write_turn(_scrub_turn(buffered_assistant, workdir_abs))
                 buffered_assistant = None
             with contextlib.suppress(Exception):
                 self._write_run_end(
@@ -285,7 +355,7 @@ class ClaudeCodeRunner(BaseRunner):
         if buffered_assistant is not None:
             if any(vault_diff.values()):
                 buffered_assistant["vault_state_diff"] = vault_diff
-            trajectory_writer.write_turn(buffered_assistant)
+            trajectory_writer.write_turn(_scrub_turn(buffered_assistant, workdir_abs))
             idx += 1
             buffered_assistant = None
 

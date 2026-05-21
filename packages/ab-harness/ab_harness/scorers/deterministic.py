@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -252,13 +253,22 @@ def exec_scorer(
         return score_to_verdict(name, kind, False, 0.0, {"error": "cmd is required"})
 
     run_cwd = workdir / cwd if cwd else workdir
+    # Inject workdir absolute path onto PYTHONPATH so sibling modules
+    # (e.g. `solution.py` next to `test_solution.py`) are importable
+    # when subprocess runs pytest/python in the workdir.
+    base_env = dict(env) if env is not None else dict(os.environ)
+    workdir_abs = str(Path(workdir).resolve())
+    existing_pp = base_env.get("PYTHONPATH", "")
+    base_env["PYTHONPATH"] = (
+        workdir_abs + os.pathsep + existing_pp if existing_pp else workdir_abs
+    )
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(run_cwd),
             capture_output=True,
             timeout=timeout,
-            env=env,
+            env=base_env,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:

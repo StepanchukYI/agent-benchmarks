@@ -69,7 +69,12 @@ def run(
         "claude-code", help="Runner: 'claude-code' or 'mock' (for local dry-runs)."
     ),
     results_root: Path = typer.Option(
-        Path("./results"), help="Root directory under which run dirs are created."
+        Path.home() / ".ab" / "results",
+        help=(
+            "Root directory under which run dirs are created. "
+            "Defaults to ~/.ab/results so workdirs live outside the repo "
+            "and runners don't auto-discover parent CLAUDE.md / skills."
+        ),
     ),
     dataset_version: str = typer.Option(
         "ab-datasets==0.0.1", help="Recorded in trajectory.run_start."
@@ -90,6 +95,7 @@ def run(
 
     results_root = Path(results_root)
     results_root.mkdir(parents=True, exist_ok=True)
+    console.print(f"results_root={results_root}")
 
     overall_ok = True
     for t in tasks:
