@@ -3,7 +3,6 @@ import { Play, RefreshCw } from "lucide-react";
 import { SubNav } from "../components/shell/SubNav";
 import { PageHero } from "../components/shell/PageHero";
 import { StatStrip, type Stat } from "../components/shell/StatStrip";
-import { Pill } from "../components/ui/Pill";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -13,7 +12,7 @@ import { LeaderboardMatrix } from "../components/leaderboard/LeaderboardMatrix";
 import { LeaderboardCards } from "../components/leaderboard/LeaderboardCards";
 import { RightRail } from "../components/leaderboard/RightRail";
 import { useTheme } from "../lib/theme";
-import { useLeaderboard, useModels, useSuites } from "../api/hooks";
+import { useLeaderboard, useSuites } from "../api/hooks";
 import { toState } from "../lib/ui-state";
 import { deltaArrow } from "../lib/format";
 import type { LeaderboardSummary } from "../lib/types";
@@ -22,22 +21,37 @@ type PillarFilter = "correctness" | "tool_skill" | "context_efficiency" | "laten
 
 export default function Leaderboard(): JSX.Element {
   const { leaderboardView, setLeaderboardView } = useTheme();
-  const modelsQuery = useModels();
   const suitesQuery = useSuites();
-  const modelList = modelsQuery.data ?? [];
   const suiteList = suitesQuery.data ?? [];
   const [activePillar, setActivePillar] = useState<PillarFilter | null>(null);
-  const leaderboardQuery = useLeaderboard({ pillar: activePillar ?? undefined });
-  const leaderboardState = toState(leaderboardQuery, (r) => r.rows.length === 0);
+  // Empty arrays = no constraint (show all). The sidebar toggles narrow
+  // from there. Defaults must NOT pre-exclude rows — an earlier default of
+  // operators:["evgeniy"] + trust:[official,verified] would have hidden
+  // every self_reported StepanchukYI run.
   const [filters, setFilters] = useState<LeaderboardFilters>({
-    suites: suiteList.map((s) => s.id),
-    models: modelList.map((m) => m.id),
-    operators: ["evgeniy"],
-    trustTiers: ["official", "verified"],
-    datasetCurrentOnly: true,
+    suites: [],
+    models: [],
+    operators: [],
+    trustTiers: [],
+    datasetCurrentOnly: false,
     dateRange: "7d",
   });
+  // Feed the sidebar filters into the query so toggling actually filters.
+  // Omit empty arrays so "nothing selected" means "all", not "none".
+  const leaderboardQuery = useLeaderboard({
+    pillar: activePillar ?? undefined,
+    suites: filters.suites.length ? filters.suites : undefined,
+    models: filters.models.length ? filters.models : undefined,
+    operators: filters.operators.length ? filters.operators : undefined,
+    trust_tiers: filters.trustTiers.length ? filters.trustTiers : undefined,
+    dataset_current_only: filters.datasetCurrentOnly || undefined,
+    range: filters.dateRange === "24h" ? "24h" : filters.dateRange,
+  });
+  const leaderboardState = toState(leaderboardQuery, (r) => r.rows.length === 0);
   const summary = leaderboardQuery.data?.summary ?? null;
+  const rows = leaderboardQuery.data?.rows ?? [];
+  // Real trajectory total = sum of per-row run counts (NOT a hardcoded number).
+  const trajectoryCount = rows.reduce((acc, r) => acc + (r.runs ?? 0), 0);
   const stats: Stat[] = buildLeaderboardStats(summary);
 
   return (
@@ -54,7 +68,6 @@ export default function Leaderboard(): JSX.Element {
           { id: "skill", label: "Skill router", active: activePillar === "tool_skill", onSelect: () => setActivePillar("tool_skill") },
           { id: "cost", label: "$ Efficiency", active: activePillar === "latency_cost", onSelect: () => setActivePillar("latency_cost") },
         ]}
-        trailing={<span className="text-muted-foreground text-[11px]">Updated 4m ago</span>}
       />
 
       <div className="flex flex-1 min-h-0">
@@ -64,10 +77,9 @@ export default function Leaderboard(): JSX.Element {
           <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
             <PageHero
               title="Leaderboard"
-              subtitle={`${modelList.length} models · ${suiteList.length} suites · last 7 days · 2 759 trajectories scored`}
+              subtitle={`${rows.length} ${rows.length === 1 ? "model" : "models"} · ${suiteList.length} suites · ${trajectoryCount.toLocaleString()} ${trajectoryCount === 1 ? "trajectory" : "trajectories"} scored`}
               actions={
                 <>
-                  <Pill tone="idle" size="sm">Last refresh 4m ago</Pill>
                   <Button onClick={() => leaderboardQuery.refetch()}><RefreshCw className="size-3" /> Refresh</Button>
                   <div className="flex border border-border rounded-md overflow-hidden">
                     <Button

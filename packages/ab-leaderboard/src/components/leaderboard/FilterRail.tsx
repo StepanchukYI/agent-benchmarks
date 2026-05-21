@@ -64,7 +64,6 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
                 </span>
               </span>
             }
-            count={op.is_self ? 412 : Math.floor(40 + ((op.handle.length * 13) % 150))}
           />
         ))}
       </Group>
@@ -74,19 +73,16 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
           on={filters.trustTiers.includes("official")}
           onClick={() => toggle("trustTiers", "official")}
           label={<><TrustDot tier="official" size={10} /> Official</>}
-          count={3}
         />
         <Row
           on={filters.trustTiers.includes("verified")}
           onClick={() => toggle("trustTiers", "verified")}
           label={<><TrustDot tier="verified" size={10} /> Verified</>}
-          count={9}
         />
         <Row
           on={filters.trustTiers.includes("self_reported")}
           onClick={() => toggle("trustTiers", "self_reported")}
           label={<><TrustDot tier="self_reported" size={10} /> Self-reported</>}
-          count={42}
         />
       </Group>
 
@@ -95,13 +91,11 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
           on={filters.datasetCurrentOnly}
           onClick={() => setFilters({ ...filters, datasetCurrentOnly: !filters.datasetCurrentOnly })}
           label="≥ current (v1.0)"
-          count={132}
         />
         <Row
           on={!filters.datasetCurrentOnly}
           onClick={() => setFilters({ ...filters, datasetCurrentOnly: false })}
           label="any version"
-          count={159}
         />
       </Group>
 
@@ -124,7 +118,6 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
             on={filters.models.includes(m.id)}
             onClick={() => toggle("models", m.id)}
             label={m.id}
-            count={Math.floor(40 + ((m.id.length * 11) % 60))}
           />
         ))}
       </Group>
