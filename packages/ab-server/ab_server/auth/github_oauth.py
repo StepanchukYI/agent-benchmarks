@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
+from fastapi import status as http_status
 from sqlmodel import Session, select
 
 from ab_server.config import Settings
 from ab_server.models import User
+
+log = logging.getLogger(__name__)
 
 
 def hash_session_token(token: str) -> str:
@@ -80,8 +85,6 @@ def device_start(client_id: str) -> dict[str, Any]:
         response.raise_for_status()
         return {}
     if isinstance(payload, dict) and "error" in payload:
-        from fastapi import HTTPException, status as http_status
-
         err = payload.get("error", "unknown_error")
         desc = payload.get("error_description") or "GitHub OAuth app rejected the device-flow request."
         # device_flow_disabled is the maintainer's config issue, not the
@@ -108,12 +111,6 @@ def device_poll(
     bare exception bubble up as 500 with no detail, leaving the FE error
     banner with nothing to render but "Internal Server Error".
     """
-    import logging
-
-    from fastapi import HTTPException, status as http_status
-
-    log = logging.getLogger(__name__)
-
     settings = Settings()
 
     # --- Step 1: exchange device_code for access_token ---
