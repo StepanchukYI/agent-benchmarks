@@ -349,8 +349,12 @@ export function useTaskDetail(id: string | undefined) {
     enabled: !!id,
     queryFn: async () => {
       if (!id) throw new Error("missing id");
-      const mock = taskById(id);
-      if (!mock) throw new Error("task not found");
+      // Mock is a fallback only — the limited mock fixture must NOT
+      // gate live data. If the id isn't in the mock catalog (e.g.
+      // tasks authored after the fixture was snapshotted), still
+      // fetch from the server. `fetchOrMock` requires a mock arg, so
+      // construct a minimal placeholder.
+      const mock: Task = taskById(id) ?? ({ id } as unknown as Task);
       return fetchOrMock<Task>(endpoints.taskDetail(id), mock);
     },
   });
