@@ -1,0 +1,103 @@
+id: L0_102
+layer: L0
+suite: long-context-niah
+title: "Multi-needle retrieval: three unlock codes at varying depths"
+description: |
+  The fixture provides `haystack.txt` (~42 KB) with three injected
+  needles at depths ~18%, ~52%, ~86%:
+
+      "The unlock code for the south gate of Storra is GATE-2941."
+      "The unlock code for the east tower of Storra is TOWER-7733."
+      "The unlock code for the harbour vault of Storra is VAULT-1066."
+
+  The user asks:
+
+    "List the three Storra unlock codes from the document, one per
+     line, in the order south gate / east tower / harbour vault.
+     Output ONLY the three codes, no labels, no prose."
+
+  The agent's final message MUST equal byte-for-byte:
+
+      GATE-2941
+      TOWER-7733
+      VAULT-1066
+
+  The fixture deliberately does NOT include other GATE-/TOWER-/VAULT-
+  codes that would cause a contamination ambiguity. Inverting the order
+  or omitting any one code fails the task.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_102/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_codes_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "GATE-2941\nTOWER-7733\nVAULT-1066"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 1
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 12000
+      max_tokens: 40000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "Final assistant message equals the three codes, one per line, in the required order."
+  - "All three codes are present; none are paraphrased or invented."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - multi-needle
+  - ruler
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

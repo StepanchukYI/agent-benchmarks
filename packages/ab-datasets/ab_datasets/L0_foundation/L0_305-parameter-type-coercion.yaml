@@ -1,0 +1,103 @@
+id: L0_305
+layer: L0
+suite: tool-use
+title: "Parameter type discipline: send number, not number-as-string"
+description: |
+  The fixture exposes `set_temperature(celsius: number)`. The user prompt
+  presents the value as a string-with-units:
+
+    "Set the thermostat to '22 celsius'."
+
+  The agent MUST issue exactly one call to `set_temperature` with
+  `celsius=22` (numeric integer or float, NOT the string "22" and NOT
+  "22 celsius"). The agent must parse the user-provided string and pass
+  a typed number that satisfies the JSON Schema (number in [-50, 50]).
+
+  Failure modes:
+    - `celsius` is a string ("22", "22 celsius"),
+    - the value is outside the schema range,
+    - extra tool calls are made.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_305/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: tool_call_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "set_temperature"
+          expected: 1
+        - kind: tool_args_match_schema
+          tool: "set_temperature"
+        - kind: tool_arg_type
+          tool: "set_temperature"
+          arg: "celsius"
+          expected_type: "number"
+          forbid_string: true
+        - kind: tool_args_equal
+          tool: "set_temperature"
+          expected:
+            celsius: 22
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 3
+      pass_threshold: 0.6
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1000
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "Exactly one call to `set_temperature` is issued."
+  - "Argument `celsius` is numeric (not a string), equal to 22."
+  - "Argument satisfies the tool's JSON schema (number in [-50, 50])."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - type-coercion
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive

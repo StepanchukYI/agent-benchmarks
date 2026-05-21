@@ -1,0 +1,29 @@
+{
+  "tools": [
+    {
+      "name": "create_order",
+      "description": "Create a new order. Returns order_id.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "customer_id": { "type": "string", "minLength": 1 },
+          "items":       { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        },
+        "required": ["customer_id", "items"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "send_confirmation_email",
+      "description": "Send a confirmation email for an existing order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "string", "minLength": 1 }
+        },
+        "required": ["order_id"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

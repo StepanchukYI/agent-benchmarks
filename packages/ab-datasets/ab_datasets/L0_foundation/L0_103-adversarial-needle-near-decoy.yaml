@@ -1,0 +1,109 @@
+id: L0_103
+layer: L0
+suite: long-context-niah
+title: "Adversarial needle: pick true fact, reject the decoy planted nearby"
+description: |
+  The fixture provides `haystack.txt` (~42 KB) with TWO nearby paragraphs
+  at the midpoint of the document. The first is a confusable decoy:
+
+      "Some traders claim, without evidence, that the courier route
+       between Vyport and Thalin uses a GREEN-LANTERN signal at
+       midnight; the official archive has formally repudiated this
+       claim."
+
+  Immediately followed by the true fact:
+
+      "The official courier route between Vyport and Thalin uses the
+       BLUE-LANTERN signal at sunset."
+
+  The user asks:
+
+    "According to the official record in the document, what signal
+     does the courier route between Vyport and Thalin use, and at
+     what time? Output ONLY `<SIGNAL>@<time>` (uppercase signal,
+     lowercase time word, no spaces, no punctuation around it)."
+
+  The agent's final message MUST equal `BLUE-LANTERN@sunset` exactly.
+  Selecting the decoy (`GREEN-LANTERN@midnight`) or combining them is
+  a failure.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_103/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "BLUE-LANTERN@sunset"
+          trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "GREEN-LANTERN"
+            - "midnight"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 1
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 12000
+      max_tokens: 40000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "Final assistant message equals `BLUE-LANTERN@sunset` exactly."
+  - "Decoy tokens GREEN-LANTERN / midnight do not appear anywhere in the response."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - adversarial
+  - decoy
+  - ruler
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

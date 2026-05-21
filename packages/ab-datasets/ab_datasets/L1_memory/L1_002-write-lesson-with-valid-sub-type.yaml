@@ -1,0 +1,121 @@
+# L1_002 — Write a lesson with a sub_type from the canonical 8-value enum
+#
+# vault_rules: every lesson entry MUST have a sub_type drawn from
+# {fact, event, discovery, preference, advice, pattern, bug, correction}.
+# This task probes that the agent picks the right value, not an
+# invented one.
+
+id: L1_002
+layer: L1
+suite: memory-write
+title: "Write lesson with sub_type from canonical 8-value enum"
+description: |
+  The agent receives the prompt:
+
+    "Зафиксируй урок: я только что нашёл причину утечки памяти —
+    мы не закрывали соединения в `db_pool`. Запиши как урок."
+
+  The agent MUST append exactly one new entry to
+  `Projects/<active-project>/lessons.md` using the canonical lesson
+  schema and pick the most specific sub_type from the enum
+  {fact, event, discovery, preference, advice, pattern, bug, correction}.
+  For a debugged root cause the only correct value is `bug`.
+
+  Required fields per CLAUDE.md vault_rules:
+    - `importance` (1-5)
+    - `sub_type` (must equal `bug` for this prompt)
+    - `Context`, `Lesson`, `How to apply`, `Valid from`, `Valid until`
+
+  Any other sub_type value, or no sub_type at all, fails the task.
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_lessons_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: lesson_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      mode: append_only_last_entry
+      heading_pattern: "^### \\d{4}-\\d{2}-\\d{2} — .+$"
+      required_fields:
+        - importance
+        - sub_type
+        - Context
+        - Lesson
+        - "How to apply"
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+        sub_type: "^bug$"
+        "Valid from": "^\\d{4}-\\d{2}-\\d{2}$"
+        "Valid until": "^(ongoing|\\d{4}-\\d{2}-\\d{2}|superseded by:.+)$"
+
+  - name: lesson_append_only
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      assertions:
+        - kind: only_appended
+        - kind: prior_entries_unchanged
+        - kind: new_entry_count
+          expected: 1
+
+  - name: hallucination_check
+    kind: llm_judge
+    config:
+      ensemble: 3
+      judges:
+        - opus-4
+        - gpt-5
+        - gemini-2.5-pro
+      criteria:
+        - "Context block references the db_pool memory leak observation."
+        - "Lesson body identifies the missing connection close as the root cause."
+        - "No invented modules, functions, or stack traces beyond the prompt."
+      majority_threshold: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Exactly one new entry is appended to lessons.md."
+  - "Entry contains every required field with valid values."
+  - "sub_type equals `bug` (not any other enum value, not absent)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.30
+  memory_specific: 0.50
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - lessons
+  - schema
+  - sub-type-enum
+  - russian-prompt

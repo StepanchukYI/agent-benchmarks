@@ -1,0 +1,96 @@
+# L1_004 — Architectural decision (ADR) entries default to Valid until: ongoing
+
+id: L1_004
+layer: L1
+suite: memory-write
+title: "ADR-style decision MUST set Valid until: ongoing"
+description: |
+  The user prompt explicitly marks the decision as ADR-flavour
+  (permanent architectural choice):
+
+    "Зафиксируй ADR: все межсервисные таймауты выставляются в 30
+    секунд по умолчанию. Это постоянное архитектурное правило."
+
+  Per vault_rules, permanent architectural decisions MUST have
+  `Valid until: ongoing` — NOT an ISO date, NOT `superseded by:`.
+
+  The agent MUST append exactly one new entry to decisions.md with all
+  canonical fields AND `Valid until` literally equal to the string
+  `ongoing`. Any other value (a date, `forever`, `permanent`,
+  `superseded`, etc.) fails the task.
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_decisions_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: decision_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      mode: append_only_last_entry
+      required_fields:
+        - importance
+        - Context
+        - Decision
+        - Rationale
+        - Consequences
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+        "Valid from": "^\\d{4}-\\d{2}-\\d{2}$"
+        "Valid until": "^ongoing$"
+
+  - name: append_only_state_diff
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      assertions:
+        - kind: only_appended
+        - kind: new_entry_count
+          expected: 1
+        - kind: prior_entries_unchanged
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Exactly one new entry is appended to decisions.md."
+  - "`Valid until` field literally equals the string `ongoing`."
+  - "All other required fields are present and valid."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.30
+  memory_specific: 0.50
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - adr
+  - valid-until
+  - schema
+  - russian-prompt

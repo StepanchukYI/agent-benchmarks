@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "delete_account",
+      "description": "Permanently delete an account. All arguments are required.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_id":    { "type": "string", "minLength": 1 },
+          "confirmation":  { "type": "string", "const": "DELETE" }
+        },
+        "required": ["account_id", "confirmation"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

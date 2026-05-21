@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "search_items",
+      "description": "Search the catalog. Required: query. Optional: limit (default 10, max 50).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "minLength": 1 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

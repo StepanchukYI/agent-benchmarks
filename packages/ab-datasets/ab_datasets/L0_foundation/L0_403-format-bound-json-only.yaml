@@ -1,0 +1,114 @@
+id: L0_403
+layer: L0
+suite: instruction-following
+title: "Format-bound output: JSON only, no prose, no markdown fence"
+description: |
+  The user prompt:
+
+    "Return a JSON object describing the city Paris with keys `name`,
+     `country`, and `population` (integer, current best estimate).
+     Return ONLY the JSON object, no surrounding prose, no markdown
+     code fence, no comments."
+
+  The agent's final message MUST be a single valid JSON object — when
+  the entire message is passed to `json.loads`, the call must succeed
+  and the parsed object must have:
+    - `name` (string, equals "Paris" exactly)
+    - `country` (string, equals "France" exactly)
+    - `population` (integer, in [1_000_000, 50_000_000] sanity range)
+
+  Failure modes:
+    - markdown code fence (```json ... ```) around the JSON,
+    - any prose before or after the JSON object,
+    - trailing comments,
+    - missing keys, extra keys, or wrong types.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: json_only_check
+    kind: schema
+    config:
+      input: "final_assistant_message"
+      mode: "exact_json"
+      schema:
+        type: object
+        required: [name, country, population]
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            const: "Paris"
+          country:
+            type: string
+            const: "France"
+          population:
+            type: integer
+            minimum: 1000000
+            maximum: 50000000
+      assertions:
+        - kind: no_markdown_fence
+        - kind: no_prose_surrounding_json
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 0
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 400
+      max_tokens: 3000
+      pass_threshold: 0.5
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 10000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final assistant message parses as a single JSON object."
+  - "JSON has exactly the keys name/country/population with correct types."
+  - "No markdown fence, no surrounding prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - format-constraint
+  - json
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

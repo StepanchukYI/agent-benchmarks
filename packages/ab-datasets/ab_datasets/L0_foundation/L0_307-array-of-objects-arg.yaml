@@ -1,0 +1,111 @@
+id: L0_307
+layer: L0
+suite: tool-use
+title: "Tool call with array-of-objects argument: structured payload"
+description: |
+  The fixture exposes `submit_form(form_id, fields)` where `fields`
+  is an array of `{name, value}` objects. The user prompt:
+
+    "Submit form `signup-2026` with fields:
+       email = alice@example.com
+       full_name = Alice Example
+       age = 30"
+
+  The agent MUST issue exactly one call to `submit_form` with
+  `form_id="signup-2026"` and a `fields` array of EXACTLY three
+  objects, in any order, with `value` as STRINGS (note: `age`
+  becomes the string `"30"`, not integer 30, per the schema).
+
+  Failure modes:
+    - sending `fields` as a flat object (`{email:..., full_name:...}`),
+    - missing any of the three fields,
+    - sending `age: 30` as a number instead of `"30"`,
+    - extra fields not in the user prompt.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_307/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: tool_call_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "submit_form"
+          expected: 1
+        - kind: tool_args_match_schema
+          tool: "submit_form"
+        - kind: tool_arg_equal
+          tool: "submit_form"
+          arg: "form_id"
+          expected: "signup-2026"
+        - kind: tool_arg_array_set_equal
+          tool: "submit_form"
+          arg: "fields"
+          expected:
+            - { name: "email",     value: "alice@example.com" }
+            - { name: "full_name", value: "Alice Example" }
+            - { name: "age",       value: "30" }
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 3
+      pass_threshold: 0.6
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 10000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "Exactly one call to `submit_form` is issued."
+  - "Argument `form_id` equals `signup-2026`."
+  - "Argument `fields` is an array of exactly three {name, value} objects."
+  - "Field `age.value` is the STRING `\"30\"` (not number)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - structured-args
+  - array-of-objects
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive

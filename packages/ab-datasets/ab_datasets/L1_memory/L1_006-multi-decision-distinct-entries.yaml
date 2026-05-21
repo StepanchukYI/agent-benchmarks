@@ -1,0 +1,106 @@
+# L1_006 — Multi-decision in one session: each gets its own entry
+
+id: L1_006
+layer: L1
+suite: memory-write
+title: "Three separate decisions in one session must become three entries"
+description: |
+  The user delivers three architectural choices in a single message
+  but on distinct topics:
+
+    "Зафиксируй три решения:
+       1. Используем pnpm вместо npm для всех TS-пакетов.
+       2. SQL миграции пишем только forward, без down-методов.
+       3. Все ENV-переменные документируем в `.env.example` с примерами."
+
+  The agent MUST append THREE separate entries to decisions.md, one per
+  topic. Concatenating them into a single multi-topic entry, or
+  describing them in a wrapping summary entry, fails the task. Each
+  entry MUST have its own heading, its own context/decision/rationale/
+  consequences blocks, and may have different importance values.
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_decisions_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: decision_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      mode: append_only_last_n_entries
+      n: 3
+      required_fields:
+        - importance
+        - Context
+        - Decision
+        - Rationale
+        - Consequences
+        - "Valid from"
+        - "Valid until"
+
+  - name: multi_decision_state_diff
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      assertions:
+        - kind: only_appended
+        - kind: new_entry_count
+          expected: 3
+        - kind: distinct_headings
+          min: 3
+        - kind: prior_entries_unchanged
+
+  - name: hallucination_check
+    kind: llm_judge
+    config:
+      ensemble: 3
+      judges:
+        - opus-4
+        - gpt-5
+        - gemini-2.5-pro
+      criteria:
+        - "Each of the three entries covers exactly one of the user's three topics (pnpm, forward-only migrations, .env.example)."
+        - "No topic is split across entries; no topic is merged with another."
+      majority_threshold: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Exactly 3 new entries appended to decisions.md."
+  - "Each entry has its own heading and full set of required fields."
+  - "Each user topic maps to exactly one entry (no merging, no splitting)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.25
+  memory_specific: 0.55
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - multi-entry
+  - russian-prompt

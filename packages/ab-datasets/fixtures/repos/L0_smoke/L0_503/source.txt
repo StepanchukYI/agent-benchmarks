@@ -1,0 +1,11 @@
+PARAGRAPH A — From the 2023 internal product memo:
+"The Atlas project will ship its public beta in Q4 2025."
+
+PARAGRAPH B — From the 2024 board update:
+"The Atlas project is now targeting a Q2 2026 public beta after
+the architecture review surfaced unresolved latency issues."
+
+PARAGRAPH C — From the most recent 2025 engineering newsletter:
+"Atlas is currently in private alpha. No public beta date is
+committed; the team will provide an update after the next quarterly
+review."

@@ -1,0 +1,11 @@
+The Acme Widget Co. quarterly report for Q2 2025 lists three product
+lines: the original Acme Widget, the Acme Mini, and the Acme Pro. The
+report breaks out revenue per line as follows.
+
+  - Acme Widget:  $4.2M
+  - Acme Mini:    $1.1M
+  - Acme Pro:     $3.7M
+
+The report also describes customer-acquisition cost, churn rate, and
+gross margin in aggregate across all lines, but does not break those
+metrics out per product line.

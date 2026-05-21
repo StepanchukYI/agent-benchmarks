@@ -1,0 +1,100 @@
+id: L0_202
+layer: L0
+suite: long-context-aggregation
+title: "Aggregation: sum 17 inventory entries scattered across ~26 KB"
+description: |
+  The fixture provides `haystack.txt` with ~60 short paragraphs of
+  distractor prose. Exactly 17 of those paragraphs each contain one
+  inventory log entry of the form:
+
+      "Inventory log entry <N> units shipped."
+
+  where <N> is an integer. The 17 entries deterministically use the
+  set {3, 7, 12, 4, 19, 25, 8, 11, 6, 2, 14, 30, 9, 5, 17, 1, 23},
+  giving a ground-truth sum of 196.
+
+  The user asks:
+
+    "Scan the document for every paragraph of the form
+     `Inventory log entry N units shipped.` Sum the N values and
+     output ONLY the total integer, no prose, no commas."
+
+  The agent's final message MUST equal `196` exactly. Decoy paragraphs
+  do NOT contain the substring `Inventory log entry`, so a substring
+  scan is unambiguous.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_202/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_sum_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "196"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 1
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 8000
+      max_tokens: 30000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 25000
+      max_ms: 150000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "Final assistant message equals `196` exactly."
+  - "No commas, no prose, no trailing punctuation."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - aggregation
+  - sum
+  - ruler
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

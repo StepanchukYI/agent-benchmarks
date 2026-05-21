@@ -1,0 +1,104 @@
+id: L0_601
+layer: L0
+suite: environment-probe
+title: "Agent reads CLAUDE.md (or AGENTS.md) before issuing a substantive response at T1+"
+description: |
+  Probe initial environment behaviour: at any tier that ships an
+  operator CLAUDE.md (T1, T2, T3), the agent's FIRST file read in the
+  trajectory MUST target `CLAUDE.md`, `AGENTS.md`, or
+  `.claude/CLAUDE.md` BEFORE the agent emits a substantive response
+  to the user.
+
+  The user prompt is intentionally bland and content-free:
+
+    "Hello."
+
+  At T1+, an agent that respects auto-context should read its
+  operator file first. At T0 (no operator file shipped), this probe
+  is not applicable and the task is skipped.
+
+  Failure modes:
+    - the trajectory shows the agent answering with no file read,
+    - the first file read targets some other path,
+    - the agent fabricates "according to my instructions" prose
+      without having read any instructions.
+
+fixture_ref: null
+
+config:
+  required_tier: T1
+  recommended_tier: T2
+  also_run_on:
+    - T2
+    - T3
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: first_read_is_operator_file
+    kind: deterministic
+    config:
+      assertions:
+        - kind: first_file_read
+          expected_oneof:
+            - "CLAUDE.md"
+            - "AGENTS.md"
+            - ".claude/CLAUDE.md"
+            - ".claude/CLAUDE.local.md"
+        - kind: file_read_before_first_assistant_text
+          expected_oneof:
+            - "CLAUDE.md"
+            - "AGENTS.md"
+            - ".claude/CLAUDE.md"
+            - ".claude/CLAUDE.local.md"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 5
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 12000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 10000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "First file read targets one of CLAUDE.md / AGENTS.md / .claude/CLAUDE.md."
+  - "That read happens BEFORE the first non-empty assistant text."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.60
+  tool_skill: 0.20
+  memory_specific: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - initial-behavior
+  - auto-context
+  - tier-delta
+  - deterministic

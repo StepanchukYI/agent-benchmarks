@@ -1,0 +1,4 @@
+2026-05-01 09:00:00 INFO  service started
+2026-05-01 09:15:42 INFO  request id=req-001 ok
+2026-05-01 09:32:18 WARN  retry req-002 attempt=2
+2026-05-01 09:32:51 INFO  request id=req-002 ok

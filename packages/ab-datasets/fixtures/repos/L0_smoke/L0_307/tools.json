@@ -1,0 +1,29 @@
+{
+  "tools": [
+    {
+      "name": "submit_form",
+      "description": "Submit a form whose fields is an array of objects.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "form_id": { "type": "string", "minLength": 1 },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":  { "type": "string", "minLength": 1 },
+                "value": { "type": "string" }
+              },
+              "required": ["name", "value"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["form_id", "fields"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

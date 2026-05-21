@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "set_priority",
+      "description": "Set issue priority. Allowed values: low | medium | high | critical.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "issue_id": { "type": "string", "minLength": 1 },
+          "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] }
+        },
+        "required": ["issue_id", "priority"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

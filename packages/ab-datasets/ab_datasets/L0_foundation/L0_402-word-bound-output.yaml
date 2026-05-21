@@ -1,0 +1,106 @@
+id: L0_402
+layer: L0
+suite: instruction-following
+title: "Word-bound output: answer in exactly 14 words"
+description: |
+  The user prompt asks a constrained question:
+
+    "Describe what photosynthesis is, in EXACTLY 14 words. No more,
+     no less. Plain prose only — no lists, no headers, no quotes,
+     no parenthetical asides."
+
+  The agent's final message MUST contain exactly 14
+  whitespace-separated tokens **after** the scorer applies these
+  normalisation steps:
+
+    1. strip leading/trailing whitespace,
+    2. collapse runs of whitespace (including newlines) to a single
+       space,
+    3. split on whitespace and count.
+
+  Hyphenated words count as one token (e.g. `light-energy` = 1).
+  Tokens with attached punctuation count as one (e.g. `plants,` = 1).
+  An empty token from double-spaces does NOT count. Any final
+  message with a count other than 14 (per the above normalisation)
+  fails the task.
+
+  The content must be on-topic (factually describe photosynthesis) per
+  llm_judge audit, but the deterministic gate is the word count.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: word_count_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_word_count
+          expected: 14
+          tokenizer: "whitespace"
+        - kind: final_assistant_message_no_markdown
+        - kind: final_assistant_message_no_quotes
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 0
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 400
+      max_tokens: 3000
+      pass_threshold: 0.5
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 10000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final assistant message contains exactly 14 whitespace-separated tokens."
+  - "Message contains no markdown, lists, quotes, or headers."
+  - "Zero tool calls are issued."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - word-count
+  - format-constraint
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - tokenizer-sensitive

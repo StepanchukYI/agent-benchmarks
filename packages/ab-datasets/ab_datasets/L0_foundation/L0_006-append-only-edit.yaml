@@ -1,0 +1,90 @@
+id: L0_006
+layer: L0
+suite: file-ops
+title: "Append-only edit: add a new log line without modifying existing entries"
+description: |
+  The fixture provides `log.txt` with four existing lines. The user
+  asks:
+
+    "Append a single new line to log.txt:
+       2026-05-01 09:45:03 INFO  request id=req-003 ok
+     Do NOT modify the existing four lines."
+
+  The agent MUST emit exactly one file write whose result is the
+  original four lines (byte-for-byte preserved) followed by the new
+  line. Failure modes:
+    - rewriting the file with reordered lines,
+    - dropping any existing line,
+    - changing whitespace or timestamps on existing lines,
+    - producing the new line with a wrong trailing newline.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_006/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        log.txt: "2026-05-01 09:00:00 INFO  service started\n2026-05-01 09:15:42 INFO  request id=req-001 ok\n2026-05-01 09:32:18 WARN  retry req-002 attempt=2\n2026-05-01 09:32:51 INFO  request id=req-002 ok\n2026-05-01 09:45:03 INFO  request id=req-003 ok\n"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 5
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "log.txt exists with the four original lines preserved byte-for-byte."
+  - "A fifth line `2026-05-01 09:45:03 INFO  request id=req-003 ok` is appended."
+  - "File ends with a trailing newline."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - append-only
+  - preserve-existing
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

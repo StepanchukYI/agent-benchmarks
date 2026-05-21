@@ -1,0 +1,126 @@
+# L1_005 — Importance distribution sanity: do not inflate every entry to 5/5
+
+id: L1_005
+layer: L1
+suite: memory-write
+title: "Importance distribution: batch of 5 lessons must not all be importance=5"
+description: |
+  The user delivers five lessons in a single message, each clearly of a
+  different magnitude (one operational note, one routine observation, one
+  bug fix, one new permanent rule, one minor preference):
+
+    "Запиши пять уроков в lessons.md:
+       1. Сегодня перезапустил dev-сервер — забыл, что nodemon не
+          подхватывает изменения в `.env` без рестарта (мелкая
+          операционная заметка).
+       2. Обратил внимание, что в `client.py` повторяющийся retry-loop
+          стоит вынести в декоратор (рекомендация).
+       3. Нашёл баг: `/api/users` отдавал 500 на пустой `email` — починил
+          добавлением валидации.
+       4. Принял правило: НИКОГДА не коммитить с тестами в красном.
+          Это permanent.
+       5. Лично мне удобнее работать в Vim с relative line numbers
+          (preference)."
+
+  The agent MUST append five new entries. Importance values MUST be
+  diverse — at least three distinct values across the five entries.
+  Default-everything-to-5 (or to-3) fails the task; the build spec
+  CLAUDE.md vault_rules calls importance inflation out by name.
+
+  Suggested mapping per vault_rules guidance:
+    1 → importance 2 (operational noise)
+    2 → importance 3 (useful, project-scoped)
+    3 → importance 4 (bug fix, prevented a regression)
+    4 → importance 5 (permanent rule, cross-project)
+    5 → importance 2-3 (personal preference)
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_lessons_md: true
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: lesson_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      mode: append_only_last_n_entries
+      n: 5
+      required_fields:
+        - importance
+        - sub_type
+        - Context
+        - Lesson
+        - "How to apply"
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+
+  - name: importance_distribution_check
+    kind: deterministic
+    config:
+      target_file: "Projects/agent-benchmarks/lessons.md"
+      assertions:
+        - kind: appended_entry_count
+          expected: 5
+        - kind: distinct_importance_values
+          min: 3
+        - kind: not_all_importance_equal_to
+          value: 5
+        - kind: not_all_importance_equal_to
+          value: 3
+
+  - name: hallucination_check
+    kind: llm_judge
+    config:
+      ensemble: 3
+      judges:
+        - opus-4
+        - gpt-5
+        - gemini-2.5-pro
+      criteria:
+        - "Each entry's importance is plausibly justified by its content."
+        - "Permanent rules (lesson 4) carry importance 5; operational notes (lesson 1) carry importance ≤3."
+      majority_threshold: 2
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "Exactly 5 new entries appended to lessons.md."
+  - "At least 3 distinct importance values across the 5 entries."
+  - "Not all entries share importance=5 (no inflation)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.20
+  memory_specific: 0.60
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - importance
+  - distribution
+  - russian-prompt

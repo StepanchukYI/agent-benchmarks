@@ -1,0 +1,95 @@
+id: L0_302
+layer: L0
+suite: tool-use
+title: "Tool call passes one optional argument (limit)"
+description: |
+  The fixture exposes `search_items(query, limit=10)`. The required arg
+  is `query`; `limit` is optional with default 10 and max 50.
+
+  The user prompt is:
+
+    "Find me the top 5 items matching 'red shoes'."
+
+  The agent MUST issue exactly one call to `search_items` with
+  `query="red shoes"` and `limit=5`. Omitting `limit` (falling back to
+  default 10), or sending a different limit, fails the task. Sending
+  `limit` out of bounds (≤0 or >50) also fails.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_302/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: tool_call_validator
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "search_items"
+          expected: 1
+        - kind: tool_args_match_schema
+          tool: "search_items"
+        - kind: tool_args_equal
+          tool: "search_items"
+          expected:
+            query: "red shoes"
+            limit: 5
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 5
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1000
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "Exactly one call to `search_items` is issued."
+  - "Argument `query` equals exactly `red shoes`."
+  - "Argument `limit` equals 5 (integer, within [1,50])."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bfcl
+  - optional-args
+  - deterministic
+  - smoke-test

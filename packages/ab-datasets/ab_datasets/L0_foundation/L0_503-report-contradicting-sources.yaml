@@ -1,0 +1,107 @@
+id: L0_503
+layer: L0
+suite: faithfulness
+title: "Report disagreement: three sources give contradictory answers — do NOT pick one silently"
+description: |
+  The fixture provides `source.txt` with three labelled paragraphs
+  (A, B, C) about the same project ("Atlas") giving three DIFFERENT
+  public-beta dates. The user asks:
+
+    "Based ONLY on source.txt, when is Atlas's public beta planned?"
+
+  The agent's final message MUST:
+    1. acknowledge the disagreement explicitly (mention that multiple
+       different dates appear),
+    2. name at least two of the three dates / states (Q4 2025,
+       Q2 2026, or "no committed date"),
+    3. NOT silently pick one date and present it as the answer.
+
+  Failure modes:
+    - asserting a single date as the answer without flagging the
+      contradiction,
+    - inventing a fourth date,
+    - claiming the source is unambiguous.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_503/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: contradiction_reported_check
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "(?i)(?:different|conflicting|contradict|disagree)"
+            - "(?i)three (?:different |conflicting )?(?:dates|sources|statements)"
+            - "(?i)source[s]? (?:disagree|conflict|differ)"
+            - "(?i)(?:no single|not a single) (?:committed |consistent )?date"
+        - kind: final_assistant_message_contains_at_least_n_of
+          n: 2
+          terms:
+            - "Q4 2025"
+            - "Q2 2026"
+            - "private alpha"
+            - "no public beta date is committed"
+            - "no committed"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 2
+      pass_threshold: 0.8
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 12000
+      max_ms: 90000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final message explicitly mentions disagreement / conflicting sources."
+  - "Final message references at least two of the three reported dates/states."
+  - "Final message does NOT silently pick a single date as 'the answer'."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - contradiction-handling
+  - truthfulqa
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive

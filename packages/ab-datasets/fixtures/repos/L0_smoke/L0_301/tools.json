@@ -1,0 +1,18 @@
+{
+  "tools": [
+    {
+      "name": "create_user",
+      "description": "Create a new user record.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email":    { "type": "string", "format": "email" },
+          "username": { "type": "string", "minLength": 1 },
+          "age":      { "type": "integer", "minimum": 0 }
+        },
+        "required": ["email", "username", "age"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

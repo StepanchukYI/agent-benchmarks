@@ -1,0 +1,104 @@
+# L1_003 — Edit must append only; never reorder or delete prior entries
+
+id: L1_003
+layer: L1
+suite: memory-write
+title: "Append-only discipline: edit must not reorder or delete prior entries"
+description: |
+  The fixture's `Projects/agent-benchmarks/decisions.md` already contains
+  three prior entries (dated 2026-04-10, 2026-04-22, 2026-05-08). The
+  user prompt:
+
+    "Запиши решение: переходим с REST на gRPC для внутренних сервисов
+    из-за бинарного протокола и стримов. ADR."
+
+  The agent MUST append a single new decision at the end of decisions.md.
+  Critical constraint: every prior entry's bytes must remain
+  byte-for-byte identical. The agent MUST NOT:
+    - reorder the prior three entries,
+    - rewrite a prior entry's importance / valid_until,
+    - delete or shorten any prior block,
+    - re-format prior bullet points or headings.
+
+  Even cosmetic edits to prior content count as a violation
+  (vault_rules append-only invariant).
+
+fixture_ref: "vault_snapshots/T2_seed_small.tar.gz"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T0
+    - T1
+  requires:
+    skills:
+      - "memory:memory-write"
+    mcps:
+      - "obsidian-memory"
+    vault_state:
+      has_decisions_md: true
+      decisions_prior_entry_count: 3
+      active_project: "agent-benchmarks"
+
+scorer_chain:
+  - name: append_only_state_diff
+    kind: state_diff
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      assertions:
+        - kind: only_appended
+        - kind: prior_entries_unchanged
+        - kind: prior_entry_count
+          expected: 3
+        - kind: new_entry_count
+          expected: 1
+        - kind: total_entry_count
+          expected: 4
+        - kind: prior_entries_byte_equal
+          tolerate_trailing_newline: true
+
+  - name: decision_schema_validator
+    kind: schema
+    config:
+      target_file: "Projects/agent-benchmarks/decisions.md"
+      mode: append_only_last_entry
+      required_fields:
+        - importance
+        - Context
+        - Decision
+        - Rationale
+        - Consequences
+        - "Valid from"
+        - "Valid until"
+      field_patterns:
+        importance: "^[1-5]$"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+acceptance_criteria:
+  - "decisions.md ends with exactly 4 entries (3 prior + 1 new)."
+  - "Each of the three prior entries is byte-equal to the fixture."
+  - "The new entry validates against the canonical decision schema."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.20
+  memory_specific: 0.60
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L1
+  - memory-write
+  - append-only
+  - state-diff
+  - russian-prompt

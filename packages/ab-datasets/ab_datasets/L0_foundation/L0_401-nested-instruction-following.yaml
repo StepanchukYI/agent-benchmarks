@@ -1,0 +1,105 @@
+id: L0_401
+layer: L0
+suite: instruction-following
+title: "Follow nested conditional instruction (do X then Y unless Z)"
+description: |
+  The user prompt is a single message with a conditional branch:
+
+    "Print the numbers from 1 to 10, one per line. Then print 'done' on
+     a new line — unless any number is divisible by 7, in which case
+     print 'skip' instead of 'done'."
+
+  Inside [1,10] the number 7 IS divisible by 7. Therefore the correct
+  output ends with 'skip', not 'done'. The numeric block must contain
+  exactly the integers 1..10, one per line, in ascending order, with
+  no surrounding prose.
+
+  Expected output (byte-exact):
+
+      1
+      2
+      3
+      4
+      5
+      6
+      7
+      8
+      9
+      10
+      skip
+
+  No leading/trailing whitespace, no commentary, no markdown formatting.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_output_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\nskip"
+          trim_trailing_newline: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 0
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 500
+      max_tokens: 4000
+      pass_threshold: 0.5
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 10000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final assistant message equals the expected 11-line block (1..10 then 'skip')."
+  - "Last line is `skip` (not `done`) because 7 is divisible by 7."
+  - "Zero tool calls are issued (this task is text-only)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - conditional
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

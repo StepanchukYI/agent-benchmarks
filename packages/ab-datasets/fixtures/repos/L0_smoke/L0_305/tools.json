@@ -1,0 +1,16 @@
+{
+  "tools": [
+    {
+      "name": "set_temperature",
+      "description": "Set thermostat temperature. The 'celsius' parameter MUST be a number, not a string.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "celsius": { "type": "number", "minimum": -50, "maximum": 50 }
+        },
+        "required": ["celsius"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

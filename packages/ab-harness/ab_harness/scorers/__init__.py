@@ -27,6 +27,7 @@ from ab_harness.scorers.privacy_check import privacy_check_scorer
 from ab_harness.scorers.schema import schema_scorer
 from ab_harness.scorers.state_diff import state_diff_scorer
 from ab_harness.scorers.tool_skill import tool_skill_scorer
+from ab_harness.scorers.track_b_scorers import TRACK_B_SCORERS
 
 ScorerCallable = Callable[..., object]
 
@@ -43,6 +44,8 @@ SCORER_REGISTRY: dict[str, ScorerCallable] = {
     "tool_skill": tool_skill_scorer,
     "context_efficiency": context_efficiency_scorer,
     "latency_cost": latency_cost_scorer,
+    # Track B assertion-chain scorers (~30 names that share one engine).
+    **TRACK_B_SCORERS,
 }
 
 KIND_DEFAULT_REGISTRY: dict[ScorerKind, ScorerCallable] = {
@@ -80,6 +83,39 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     # alongside their L1+ task YAMLs. This file is the central registry;
     # entries land here when those tasks land.
     "memory_specific": "memory_specific",
+    # ----- Track B assertion-chain scorers -----
+    # Tool-skill-pillar entries: scorers that primarily probe tool-call
+    # discipline (calling shape, arg fidelity, skill dispatch).
+    "tool_call_validator": "tool_skill",
+    "refuse_tool_call_check": "tool_skill",
+    "skill_dispatched_check": "tool_skill",
+    "no_fake_skill_check": "tool_skill",
+    "first_read_is_operator_file": "tool_skill",
+    "ask_before_destructive_check": "tool_skill",
+    # Everything else from Track B contributes to correctness.
+    "abstention_check": "correctness",
+    "cite_correct_paragraph_check": "correctness",
+    "contradiction_reported_check": "correctness",
+    "error_handling_check": "correctness",
+    "exact_answer_check": "correctness",
+    "exact_block_check": "correctness",
+    "exact_codes_check": "correctness",
+    "exact_output_check": "correctness",
+    "exact_passphrase_check": "correctness",
+    "exact_sum_check": "correctness",
+    "factual_constant_check": "correctness",
+    "final_state_check": "correctness",
+    "idempotency_check": "correctness",
+    "json_only_check": "correctness",
+    "no_emoji_check": "correctness",
+    "no_invented_rules_check": "correctness",
+    "preserved_name_and_version": "correctness",
+    "pytest_exec": "correctness",
+    "quote_attribution_check": "correctness",
+    "rule_followed_check": "correctness",
+    "utf8_exact_bytes": "correctness",
+    "verbatim_citation_check": "correctness",
+    "word_count_check": "correctness",
 }
 
 
@@ -98,6 +134,7 @@ __all__ = [
     "KIND_DEFAULT_REGISTRY",
     "SCORER_PILLAR_MAP",
     "SCORER_REGISTRY",
+    "TRACK_B_SCORERS",
     "Scorer",
     "ScorerCallable",
     "context_efficiency_scorer",

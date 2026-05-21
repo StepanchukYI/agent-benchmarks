@@ -22,12 +22,21 @@ def test_validate_single_file(runner: CliRunner) -> None:
     assert "valid" in result.output.lower()
 
 
-def test_validate_directory_reports_five(runner: CliRunner) -> None:
+def test_validate_directory_reports_all_l0(runner: CliRunner) -> None:
+    # L0 backlog grows toward 20 tasks (build spec §2). This test fixes the
+    # lower bound at the original 5 smoke ids and asserts every present
+    # file is valid — it must not regress and must keep up with growth.
     result = runner.invoke(app, ["task", "validate", L0_DIR])
     assert result.exit_code == 0, result.output
     for tid in ("L0_001", "L0_002", "L0_003", "L0_004", "L0_005"):
         assert tid in result.output
-    assert "5 valid" in result.output
+    import re
+    m = re.search(r"summary: (\d+) valid, (\d+) failed \(total (\d+)\)", result.output)
+    assert m is not None, result.output
+    valid, failed, total = (int(g) for g in m.groups())
+    assert failed == 0, result.output
+    assert valid == total
+    assert valid >= 5, f"expected ≥5 L0 tasks, got {valid}"
 
 
 def test_dry_run_finds_task(runner: CliRunner) -> None:

@@ -1,0 +1,107 @@
+id: L0_201
+layer: L0
+suite: long-context-multi-hop
+title: "Two-hop fact tracing: chain Idris -> Roen -> Saltmoor lighthouse"
+description: |
+  The fixture provides `haystack.txt` with ~30 short paragraphs of
+  distractor prose. Two specific paragraphs contain the chained facts:
+
+    P4:  "Idris of Greylock is the cousin of Roen of Vyport."
+    P13: "Roen of Vyport is the sole owner of the Saltmoor lighthouse
+          since 1822."
+
+  The user asks:
+
+    "According to the document, what does Idris of Greylock's cousin
+     own? Output ONLY the asset name (no prefix, no year, no prose)."
+
+  Solving requires:
+    1. resolve Idris → cousin = Roen of Vyport (hop A, P4),
+    2. resolve Roen of Vyport → owns Saltmoor lighthouse (hop B, P13),
+    3. answer with the asset name.
+
+  The agent's final message MUST equal `Saltmoor lighthouse` exactly.
+  Answers that include the year (`Saltmoor lighthouse since 1822`),
+  any owner name, or any extra prose, fail the task.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_201/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Saltmoor lighthouse"
+          trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "1822"
+            - "Roen"
+            - "Idris"
+            - "since"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 1
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 4000
+      max_tokens: 20000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 20000
+      max_ms: 120000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "Final assistant message equals `Saltmoor lighthouse` exactly."
+  - "No year, no owner name, no extra prose included."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - multi-hop
+  - reasoning
+  - ruler
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

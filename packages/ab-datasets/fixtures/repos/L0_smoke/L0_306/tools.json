@@ -1,0 +1,19 @@
+{
+  "tools": [
+    {
+      "name": "fetch_url",
+      "description": "Fetch a URL. May return an error if the URL is unreachable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "_test_behavior": {
+        "always_returns_error": "DNS_RESOLUTION_FAILED"
+      }
+    }
+  ]
+}

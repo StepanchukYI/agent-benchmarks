@@ -1,73 +1,76 @@
-# Fixtures TODO — Track B (tasks)
+# Fixtures TODO
 
 Status board for fixture assets the task YAMLs depend on. The harness
-resolves `fixture_ref` lazily, so tasks ship before fixtures exist; this
-file is the inventory.
+resolves `fixture_ref` lazily, so tasks ship before fixtures exist;
+this file is the inventory.
 
-Last updated by the Phase-1 pilot: 5 task layers, 9 task YAMLs, see
-`packages/ab-datasets/ab_datasets/L*/`.
+**Last updated**: after L0 close-out (39 tasks, 22 L0_smoke fixtures,
+1 vault snapshot, 4 tier manifests). For per-task discrimination, see
+`docs/L0-inventory.md`. For SHA pinning, see
+`packages/ab-datasets/fixtures/manifest.yaml`.
 
 ## Path convention
 
-Two conventions are currently in use across shipped tasks. **They must
-converge** before Phase 1 row-6 (end-to-end `ab run`) lands, otherwise
-the dry-run resolver can't find fixtures consistently.
+`fixture_ref` is **always** prefixed with `fixtures/`, resolved
+relative to `packages/ab-datasets/`. Two repo tests enforce this:
 
-| Convention | Example | Used by |
+- `tests/test_l0_fixtures_resolve.py` — every declared `fixture_ref`
+  exists on disk.
+- `tests/test_l0_taxonomy.py` — L0 fixtures live under canonical
+  roots (`fixtures/{repos,vault_snapshots,mcp_mocks,config_tiers}/`).
+
+## Present (manifest.yaml authoritative)
+
+| Root | Count | Notes |
 |---|---|---|
-| **With `fixtures/` prefix** | `fixtures/repos/L0_smoke/L0_001/` | L0_001..L0_005 |
-| **Without prefix** (docs/adding-a-task.md style) | `vault_snapshots/T2_seed_small.tar.gz` | L1_001, L2_001, L3a_001, L4_001 |
+| `fixtures/config_tiers/T0_vanilla/manifest.yaml` | 1 | empty CLAUDE.md by design |
+| `fixtures/config_tiers/T1_minimal/{manifest,CLAUDE.md}` | 2 files | short generic CLAUDE.md |
+| `fixtures/config_tiers/T2_personal/{manifest,CLAUDE.md}` | 2 files | with memory:memory-{session,write} skills + obsidian-memory mock |
+| `fixtures/config_tiers/T3_full/manifest.yaml` | 1 | **missing CLAUDE.md and CLAUDE.local.md** (see below) |
+| `fixtures/vault_snapshots/T2_seed_small.tar.gz` | 340 B | content audit recommended |
+| `fixtures/repos/L0_smoke/L0_{001..010, 101..103, 201..202, 301..308, 501..505, 601..608}` | 22 dirs (L0 covers 39 tasks, 17 are text-only) | see manifest.yaml for SHA + size |
 
-`docs/adding-a-task.md` shows the **without-prefix** form. The CLI
-implementation in `packages/ab-cli/ab_cli/commands/task.py:dry_run`
-currently searches at `repo_root/<fixture_ref>` and
-`packages/ab-datasets/<fixture_ref>`, but **not** at
-`packages/ab-datasets/fixtures/<fixture_ref>`, so the
-without-prefix paths resolve to `missing` even when the file is on disk.
+## Open / P1 — needed for L0 to be **truly end-to-end runnable**
 
-**Action item**: pick one convention, update either the four L1-L4 task
-YAMLs or the dry-run resolver. Defer the decision to a Track-A maintainer.
-
-## Inventory
-
-Fixtures available right now (created by Track A scaffolding):
-
-| Path | Status | Used by |
-|---|---|---|
-| `packages/ab-datasets/fixtures/config_tiers/T0_vanilla/manifest.yaml` | present | all tasks at T0 |
-| `packages/ab-datasets/fixtures/config_tiers/T1_minimal/{manifest.yaml,CLAUDE.md}` | present | T1 cross-tier runs |
-| `packages/ab-datasets/fixtures/config_tiers/T2_personal/{manifest.yaml,CLAUDE.md}` | present | L1_001, L2_001, L3a_001 at T2 |
-| `packages/ab-datasets/fixtures/config_tiers/T3_full/manifest.yaml` | partial (no CLAUDE.md, no CLAUDE.local.md) | L4_001 at T3 |
-| `packages/ab-datasets/fixtures/vault_snapshots/T2_seed_small.tar.gz` | present (340 B) | L1_001, L2_001, L3a_001 |
-| `packages/ab-datasets/fixtures/repos/L0_smoke/L0_001..L0_005/` | present | L0_001..L0_005 |
-
-Fixtures still missing for the Phase-1 pilot:
+The remaining items are L0-blocking for full cross-tier comparison
+once Track A wires runners against real models. They are NOT blocking
+Track B authoring.
 
 | Path | Used by | Priority | Notes |
 |---|---|---|---|
-| `packages/ab-datasets/fixtures/repos/calc_v1.tar.gz` | L4_001 | P1 | Python pkg with failing `tests/test_calc.py::test_divide_by_zero` and buggy `calc/__init__.py` returning `inf`. |
-| `packages/ab-datasets/fixtures/config_tiers/T3_full/CLAUDE.md` | L4_001 | P1 | Anonymized maintainer CLAUDE.md. |
-| `packages/ab-datasets/fixtures/config_tiers/T3_full/CLAUDE.local.md` | L4_001 | P1 | Anonymized CLAUDE.local.md with `vault_hub:` line. |
-| `packages/ab-datasets/fixtures/vault_snapshots/T2_seed_small.tar.gz` content audit | L1_001, L3a_001 | P2 | Currently 340 B — verify it actually contains `Projects/agent-benchmarks/{hub.md, decisions.md, lessons.md}` and `.claude/CLAUDE.local.md` referenced by L3a_001. |
-| `packages/ab-datasets/fixtures/mcp_mocks/obsidian-memory/*` | L1_001, L2_001, L3a_001 | P1 | Mock MCP server fixture so verified-tier rescoring is possible (LSN-007). |
+| `fixtures/config_tiers/T3_full/CLAUDE.md` | L0_601, 603, 604, 606, 607 (T3 leg) | P1 | Anonymized maintainer CLAUDE.md with full rule set. |
+| `fixtures/config_tiers/T3_full/CLAUDE.local.md` | L0_601 (`also_run_on: T3`) | P1 | Must contain `vault_hub:` line for downstream L3a probes. |
+| `T2_seed_small.tar.gz` content audit | L0_606 + later L1 | P1 | 340 B is suspiciously small; verify it contains `Projects/<active-project>/{hub,decisions,lessons}.md` actually used by L0_606's `requires.vault_state.has_decisions_md`. |
+| `fixtures/mcp_mocks/obsidian-memory/` | L0_606 + L1 + L3a | P1 | Mock MCP server so verified-tier rescoring is possible (LSN-007). |
 
-## SHA256 manifest
+## Open / P2 — needed for L1+
 
-Each fixture must have a `Fixture` entry in a manifest (path, sha256,
-size) per `docs/adding-a-task.md` §3. The minimal-config-tier manifests
-already encode SHA pinning (see T2_personal/manifest.yaml). Repo and vault
-fixtures need an aggregate manifest written under
-`packages/ab-datasets/fixtures/manifest.yaml` once paths are finalized.
+| Path | Used by | Priority |
+|---|---|---|
+| `fixtures/repos/calc_v1.tar.gz` | L4_001 | P2 |
+| `fixtures/vault_snapshots/T3_seed_medium.tar.gz` | L4 composite at T3 | P2 |
+| `fixtures/mcp_mocks/lantern/` | L3b (10 tasks) | P2 |
+| `fixtures/mcp_mocks/gitnexus/` | L3d.i (5 tasks) | P3 |
+| `fixtures/mcp_mocks/graphify/` | L3d.ii (5 tasks) | P3 |
+| `fixtures/mcp_mocks/backstage/` | L3c (deferred per build spec §5) | P3 |
 
 ## Privacy
 
-Every fixture **must** pass `python scripts/privacy_scan.py` (or the
-in-trajectory `privacy_check` scorer) against `docs/privacy-patterns.yaml`
-before being committed. The patterns currently flag:
+`docs/privacy-patterns.yaml` defines the regex set the
+`privacy_check` scorer enforces. As of L0 close-out, all 35 readable
+fixture files scan clean (zero hits). Add new fixtures via:
 
-- real email addresses,
-- maintainer home path,
-- cloud/SaaS tokens (AWS, Slack, GitHub PAT, OpenAI sk-, PEM headers),
-- `vault_hub:` leakage outside `.claude/`.
+```bash
+uv run python scripts/privacy_scan.py packages/ab-datasets/fixtures
+```
 
-Anonymize before commit; never assume scrubbing happens later.
+before committing. CI runs the same scan on every PR.
+
+## Manifest
+
+`packages/ab-datasets/fixtures/manifest.yaml` lists every fixture
+with SHA256, size, kind, and visibility. Regenerate after any
+fixture change with the helper script Track A is shipping
+(`scripts/build_fixtures_manifest.py`, P1 deliverable). Until that
+script lands, regenerate manually — there is a one-shot generator at
+the bottom of `docs/L0-inventory.md` git log if you need the recipe.
