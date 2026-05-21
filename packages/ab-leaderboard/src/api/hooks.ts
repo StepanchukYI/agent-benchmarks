@@ -267,9 +267,16 @@ export function useCreateRun() {
 
 export function useTasksList() {
   const mock: Task[] = TASKS;
-  return useQuery({
+  return useQuery<Task[]>({
     queryKey: ["tasks", "list"],
-    queryFn: () => fetchOrMock(endpoints.tasksList(), mock),
+    queryFn: async () => {
+      const resp = await fetchOrMock<Task[] | { items: Task[] }>(
+        endpoints.tasksList(),
+        mock,
+      );
+      if (Array.isArray(resp)) return resp;
+      return (resp?.items ?? []) as Task[];
+    },
     ...mockSeed(mock),
   });
 }
