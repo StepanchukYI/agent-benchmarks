@@ -40,6 +40,7 @@ from ab_harness.runners.codex_cli import CodexCLIRunner
 from ab_harness.runners.gemini_cli import GeminiCLIRunner
 from ab_harness.runners.mock import MockRunner
 from ab_harness.runners.openai_compat import OpenAICompatRunner
+from ab_harness.runners.opencode import OpencodeRunner
 from ab_harness.runners.pi_agent import PiAgentRunner
 
 
@@ -74,10 +75,6 @@ class StubRunner(BaseRunner):
 
 # Map of stub scaffolds → human-readable status pointing at the spec.
 _STUB_REASONS: dict[str, str] = {
-    "opencode": (
-        "opencode runner pending; uses OpenAI-compat wire under its own "
-        "scaffold prompts. See P1.8."
-    ),
     "hermes-agent": (
         "hermes-agent runner pending; Nous Research Hermes agentic loop."
     ),
@@ -152,6 +149,14 @@ def make_runner(
         effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
         return PiAgentRunner(model=model, effort=effort, **extra)
 
+    if runner == "opencode":
+        # OpencodeRunner shells out to `opencode run --format json`; auth
+        # is consumed by the binary itself (per-provider env vars / its
+        # own auth store) — api_key irrelevant. ``effort`` maps to the
+        # CLI's --thinking flag via OpencodeRunner._EFFORT_TO_THINKING.
+        effort = extra.pop("effort", None) or extra.pop("reasoning_effort", None)
+        return OpencodeRunner(model=model, effort=effort, **extra)
+
     if runner == "local" or local:
         resolved_base = base_url or (
             extra.pop("scaffold", None) and local_base_url(extra.pop("scaffold", ""))
@@ -201,14 +206,14 @@ def supported_runners() -> list[str]:
     return [
         "mock",
         "claude-code",
-        "anthropic-compat",
-        "openai-compat",
-        "local",
-        # stubs
         "codex-cli",
         "gemini-cli",
         "opencode",
         "pi-agent",
+        "anthropic-compat",
+        "openai-compat",
+        "local",
+        # stubs
         "hermes-agent",
         "nanobot",
         "cursor",

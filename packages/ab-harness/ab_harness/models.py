@@ -82,10 +82,9 @@ LOCAL_BASE_URLS: dict[str, str] = {
 # all have documented headless modes with parseable JSON output. The
 # rest are deferred until isolation + naming-collision concerns resolve.
 PRIORITY_SCAFFOLDS_V1: tuple[str, ...] = (
-    "claude-code", "codex-cli", "gemini-cli", "opencode",
+    "claude-code", "codex-cli", "gemini-cli", "opencode", "pi-agent",
 )
 DEFERRED_SCAFFOLDS: tuple[str, ...] = (
-    "pi-agent",       # naming collision with Inflection Pi; community CLI
     "hermes-agent",   # self-improving loop — determinism risk for benches
     "nanobot",        # MCP-host first, single-shot headless is brittle
     "cursor",         # closed-source router, opaque attribution

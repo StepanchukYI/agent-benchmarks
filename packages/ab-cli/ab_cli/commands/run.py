@@ -15,6 +15,7 @@ from ab_harness.runners import (
     CodexCLIRunner,
     GeminiCLIRunner,
     MockRunner,
+    OpencodeRunner,
     PiAgentRunner,
     make_runner,
 )
@@ -69,6 +70,10 @@ def _make_runner(
         return GeminiCLIRunner(model=model, reasoning_effort=effort)
     if runner_name in {"pi-agent", "pi"}:
         return PiAgentRunner(
+            model=model, effort=effort, env_overrides=env_overrides
+        )
+    if runner_name in {"opencode", "oc"}:
+        return OpencodeRunner(
             model=model, effort=effort, env_overrides=env_overrides
         )
     return make_runner(
