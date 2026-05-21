@@ -1,8 +1,14 @@
+# Patterns also drive the auto-scrub engine (ab_sdk.scrub). A pattern with
+# scrub_replacement set is auto-fixable: the scrubber rewrites matches in
+# place. Patterns without scrub_replacement stay detect-only — auto-fix is
+# refused (use case: tokens. Replacing a leaked token with [REDACTED] hides
+# evidence; the only real fix is to ROTATE the secret).
 patterns:
   - id: email-real
     description: "Real email address outside @example.com / @(users.)noreply.github.com / git@github.com ssh url"
     regex: "(?i)\\b(?!git@github\\.com\\b)[a-z0-9._%+-]+@(?!example\\.com\\b)(?!(?:users\\.)?noreply\\.github\\.com\\b)[a-z0-9.-]+\\.[a-z]{2,}\\b"
     severity: medium
+    scrub_replacement: "scrubbed@example.com"
     exclude_paths:
       - "pnpm-lock.yaml"
       - "uv.lock"
@@ -12,29 +18,30 @@ patterns:
     description: "Maintainer home directory path leaked into tree"
     regex: "/Users/evgeniystepanchuk"
     severity: high
+    scrub_replacement: "/home/scrubbed"
 
   - id: aws-access-key-id
-    description: "AWS access key id"
+    description: "AWS access key id (DETECT-ONLY — rotate, don't redact)"
     regex: "AKIA[0-9A-Z]{16}"
     severity: high
 
   - id: slack-token
-    description: "Slack bearer token"
+    description: "Slack bearer token (DETECT-ONLY — rotate, don't redact)"
     regex: "xox[abposr]-[A-Za-z0-9-]+"
     severity: high
 
   - id: github-token
-    description: "GitHub personal access token"
+    description: "GitHub personal access token (DETECT-ONLY — rotate, don't redact)"
     regex: "ghp_[A-Za-z0-9]{36}"
     severity: high
 
   - id: openai-api-key
-    description: "OpenAI-style secret key"
+    description: "OpenAI-style secret key (DETECT-ONLY — rotate, don't redact)"
     regex: "sk-[A-Za-z0-9]{32,}"
     severity: high
 
   - id: private-key-header
-    description: "PEM private key header"
+    description: "PEM private key header (DETECT-ONLY — regenerate the key)"
     regex: "-----BEGIN [A-Z ]+PRIVATE KEY-----"
     severity: high
 
@@ -42,6 +49,7 @@ patterns:
     description: "vault hub leakage marker outside .claude/ and L3 obsidian tasks"
     regex: "vault_hub:\\s"
     severity: medium
+    scrub_replacement: "vault_hub_scrubbed: "
     exclude_paths:
       - ".claude/"
       - "CLAUDE.md"
