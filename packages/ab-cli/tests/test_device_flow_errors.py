@@ -9,11 +9,12 @@ from ab_cli.auth.device_flow import DeviceFlowError, device_flow_login
 
 
 def _make_transport(poll_responses: list[dict]):
+    """Mock the leaderboard server's device-flow endpoints (not github.com)."""
     state = {"i": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
-        if url.endswith("/login/device/code"):
+        if url.endswith("/api/v1/auth/github/device-start"):
             return httpx.Response(
                 200,
                 json={
@@ -24,12 +25,10 @@ def _make_transport(poll_responses: list[dict]):
                     "expires_in": 900,
                 },
             )
-        if url.endswith("/login/oauth/access_token"):
+        if url.endswith("/api/v1/auth/github/device-poll"):
             resp = poll_responses[min(state["i"], len(poll_responses) - 1)]
             state["i"] += 1
             return httpx.Response(200, json=resp)
-        if url.endswith("/user"):
-            return httpx.Response(200, json={"login": "octocat"})
         return httpx.Response(404, json={})
 
     return httpx.MockTransport(handler)
@@ -40,7 +39,7 @@ def test_slow_down_increases_interval() -> None:
         [
             {"error": "slow_down"},
             {"error": "authorization_pending"},
-            {"access_token": "tok", "scope": "public_repo", "token_type": "bearer"},
+            {"access_token": "tok", "github_login": "octocat"},
         ]
     )
     sleeps: list[float] = []

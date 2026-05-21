@@ -1,4 +1,9 @@
-"""Happy-path device-flow test using httpx.MockTransport."""
+"""Happy-path device-flow test using httpx.MockTransport.
+
+The CLI device flow now routes through the leaderboard server's endpoints
+(/api/v1/auth/github/device-start + /api/v1/auth/github/device-poll), not
+github.com directly. The mock transport must serve both server endpoints.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,7 @@ def transport_factory():
 
         def handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
-            if url.endswith("/login/device/code"):
+            if url.endswith("/api/v1/auth/github/device-start"):
                 return httpx.Response(
                     200,
                     json={
@@ -26,12 +31,10 @@ def transport_factory():
                         "expires_in": 900,
                     },
                 )
-            if url.endswith("/login/oauth/access_token"):
+            if url.endswith("/api/v1/auth/github/device-poll"):
                 resp = poll_responses[min(state["poll_idx"], len(poll_responses) - 1)]
                 state["poll_idx"] += 1
                 return httpx.Response(200, json=resp)
-            if url.endswith("/user"):
-                return httpx.Response(200, json={"login": "octocat", "id": 583231})
             return httpx.Response(404, json={"error": "unknown route"})
 
         return httpx.MockTransport(handler)
@@ -44,7 +47,11 @@ def test_device_flow_happy_path(transport_factory) -> None:
         [
             {"error": "authorization_pending"},
             {"error": "authorization_pending"},
-            {"access_token": "gh_xyz_secret", "scope": "public_repo,read:user", "token_type": "bearer"},
+            {
+                "access_token": "server_session_token_xyz",
+                "github_login": "octocat",
+                "expires_at": "2026-12-31T00:00:00+00:00",
+            },
         ]
     )
     captured: dict = {}
@@ -68,10 +75,10 @@ def test_device_flow_happy_path(transport_factory) -> None:
     finally:
         client.close()
 
-    assert creds.access_token == "gh_xyz_secret"
+    # Server session token (not a GitHub access token).
+    assert creds.access_token == "server_session_token_xyz"
     assert creds.github_login == "octocat"
     assert creds.server_url == "http://localhost:8000"
-    assert creds.scope == "public_repo,read:user"
     assert creds.token_type == "bearer"
     assert captured["user_code"] == "AB12-CD34"
     assert captured["uri"] == "https://github.com/login/device"
