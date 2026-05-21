@@ -68,6 +68,8 @@ def get_leaderboard(
     date_from: str | None = None,
     date_to: str | None = None,
     dataset_versions: Annotated[list[str] | None, Query()] = None,
+    include_task_tags: Annotated[list[str] | None, Query()] = None,
+    exclude_task_tags: Annotated[list[str] | None, Query()] = None,
 ) -> LeaderboardResponse:
     range_days: int | None = None
     if range is not None:
@@ -89,7 +91,22 @@ def get_leaderboard(
         date_to=_parse_iso(date_to),
         dataset_versions=_split_csv(dataset_versions),
         range_days=range_days,
+        include_task_tags=_split_csv(include_task_tags),
+        exclude_task_tags=_split_csv(exclude_task_tags),
     )
+
+
+@router.get("/tags")
+def get_known_tags() -> dict[str, list[str]]:
+    """All sensitivity tags declared on any known task.
+
+    Drives the FE's tag-filter picker. Cached after first call;
+    rebuild via process restart or by hitting a future
+    /admin/refresh-tags endpoint.
+    """
+    from ab_server.leaderboard.task_tags import all_known_tags
+
+    return {"tags": sorted(all_known_tags())}
 
 
 @router.get("/trends", response_model=TrendsSeries)

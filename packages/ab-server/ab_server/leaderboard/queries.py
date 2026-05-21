@@ -699,6 +699,8 @@ def compute_leaderboard_response(
     date_to: datetime | None = None,
     dataset_versions: Sequence[str] | None = None,
     range_days: int | None = None,
+    include_task_tags: Sequence[str] | None = None,
+    exclude_task_tags: Sequence[str] | None = None,
 ) -> LeaderboardResponse:
     if range_days is not None and range_days > 0 and date_from is None:
         date_from = datetime.now(UTC) - timedelta(days=range_days)
@@ -755,6 +757,17 @@ def compute_leaderboard_response(
         stmt = stmt.where(effective_ts <= date_to)
 
     raw = session.exec(stmt).all()
+
+    # Sensitivity-tag filtering — Track B's per-task tags
+    # (docs/result-sensitivity-axes.md). We filter post-SQL because
+    # tags live on disk YAMLs, not the DB. The set is small (39 L0
+    # task ids in v1; <1ms lookup per row).
+    if include_task_tags or exclude_task_tags:
+        from ab_server.leaderboard.task_tags import task_matches_filters
+
+        inc = frozenset(include_task_tags) if include_task_tags else None
+        exc = frozenset(exclude_task_tags) if exclude_task_tags else None
+        raw = [row for row in raw if task_matches_filters(row[3], include=inc, exclude=exc)]
 
     Bucket = tuple[str, str]
     pillar_keys = ("correctness", "context_eff", "tool_skill", "memory", "latency")
