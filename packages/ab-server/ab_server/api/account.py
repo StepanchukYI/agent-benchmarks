@@ -59,6 +59,7 @@ def list_account_repos(
             status = "ok" if repo.sync_cursor else "failed"
         out.append(
             RegistryRepoOut(
+                id=str(repo.id),
                 repo=repo.repo_url,
                 owner=_owner_from_url(repo.repo_url) or user.handle,
                 branch=repo.default_branch,

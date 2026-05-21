@@ -19,7 +19,7 @@
  * To force-prefer mock data set `AB_USE_MOCK=1` in `.env.local`.
  */
 
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, endpoints } from "./client";
 import {
   ALERT_RULES,
@@ -365,6 +365,42 @@ export function useConnectedRepos() {
   });
 }
 
+export function useRegisterRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { repo_url: string; default_branch?: string; is_public?: boolean }) =>
+      apiFetch("/repos", {
+        method: "POST",
+        body: JSON.stringify({
+          repo_url: body.repo_url,
+          default_branch: body.default_branch ?? "main",
+          is_public: body.is_public ?? true,
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["account", "repos"] }),
+  });
+}
+
+export function useSyncRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (repoId: string) =>
+      apiFetch(`/repos/${encodeURIComponent(repoId)}/sync?inline=true`, {
+        method: "POST",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["account", "repos"] }),
+  });
+}
+
+export function useDeleteRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (repoId: string) =>
+      apiFetch(`/repos/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["account", "repos"] }),
+  });
+}
+
 export function useOperators() {
   const mock: Operator[] = OPERATORS;
   return useQuery({
@@ -452,7 +488,6 @@ export function useDefaultTrajectory() {
 
 import { fetchMe, signOut as _signOut } from "./auth";
 import type { MeResponse } from "./auth";
-import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * Current authenticated viewer. Returns null when no token / token rejected.

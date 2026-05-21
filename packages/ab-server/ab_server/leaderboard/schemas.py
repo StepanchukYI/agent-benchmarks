@@ -110,6 +110,7 @@ class ModelInfo(BaseModel):
 
 
 class RegistryRepoOut(BaseModel):
+    id: str
     repo: str
     owner: str
     branch: str

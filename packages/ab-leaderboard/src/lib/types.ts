@@ -177,6 +177,7 @@ export interface Trajectory {
 }
 
 export interface RegistryRepo {
+  id: string;
   repo: string;
   owner: string;
   branch: string;

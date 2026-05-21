@@ -205,12 +205,12 @@ export const TRAJECTORY: Trajectory = {
 };
 
 export const CONNECTED_REPOS: RegistryRepo[] = [
-  { repo: "github.com/evgeniy/agent-benchmarks-results", owner: "evgeniy",     branch: "main",    runs: 412, last_synced: "2 min ago",  status: "ok" },
-  { repo: "github.com/rachel-yeh/ab-runs",                owner: "rachel-yeh",  branch: "main",    runs: 188, last_synced: "14 min ago", status: "ok" },
-  { repo: "github.com/noamb/agent-bench-results",         owner: "noamb",       branch: "main",    runs: 96,  last_synced: "1 hr ago",   status: "ok" },
-  { repo: "github.com/djun-kim/agent-bench",              owner: "djun-kim",    branch: "main",    runs: 71,  last_synced: "3 hr ago",   status: "ok" },
-  { repo: "github.com/kpyrne/ab-eval",                    owner: "kpyrne",      branch: "main",    runs: 42,  last_synced: "9 hr ago",   status: "pending" },
-  { repo: "github.com/ssaroliya/personal-bench",          owner: "ssaroliya",   branch: "develop", runs: 31,  last_synced: "2d ago",     status: "failed",  error: "malformed trajectory @ run-018" },
+  { id: "mock-1", repo: "github.com/evgeniy/agent-benchmarks-results", owner: "evgeniy",     branch: "main",    runs: 412, last_synced: "2 min ago",  status: "ok" },
+  { id: "mock-2", repo: "github.com/rachel-yeh/ab-runs",                owner: "rachel-yeh",  branch: "main",    runs: 188, last_synced: "14 min ago", status: "ok" },
+  { id: "mock-3", repo: "github.com/noamb/agent-bench-results",         owner: "noamb",       branch: "main",    runs: 96,  last_synced: "1 hr ago",   status: "ok" },
+  { id: "mock-4", repo: "github.com/djun-kim/agent-bench",              owner: "djun-kim",    branch: "main",    runs: 71,  last_synced: "3 hr ago",   status: "ok" },
+  { id: "mock-5", repo: "github.com/kpyrne/ab-eval",                    owner: "kpyrne",      branch: "main",    runs: 42,  last_synced: "9 hr ago",   status: "pending" },
+  { id: "mock-6", repo: "github.com/ssaroliya/personal-bench",          owner: "ssaroliya",   branch: "develop", runs: 31,  last_synced: "2d ago",     status: "failed",  error: "malformed trajectory @ run-018" },
 ];
 
 export const REGRESSIONS: RegressionItem[] = [

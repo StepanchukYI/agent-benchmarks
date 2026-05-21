@@ -1,4 +1,5 @@
 import { GitBranch, Info, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Panel } from "../ui/Panel";
 import { Button } from "../ui/Button";
 import { StatusPill } from "../ui/StatusPill";
@@ -8,9 +9,15 @@ import { ErrorBanner } from "../ui/ErrorBanner";
 import { LoadingSkeleton } from "../ui/LoadingSkeleton";
 import { PageHero } from "../shell/PageHero";
 import { OperatorTag } from "../domain/OperatorTag";
-import { useConnectedRepos, useOperators } from "../../api/hooks";
+import {
+  useConnectedRepos,
+  useDeleteRepo,
+  useOperators,
+  useSyncRepo,
+} from "../../api/hooks";
 import { toState } from "../../lib/ui-state";
 import type { RegistryRepo } from "../../lib/types";
+import { AddRepoModal } from "./AddRepoModal";
 
 const STATUS_TONE: Record<RegistryRepo["status"], "pass" | "warn" | "fail"> = {
   ok: "pass",
@@ -23,6 +30,24 @@ export function ReposTab(): JSX.Element {
   const reposState = toState(reposQuery);
   const { data: operators } = useOperators();
   const operatorList = operators ?? [];
+  const syncRepo = useSyncRepo();
+  const deleteRepo = useDeleteRepo();
+  const [addOpen, setAddOpen] = useState(false);
+
+  async function syncAll(): Promise<void> {
+    const repos = reposQuery.data ?? [];
+    for (const r of repos) {
+      if (!r.id || r.id.startsWith("mock-")) continue;
+      try {
+        await syncRepo.mutateAsync(r.id);
+      } catch {
+        // Continue with the next repo; per-repo errors surface in
+        // `last_synced` / `status` columns after the refetch.
+      }
+    }
+    reposQuery.refetch();
+  }
+
   return (
     <>
       <PageHero
@@ -37,8 +62,12 @@ export function ReposTab(): JSX.Element {
         }
         actions={
           <>
-            <Button onClick={() => reposQuery.refetch()}><RefreshCw className="size-3" /> Sync all</Button>
-            <Button variant="primary"><Plus className="size-3" /> Add repo</Button>
+            <Button onClick={syncAll} disabled={syncRepo.isPending}>
+              <RefreshCw className="size-3" /> Sync all
+            </Button>
+            <Button variant="primary" onClick={() => setAddOpen(true)}>
+              <Plus className="size-3" /> Add repo
+            </Button>
           </>
         }
       />
@@ -100,8 +129,29 @@ export function ReposTab(): JSX.Element {
                     </td>
                     <td className="px-3.5 py-2.5 border-b border-border-soft">
                       <div className="flex justify-end gap-1">
-                        <Button size="icon-sm" variant="ghost"><RefreshCw className="size-3" /></Button>
-                        <Button size="icon-sm" variant="ghost"><Trash2 className="size-3" /></Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={!r.id || r.id.startsWith("mock-") || syncRepo.isPending}
+                          onClick={() => r.id && syncRepo.mutate(r.id)}
+                          title="Sync now"
+                        >
+                          <RefreshCw className="size-3" />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={!r.id || r.id.startsWith("mock-") || deleteRepo.isPending}
+                          onClick={() => {
+                            if (!r.id) return;
+                            if (confirm(`Disconnect ${r.repo}?`)) {
+                              deleteRepo.mutate(r.id);
+                            }
+                          }}
+                          title="Disconnect"
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -118,6 +168,8 @@ export function ReposTab(): JSX.Element {
         The repo must contain a top-level <span className="font-mono">/ab/runs/</span> directory
         matching the schema.
       </Callout>
+
+      <AddRepoModal open={addOpen} onOpenChange={setAddOpen} />
     </>
   );
 }
