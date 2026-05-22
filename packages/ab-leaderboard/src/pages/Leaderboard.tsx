@@ -29,7 +29,7 @@ export default function Leaderboard(): JSX.Element {
   // Empty arrays = no constraint (show all). The sidebar toggles narrow
   // from there. Defaults must NOT pre-exclude rows — an earlier default of
   // operators:["demo-operator"] + trust:[official,verified] would have hidden
-  // every self_reported StepanchukYI run.
+  // every self_reported run.
   const [filters, setFilters] = useState<LeaderboardFilters>({
     suites: [],
     models: [],

@@ -41,7 +41,10 @@ export function toState<T>(
     return { kind: "error", message };
   }
   const value = query.data as T;
-  if (value === undefined || value === null) return { kind: "loading" };
+  // undefined means react-query settled without a value (no success yet); treat as loading.
+  // null means the queryFn explicitly returned null (e.g. 404 → "no data"); treat as empty.
+  if (value === undefined) return { kind: "loading" };
+  if (value === null) return { kind: "empty" };
   if (isEmpty(value)) return { kind: "empty" };
   return { kind: "ok", value };
 }
