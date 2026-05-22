@@ -106,8 +106,10 @@ def ingest_runs(
 
         suite = str(run.metadata.get("suite") or run.scores.get("suite") or _suite_from_task(run.task_id))
         score_total = float(run.scores.get("total_score") or 0.0)
-        passed = bool(run.scores.get("pass"))
-        status_value = "passed" if passed else "failed"
+        passed = _compute_passed(run.scores.get("verdicts") or [])
+        # Legacy status: derive from the top-level scores["pass"] bool exactly as
+        # pre-B1 did — decoupled from the new tri-state `passed` (None = not measured).
+        status_value = "passed" if bool(run.scores.get("pass")) else "failed"
 
         # Per-pillar scores live in scores.json["per_pillar"] (written by the
         # local runner; key names match SCORER_PILLAR_MAP values). A key is
@@ -155,12 +157,39 @@ def ingest_runs(
             tokens_out=tokens_out,
             turns_total=turns_total,
             trajectory_blob_ref=str(run.path / "trajectory.jsonl"),
+            passed=passed,
         )
         session.add(task_result)
         session.commit()
         inserted += 1
 
     return inserted, skipped
+
+
+def _compute_passed(verdicts: list) -> bool | None:
+    """Derive per-task pass flag from individual scorer verdicts.
+
+    Returns:
+      True  — every verdict with a decided pass value (not None) passed.
+      False — at least one verdict has pass=False.
+      None  — zero decided verdicts (no scorers ran or all returned None).
+
+    The verdict wire format uses "pass" as the key (Python reserved word;
+    Pydantic aliases pass_ ↔ "pass"). We read it defensively from the raw
+    dict so this helper works on parsed dicts from scores.json.
+    """
+    decided: list[bool] = []
+    for v in verdicts:
+        if not isinstance(v, dict):
+            continue
+        # "pass" is the wire key; some paths write "pass_" — check both.
+        val = v.get("pass") if "pass" in v else v.get("pass_")
+        if val is None:
+            continue
+        decided.append(bool(val))
+    if not decided:
+        return None
+    return all(decided)
 
 
 def _pillar_score(per_pillar: dict, key: str) -> float | None:

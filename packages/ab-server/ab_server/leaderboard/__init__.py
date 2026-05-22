@@ -11,6 +11,7 @@ from .queries import (
     compute_pareto,
     compute_pareto_history,
     compute_regressions,
+    compute_row_tasks,
     compute_trends,
     compute_trends_series,
 )
@@ -36,6 +37,8 @@ from .schemas import (
     RegistryRepoOut,
     RegressionItem,
     RegressionsPanel,
+    RowTaskItem,
+    RowTaskScorerItem,
     ScrubberRule,
     TrendsOverview,
     TrendsPoint,
@@ -66,6 +69,8 @@ __all__ = [
     "RegistryRepoOut",
     "RegressionItem",
     "RegressionsPanel",
+    "RowTaskItem",
+    "RowTaskScorerItem",
     "ScrubberRule",
     "TrendsOverview",
     "TrendsPoint",
@@ -80,6 +85,7 @@ __all__ = [
     "compute_pareto",
     "compute_pareto_history",
     "compute_regressions",
+    "compute_row_tasks",
     "compute_trends",
     "compute_trends_series",
 ]

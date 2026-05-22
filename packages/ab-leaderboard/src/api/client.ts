@@ -58,6 +58,9 @@ export const endpoints = {
     pillar?: "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
   }) => withQuery("/leaderboard", q),
   leaderboardPareto: () => "/leaderboard/pareto",
+  /** Per-operator task drill: GET /leaderboard/row/tasks?model=&operator=&tier= */
+  leaderboardRowTasks: (q: { model: string; operator: string; tier: string }) =>
+    withQuery("/leaderboard/row/tasks", q),
   leaderboardHeatmap: (q?: { suites?: string[]; models?: string[]; tiers?: string[] }) =>
     withQuery("/leaderboard/heatmap", q),
   leaderboardParetoHistory: (q?: {

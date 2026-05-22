@@ -48,6 +48,7 @@ import type {
   Operator,
   RegistryRepo,
   RegressionItem,
+  RowTaskDrillItem,
   RunSummary,
   ScrubberFinding,
   SubmissionSummary,
@@ -145,6 +146,28 @@ export function useLeaderboardPareto() {
     queryKey: ["leaderboard", "pareto"],
     queryFn: () => fetchOrMock(endpoints.leaderboardPareto(), mock),
     ...mockSeed(mock),
+  });
+}
+
+/**
+ * Per-operator task drill for a single leaderboard row.
+ *
+ * Fetches `GET /leaderboard/row/tasks?model=&operator=&tier=` and returns a
+ * `RowTaskDrillItem[]`. Disabled (no fetch) when `key` is null so the query
+ * only fires when the user expands a row.
+ *
+ * No mock fallback — real data or honest empty/error state.
+ */
+export function useRowTaskDrill(
+  key: { model: string; operator: string; tier: string } | null,
+) {
+  return useQuery<RowTaskDrillItem[]>({
+    queryKey: ["leaderboard", "row-tasks", key],
+    enabled: key !== null,
+    queryFn: async () => {
+      if (!key) return [];
+      return apiFetch<RowTaskDrillItem[]>(endpoints.leaderboardRowTasks(key));
+    },
   });
 }
 

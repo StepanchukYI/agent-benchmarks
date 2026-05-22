@@ -19,6 +19,15 @@ const VENDOR_HEX: Record<string, string> = {
 /** PILLARS index of the Context pillar — shows real token usage, not a score. */
 const CONTEXT_PILLAR_IDX = 1;
 
+/** Native title= tooltip explaining what each pillar label measures. */
+const PILLAR_TOOLTIP: Record<string, string> = {
+  Correctness: "Quality score (0–100): mean over Correctness scorers. Not a task pass-rate.",
+  Context: "Median tokens per task. Not a 0–100 score — lower is more token-efficient.",
+  "Tool/Skill": "Quality score (0–100): mean over Tool/Skill scorers. Not a task pass-rate.",
+  Memory: "Quality score (0–100): mean over Memory scorers. Not a task pass-rate.",
+  Cost: "Speed score (0–100): full marks under ~10s, decaying to 0 by ~120s. Cost only counts when a task sets a max budget.",
+};
+
 /** Median tokens/task as "12,400 tok"; "—" when unmeasured (0). */
 function fmtTokens(n: number | null | undefined): string {
   if (n == null || n === 0) return "—";
@@ -68,7 +77,11 @@ export function LeaderboardCards(): JSX.Element {
               <div className="text-right">
                 <div className="text-[22px] font-semibold tnum tracking-tight">{overall.toFixed(1)}</div>
                 <div className="text-[10.5px] text-muted-foreground">overall</div>
-                <div className="mt-1.5">
+                <div className="text-[13px] font-semibold tnum mt-1 text-foreground-2">
+                  {r.pass_rate == null ? "—" : `${r.pass_rate.toFixed(1)}%`}
+                </div>
+                <div className="text-[10.5px] text-muted-foreground">passed</div>
+                <div className="mt-1">
                   <StaleDatasetPill pin={r.dataset_pin} />
                 </div>
               </div>
@@ -79,12 +92,14 @@ export function LeaderboardCards(): JSX.Element {
                 if (idx === CONTEXT_PILLAR_IDX) {
                   // Context pillar shows ACTUAL median tokens/task, not the
                   // synthetic 0..100 efficiency score (product-owner ask).
+                  const n = r.pillar_counts[idx] ?? 0;
                   return (
                     <div key={p} className="grid items-center gap-2.5" style={{ gridTemplateColumns: "90px 1fr 64px" }}>
-                      <span className="text-muted-foreground text-[11px]">{p}</span>
+                      <span className="text-muted-foreground text-[11px]" title={PILLAR_TOOLTIP[p]}>{p}</span>
                       <span className="text-muted-foreground text-[11px]">tokens / task</span>
-                      <span className="text-[11.5px] tnum flex justify-end font-semibold">
+                      <span className="text-[11.5px] tnum flex justify-end items-baseline gap-1 font-semibold">
                         {fmtTokens(r.tokens_total)}
+                        {n > 0 && <span className="text-[10px] text-muted-foreground/60 font-normal">n={n}</span>}
                       </span>
                     </div>
                   );
@@ -94,17 +109,18 @@ export function LeaderboardCards(): JSX.Element {
                   // No runs for this pillar — show an honest em-dash, no bar/delta.
                   return (
                     <div key={p} className="grid items-center gap-2.5" style={{ gridTemplateColumns: "90px 1fr 64px" }}>
-                      <span className="text-muted-foreground text-[11px]">{p}</span>
+                      <span className="text-muted-foreground text-[11px]" title={PILLAR_TOOLTIP[p]}>{p}</span>
                       <span className="text-muted-foreground text-[11px]">no data</span>
                       <span className="text-[11.5px] tnum flex justify-end text-muted-foreground">{fmtScore(s)}</span>
                     </div>
                   );
                 }
+                const n = r.pillar_counts[idx] ?? 0;
                 const d = r.delta[idx] ?? 0;
                 const tone = deltaTone(d);
                 return (
                   <div key={p} className="grid items-center gap-2.5" style={{ gridTemplateColumns: "90px 1fr 64px" }}>
-                    <span className="text-muted-foreground text-[11px]">{p}</span>
+                    <span className="text-muted-foreground text-[11px]" title={PILLAR_TOOLTIP[p]}>{p}</span>
                     <MiniBar value={s} tone={s > 80 ? "pass" : s > 65 ? "neutral" : "warn"} width="100%" />
                     <span className="text-[11.5px] tnum flex justify-end items-baseline gap-1">
                       <span className="font-semibold">{fmtScore(s)}</span>
@@ -118,6 +134,7 @@ export function LeaderboardCards(): JSX.Element {
                       >
                         {deltaArrow(d)}{Math.abs(d).toFixed(1)}
                       </span>
+                      {n > 0 && <span className="text-[10px] text-muted-foreground/60">n={n}</span>}
                     </span>
                   </div>
                 );

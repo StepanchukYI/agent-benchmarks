@@ -155,6 +155,7 @@ function buildLeaderboardStats(summary: LeaderboardSummary | null): Stat[] {
   if (!summary) {
     return [
       { label: "Mean correctness", value: "—", unit: "%", deltaValue: null },
+      { label: <span title="Share of measured tasks that fully passed (every scorer passed), pooled across the window. Not the same as Correctness, which is a quality score.">Pass rate</span>, value: "—", unit: "%", deltaValue: null },
       { label: "Runs in window", value: "—", deltaValue: null },
       { label: "Best correctness", value: "—", deltaValue: null },
       { label: "Best $/correctness", value: "—", deltaValue: null },
@@ -176,6 +177,12 @@ function buildLeaderboardStats(summary: LeaderboardSummary | null): Stat[] {
           ? undefined
           : `${deltaArrow(meanCorrDelta)} ${(meanCorrDelta * 100).toFixed(1)} vs prev 7d`,
       deltaValue: meanCorrDelta,
+    },
+    {
+      label: <span title="Share of measured tasks that fully passed (every scorer passed), pooled across the window. Not the same as Correctness, which is a quality score.">Pass rate</span>,
+      value: summary.mean_pass_rate == null ? "—" : summary.mean_pass_rate.toFixed(1),
+      unit: summary.mean_pass_rate == null ? undefined : "%",
+      deltaValue: null,
     },
     {
       label: "Runs in window",

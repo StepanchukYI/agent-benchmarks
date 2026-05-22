@@ -60,6 +60,8 @@ from .schemas import (
     ParetoSeries,
     RegressionItem,
     RegressionsPanel,
+    RowTaskItem,
+    RowTaskScorerItem,
     TrendsOverview,
     TrendsPoint,
     TrendsSeries,
@@ -993,6 +995,7 @@ def _summary_aggregate(
       - mean_correctness: float | None (0..1 mean across rows in window)
       - runs_count: int (distinct (run_id, submission_id) buckets)
       - per_model: dict[str, tuple[float, float]]  -> (mean_corr, mean_cost)
+      - mean_pass_rate: float | None  (100 * passed_true / decided, or None)
     """
     stmt = (
         select(
@@ -1001,6 +1004,7 @@ def _summary_aggregate(
             TaskResult.cost_usd,
             TaskResult.run_id,
             TaskResult.submission_id,
+            TaskResult.passed,
         )
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
@@ -1033,8 +1037,10 @@ def _summary_aggregate(
     per_model_corr: dict[str, list[float]] = {}
     per_model_cost: dict[str, list[float]] = {}
     run_keys: set[tuple[Any, Any]] = set()
+    pass_true = 0
+    pass_decided = 0
 
-    for model, s_corr, cost_usd, run_id, sub_id in raw:
+    for model, s_corr, cost_usd, run_id, sub_id, passed in raw:
         # Skip rows where correctness was not measured (None) so the KPI mean
         # isn't dragged down by a phantom 0; a genuine measured 0.0 still counts.
         if s_corr is not None:
@@ -1045,6 +1051,11 @@ def _summary_aggregate(
         # Count distinct run "groups": either run_id (local) or submission_id (pulled).
         if run_id is not None or sub_id is not None:
             run_keys.add((run_id, sub_id))
+        # Accumulate pass stats. None = no decided scorer → skip.
+        if passed is not None:
+            pass_decided += 1
+            if passed:
+                pass_true += 1
 
     per_model: dict[str, tuple[float, float]] = {}
     for m, cs in per_model_corr.items():
@@ -1053,11 +1064,15 @@ def _summary_aggregate(
         mean_cost = sum(cost_list) / len(cost_list) if cost_list else 0.0
         per_model[m] = (mean_c, mean_cost)
 
+    mean_pass_rate: float | None = (
+        100.0 * pass_true / pass_decided if pass_decided > 0 else None
+    )
     return {
         "mean_correctness": (sum(corr_vals) / len(corr_vals)) if corr_vals else None,
         "n_rows": len(corr_vals),
         "runs_count": len(run_keys),
         "per_model": per_model,
+        "mean_pass_rate": mean_pass_rate,
     }
 
 
@@ -1177,6 +1192,7 @@ def compute_leaderboard_summary(
         best_cost_efficiency_model=best_eff_model,
         best_cost_efficiency_value_usd=best_eff_value,
         best_cost_efficiency_delta=best_eff_delta,
+        mean_pass_rate=cur["mean_pass_rate"],
     )
 
 
@@ -1215,6 +1231,7 @@ def compute_leaderboard_response(
             TaskResult.latency_ms,
             TaskResult.tokens_total,
             TaskResult.turns_total,
+            TaskResult.passed,
             Submission.trust_tier,
             Submission.source_commit_sha,
             Submission.dataset_version,
@@ -1280,6 +1297,9 @@ def compute_leaderboard_response(
     tiers_by_key: dict[Bucket, list[str]] = {}
     shas: dict[Bucket, tuple[str, datetime]] = {}
     versions_by_key: dict[Bucket, list[tuple[str, datetime | None]]] = {}
+    # pass counts: [passed_true_count, decided_count]
+    # decided = rows where passed is not None; pass_rate = true/decided
+    pass_counts: dict[Bucket, list[int]] = {}
 
     for row in raw:
         (
@@ -1297,6 +1317,7 @@ def compute_leaderboard_response(
             latency_ms,
             tokens_total,
             turns_total,
+            passed,
             trust_tier,
             commit_sha,
             sub_dataset_version,
@@ -1345,6 +1366,13 @@ def compute_leaderboard_response(
         ver = run_dataset_version or sub_dataset_version
         if ver:
             versions_by_key.setdefault(key, []).append((ver, ts))
+        # Accumulate pass counts: [true_count, decided_count]
+        # passed=None rows are skipped (no decided scorer → not measured).
+        if passed is not None:
+            pc = pass_counts.setdefault(key, [0, 0])
+            pc[1] += 1
+            if passed:
+                pc[0] += 1
 
     prev_window = 7 if range_days is None or range_days <= 0 else range_days
     now_ts = datetime.now(UTC)
@@ -1406,6 +1434,9 @@ def compute_leaderboard_response(
             else None
             for k in pillar_keys
         ]
+        # Sample size per pillar: number of task-results with a non-null score,
+        # index-aligned to scores_arr (and to PILLARS / pillar_keys order).
+        counts_arr: list[int] = [len(bucket_pillars[k]) for k in pillar_keys]
         prev_bp = prev_pillars.get(key)
         if prev_bp is None:
             delta_arr: list[float | None] = [None] * 5
@@ -1432,6 +1463,12 @@ def compute_leaderboard_response(
             latest_version = "unknown"
             behind = 0
 
+        pc = pass_counts.get(key)
+        if pc is not None and pc[1] > 0:
+            row_pass_rate: float | None = 100.0 * pc[0] / pc[1]
+        else:
+            row_pass_rate = None
+
         out_rows.append(
             LeaderboardRow(
                 model=model,
@@ -1449,6 +1486,8 @@ def compute_leaderboard_response(
                 sweep_cost=sweep_cost.get(key, 0.0),
                 dataset_pin=DatasetPin(version=latest_version, behind=behind),
                 tier=_mode(tiers_by_key.get(key, []), "T0"),
+                pass_rate=row_pass_rate,
+                pillar_counts=counts_arr,
             )
         )
 
@@ -1575,3 +1614,129 @@ def compute_trends_series(
         per_operator=per_operator,
         window_days=window_days,
     )
+
+
+def _read_scorers_from_trajectory(traj_path: str) -> list[RowTaskScorerItem]:
+    """Read scorer events from a trajectory.jsonl file.
+
+    Scorer events have `event=="scorer"` and carry scorer_name, kind, pass,
+    score, detail — written by the runner alongside turn events. Returns []
+    when the file is missing, unreadable, or has no scorer events.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    path = _Path(traj_path)
+    if not path.exists():
+        return []
+    items: list[RowTaskScorerItem] = []
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                if ev.get("event") != "scorer":
+                    continue
+                pass_val = ev.get("pass")
+                items.append(
+                    RowTaskScorerItem(
+                        name=str(ev.get("scorer_name") or ev.get("kind") or ""),
+                        pass_=bool(pass_val) if pass_val is not None else None,
+                        score=float(ev["score"]) if ev.get("score") is not None else None,
+                        detail=ev.get("detail"),
+                    )
+                )
+    except OSError:
+        return []
+    return items
+
+
+def compute_row_tasks(
+    session: Session,
+    *,
+    model: str,
+    operator: str,
+    tier: str,
+) -> list[RowTaskItem]:
+    """Per-task drill for a leaderboard row identified by (model, operator, tier).
+
+    Operator matches the same `handle or "self"` logic used by
+    compute_leaderboard_response (queries.py:1309). Rows with no RegisteredRepo
+    user handle are treated as operator="self" — a direct SQL filter on
+    User.handle would exclude those rows, so we apply the operator filter in
+    Python after joining.
+
+    Returns one RowTaskItem per distinct task_id, keeping only the most-recent
+    task-result (recency = Run.started_at else Submission.ingested_at via
+    _date_proxy). Scorers are read from the task-result's trajectory_blob_ref
+    (trajectory.jsonl, event=="scorer" lines). Archived-repo rows are excluded
+    (same guard as compute_leaderboard_response).
+    """
+    stmt = (
+        select(
+            TaskResult.task_id,
+            TaskResult.suite,
+            TaskResult.passed,
+            TaskResult.trajectory_blob_ref,
+            _date_proxy().label("ts"),
+            User.handle,
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .join(
+            RegisteredRepo,
+            RegisteredRepo.id == Submission.registered_repo_id,
+            isouter=True,
+        )
+        .join(User, User.id == RegisteredRepo.user_id, isouter=True)
+        .where(TaskResult.model == model)
+        .where(TaskResult.tier == tier)
+        # Replicate the archived-repo exclusion from compute_leaderboard_response.
+        .where(
+            or_(
+                Submission.registered_repo_id.is_(None),
+                RegisteredRepo.status != "archived",
+            )
+        )
+    )
+
+    rows = session.exec(stmt).all()
+
+    # Filter to the requested operator: handle or "self" for rows with no handle.
+    # This matches the key emitted by compute_leaderboard_response:1309.
+    best: dict[str, tuple[datetime | None, Any]] = {}
+    for row in rows:
+        task_id, suite, passed, traj_ref, ts_val, handle = row
+        row_operator = handle or "self"
+        if row_operator != operator:
+            continue
+        ts = _coalesce_dt(ts_val)
+        existing = best.get(task_id)
+        if existing is None:
+            best[task_id] = (ts, row)
+            continue
+        existing_ts = existing[0]
+        # Prefer rows with a timestamp; when both have one keep the later.
+        if existing_ts is None or (ts is not None and ts > existing_ts):
+            best[task_id] = (ts, row)
+
+    out: list[RowTaskItem] = []
+    for task_id in sorted(best):
+        _, row = best[task_id]
+        _task_id, suite, passed, traj_ref, _ts, _handle = row
+        scorers = _read_scorers_from_trajectory(traj_ref) if traj_ref else []
+        out.append(
+            RowTaskItem(
+                task_id=task_id,
+                suite=suite or "",
+                passed=passed,
+                scorers=scorers,
+            )
+        )
+    return out

@@ -202,6 +202,92 @@ def test_ingest_writes_none_for_absent_pillar_and_keeps_genuine_zero(
     assert tr.score_memory is None
 
 
+def _write_run_with_verdicts(
+    run_dir: Path,
+    run_id: str,
+    task_id: str,
+    verdicts: list[dict],
+) -> None:
+    """Write a run dir whose scores.json["verdicts"] is the supplied list."""
+    run_dir.mkdir(parents=True)
+    (run_dir / "metadata.yaml").write_text(
+        f"run_id: {run_id}\ntask_id: {task_id}\nmodel: claude-sonnet\ntier: T0\nsuite: file-ops\ndataset_version: 0.0.1\nharness: test\nstarted_at: 2026-05-21T00:00:00Z\nfinished_at: 2026-05-21T00:00:01Z\n"
+    )
+    (run_dir / "scores.json").write_text(
+        json.dumps({
+            "run_id": run_id,
+            "task_id": task_id,
+            "total_score": 0.5,
+            "pass": all(v.get("pass", False) for v in verdicts) if verdicts else False,
+            "per_pillar": {"correctness": 0.5},
+            "verdicts": verdicts,
+        }) + "\n"
+    )
+    (run_dir / "trajectory.jsonl").write_text("{}\n")
+
+
+def test_ingest_passed_all_pass(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """passed=True when every decided scorer passes."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    verdicts = [
+        {"scorer_name": "schema", "kind": "schema", "pass": True, "score": 1.0, "detail": {}},
+        {"scorer_name": "file_diff", "kind": "deterministic", "pass": True, "score": 1.0, "detail": {}},
+    ]
+    _write_run_with_verdicts(
+        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", verdicts
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    tr = session.exec(select(TaskResult)).first()
+    assert tr is not None
+    assert tr.passed is True
+
+
+def test_ingest_passed_one_fail(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """passed=False when at least one decided scorer fails."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    verdicts = [
+        {"scorer_name": "schema", "kind": "schema", "pass": True, "score": 1.0, "detail": {}},
+        {"scorer_name": "file_diff", "kind": "deterministic", "pass": False, "score": 0.0, "detail": {}},
+    ]
+    _write_run_with_verdicts(
+        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", verdicts
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    tr = session.exec(select(TaskResult)).first()
+    assert tr is not None
+    assert tr.passed is False
+
+
+def test_ingest_passed_no_decided_verdicts(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """passed=None when verdicts list is empty (zero decided scorers)."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    _write_run_with_verdicts(
+        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", []
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    tr = session.exec(select(TaskResult)).first()
+    assert tr is not None
+    assert tr.passed is None
+
+
 def test_ingest_idempotent_second_call(
     tmp_path: Path, session: Session, repo: RegisteredRepo
 ) -> None:

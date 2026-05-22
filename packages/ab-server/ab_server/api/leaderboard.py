@@ -14,6 +14,7 @@ from ab_server.leaderboard import (
     ParetoHistorySeries,
     ParetoSeries,
     RegressionsPanel,
+    RowTaskItem,
     TrendsOverview,
     TrendsSeries,
     TrendsSeriesResponse,
@@ -24,6 +25,7 @@ from ab_server.leaderboard import (
     compute_pareto,
     compute_pareto_history,
     compute_regressions,
+    compute_row_tasks,
     compute_trends,
     compute_trends_series,
 )
@@ -240,3 +242,13 @@ def get_trends_ci_gate(
     session: Annotated[Session, Depends(get_session)],
 ) -> CIGateStatus:
     return compute_ci_gate(session)
+
+
+@router.get("/leaderboard/row/tasks", response_model=list[RowTaskItem])
+def get_row_tasks(
+    session: Annotated[Session, Depends(get_session)],
+    model: str,
+    operator: str,
+    tier: str,
+) -> list[RowTaskItem]:
+    return compute_row_tasks(session, model=model, operator=operator, tier=tier)

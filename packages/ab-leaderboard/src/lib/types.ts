@@ -122,6 +122,8 @@ export interface DatasetPin {
 export interface LeaderboardSummary {
   mean_correctness: number;
   mean_correctness_delta: number | null;
+  /** Mean pass-rate across all models (0–100). Null when no runs yet. */
+  mean_pass_rate: number | null;
   runs_count_window: number;
   runs_count_delta: number | null;
   best_correctness_model: string | null;
@@ -162,6 +164,17 @@ export interface LeaderboardRow {
   tokens_total: number;
   /** Median total turns per task. */
   turns_total: number;
+  /**
+   * Percentage of measured tasks where every scorer passed (0–100). Null when
+   * no runs have been fully scored yet for this row.
+   */
+  pass_rate: number | null;
+  /**
+   * Number of tasks contributing to each pillar score, aligned to the PILLARS
+   * array. 0 when no runs measured that pillar (same positions that have null
+   * in scores[]). Length always equals PILLARS.length.
+   */
+  pillar_counts: number[];
 }
 
 export interface RunSummary {
@@ -347,6 +360,32 @@ export interface ApiTokenCreated {
   prefix: string;
   /** Plaintext token — server returns this exactly once on creation. */
   token: string;
+}
+
+/**
+ * One scorer result within a row-task drill response.
+ * `pass` null = not measured (render neutral, not fail).
+ * `score` null = scorer did not emit a numeric score.
+ * `detail` may be a string, a structured object (e.g. context_efficiency
+ * returns `{total_tokens: ...}`), or null. Backend will narrow later; widened
+ * now to avoid runtime "[object Object]" or type breaks on object scorers.
+ */
+export interface RowTaskScorerResult {
+  name: string;
+  pass: boolean | null;
+  score: number | null;
+  detail: string | Record<string, unknown> | null;
+}
+
+/**
+ * One task entry from `GET /leaderboard/row/tasks?model=&operator=&tier=`.
+ * `passed` null = task ran but scorer produced no binary verdict yet.
+ */
+export interface RowTaskDrillItem {
+  task_id: string;
+  suite: string;
+  passed: boolean | null;
+  scorers: RowTaskScorerResult[];
 }
 
 export interface RegressionItem {

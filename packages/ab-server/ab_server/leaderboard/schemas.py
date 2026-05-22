@@ -64,6 +64,12 @@ class LeaderboardRow(BaseModel):
     sweep_cost: float = 0.0
     dataset_pin: DatasetPin
     tier: str
+    # pass_rate = 100 * (passed==True count) / (passed is not None count)
+    # null when denominator is 0 (no task had a decided scorer)
+    pass_rate: float | None = None
+    # Per-pillar sample sizes, index-aligned to `scores`. Each value is the
+    # count of task-results that contributed a non-null score to that pillar.
+    pillar_counts: list[int] = Field(default_factory=list)
 
 
 class LeaderboardSummary(BaseModel):
@@ -77,6 +83,9 @@ class LeaderboardSummary(BaseModel):
     best_cost_efficiency_model: str | None = None
     best_cost_efficiency_value_usd: float | None = None
     best_cost_efficiency_delta: float | None = None
+    # Mean of per-row pass_rates (only rows with pass_rate != None contribute).
+    # null when no row in the window has any decided scorer.
+    mean_pass_rate: float | None = None
 
 
 class LeaderboardResponse(BaseModel):
@@ -246,3 +255,19 @@ class CIGateStatus(BaseModel):
     blocked_merges_48h: int
     threshold_pct: float
     computed_at: datetime = Field(default_factory=_utcnow)
+
+
+class RowTaskScorerItem(BaseModel):
+    name: str
+    pass_: bool | None = Field(default=None, alias="pass")
+    score: float | None = None
+    detail: str | dict | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class RowTaskItem(BaseModel):
+    task_id: str
+    suite: str
+    passed: bool | None = None
+    scorers: list[RowTaskScorerItem] = Field(default_factory=list)

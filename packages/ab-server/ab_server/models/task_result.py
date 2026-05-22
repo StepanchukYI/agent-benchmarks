@@ -38,3 +38,7 @@ class TaskResult(SQLModel, table=True):
     tokens_out: int = 0
     turns_total: int = 0
     trajectory_blob_ref: str = ""
+    # passed=True  → every decided scorer passed
+    # passed=False → at least one decided scorer failed
+    # passed=None  → zero decided scorers (not measured)
+    passed: bool | None = Field(default=None, nullable=True)
