@@ -1,4 +1,4 @@
-import { Download, Filter, MoreHorizontal } from "lucide-react";
+import { Check, Download, Filter } from "lucide-react";
 import { useState, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { Button } from "../ui/Button";
@@ -26,8 +26,19 @@ const VENDOR_HEX: Record<string, string> = {
 type SortDir = "asc" | "desc";
 interface Sort { key: number; dir: SortDir; }
 
+/** PILLARS index of the Context pillar — shows real token usage, not a score. */
+const CONTEXT_PILLAR_IDX = 1;
+
+/** Median tokens/task as "12,400 tok"; "—" when unmeasured (0). */
+function fmtTokens(n: number | null | undefined): string {
+  if (n == null || n === 0) return "—";
+  return `${n.toLocaleString("en-US")} tok`;
+}
+
 export function LeaderboardMatrix(): JSX.Element {
   const [sort, setSort] = useState<Sort>({ key: 0, dir: "desc" });
+  const [hiddenPillars, setHiddenPillars] = useState<Set<number>>(new Set());
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const { data: leaderboard } = useLeaderboard({});
   const { data: models } = useModels();
   const { data: trendsSeries } = useTrendsSeries("30d");
@@ -36,6 +47,7 @@ export function LeaderboardMatrix(): JSX.Element {
   const pillars = leaderboard?.pillars ?? PILLARS;
   const modelList: Model[] = models ?? [];
   const trends: Record<string, (number | null)[]> = trendsSeries?.per_model ?? {};
+  const operatorCount = new Set(rows.map((r) => r.operator)).size;
 
   const sorted = [...rows].sort((a, b) => {
     const sgn = sort.dir === "desc" ? -1 : 1;
@@ -47,15 +59,80 @@ export function LeaderboardMatrix(): JSX.Element {
     setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" }));
   }
 
+  function togglePillar(idx: number): void {
+    setHiddenPillars((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  function exportCsv(): void {
+    const header = ["model", "operator", ...pillars, "sweep_cost_usd"];
+    const escape = (v: string): string =>
+      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const lines = sorted
+      .filter((r) => modelList.some((m) => m.id === r.model))
+      .map((r) =>
+        [
+          r.model,
+          r.operator,
+          ...r.scores.map((s) => (s == null ? "" : String(s))),
+          r.sweep_cost == null ? "" : String(r.sweep_cost),
+        ]
+          .map((c) => escape(String(c)))
+          .join(","),
+      );
+    const csv = [header.map(escape).join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "leaderboard.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Panel className="overflow-hidden">
       <PanelHeader
         title="Per-pillar scores"
-        hint="7 models × 5 pillars · 5 operators"
+        hint={`${rows.length} ${rows.length === 1 ? "model" : "models"} × ${pillars.length} pillars · ${operatorCount} ${operatorCount === 1 ? "operator" : "operators"}`}
         actions={
           <>
-            <Button size="sm" variant="default"><Filter className="size-3" /> Columns</Button>
-            <Button size="sm" variant="default"><Download className="size-3" /> Export CSV</Button>
+            <div className="relative">
+              <Button
+                size="sm"
+                variant={hiddenPillars.size ? "primary" : "default"}
+                onClick={() => setColumnsOpen((v) => !v)}
+              >
+                <Filter className="size-3" /> Columns
+              </Button>
+              {columnsOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20 w-[200px] rounded-md border border-border bg-panel shadow-xl p-1">
+                  {pillars.map((p, i) => {
+                    const visible = !hiddenPillars.has(i);
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => togglePillar(i)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded hover:bg-panel-2"
+                      >
+                        <span className="size-3.5 grid place-items-center">
+                          {visible && <Check className="size-3 text-accent" />}
+                        </span>
+                        <span className="flex-1">{p}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <Button size="sm" variant="default" onClick={exportCsv}>
+              <Download className="size-3" /> Export CSV
+            </Button>
           </>
         }
       />
@@ -67,14 +144,15 @@ export function LeaderboardMatrix(): JSX.Element {
                 Model
               </Th>
               <Th className="w-[170px]">Operator</Th>
-              {pillars.map((p, i) => (
-                <Th key={p} onClick={() => toggleSort(i)} active={sort.key === i} dir={sort.dir} numeric className="w-[120px]">
-                  {p}
-                </Th>
-              ))}
+              {pillars.map((p, i) =>
+                hiddenPillars.has(i) ? null : (
+                  <Th key={p} onClick={() => toggleSort(i)} active={sort.key === i} dir={sort.dir} numeric className="w-[120px]">
+                    {p}
+                  </Th>
+                ),
+              )}
               <Th className="w-[100px]" numeric>7d trend</Th>
               <Th className="w-[80px]" numeric>$/sweep</Th>
-              <Th className="w-[32px]" />
             </tr>
           </thead>
           <tbody>
@@ -98,14 +176,22 @@ export function LeaderboardMatrix(): JSX.Element {
                       <StaleDatasetPill pin={r.dataset_pin} />
                     </div>
                   </Td>
-                  {r.scores.map((s, idx) => (
-                    <Td key={idx} numeric className="pr-4">
-                      <span className="inline-flex items-center gap-0.5">
-                        <ScoreCell score={s} delta={r.delta[idx]} />
-                        {idx === 0 && <TrustDot tier={r.trust_tier} commit={r.source_commit_sha} size={10} />}
-                      </span>
-                    </Td>
-                  ))}
+                  {r.scores.map((s, idx) =>
+                    hiddenPillars.has(idx) ? null : idx === CONTEXT_PILLAR_IDX ? (
+                      // Context column shows ACTUAL median tokens/task, not the
+                      // synthetic 0..100 efficiency score (product-owner ask).
+                      <Td key={idx} numeric className="pr-4 font-mono text-muted-foreground">
+                        {fmtTokens(r.tokens_total)}
+                      </Td>
+                    ) : (
+                      <Td key={idx} numeric className="pr-4">
+                        <span className="inline-flex items-center gap-0.5">
+                          <ScoreCell score={s} delta={r.delta[idx]} />
+                          {idx === 0 && <TrustDot tier={r.trust_tier} commit={r.source_commit_sha} size={10} />}
+                        </span>
+                      </Td>
+                    ),
+                  )}
                   <Td numeric className="pr-4">
                     <Sparkline
                       data={(trends[r.model] ?? []).filter((v): v is number => v != null)}
@@ -117,9 +203,6 @@ export function LeaderboardMatrix(): JSX.Element {
                     />
                   </Td>
                   <Td numeric className="pr-4 font-mono">{fmtMoney(r.sweep_cost)}</Td>
-                  <Td>
-                    <Button variant="ghost" size="icon-sm"><MoreHorizontal className="size-3.5" /></Button>
-                  </Td>
                 </tr>
               );
             })}

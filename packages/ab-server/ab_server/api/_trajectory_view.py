@@ -298,7 +298,7 @@ def assemble_trajectory_view(
         "repo_url": repo.repo_url if repo else None,
     }
 
-    pillars: dict[str, float] | None = None
+    pillars: dict[str, float | None] | None = None
     if task_result is not None:
         pillars = {
             "correctness": task_result.score_correctness,
@@ -309,6 +309,7 @@ def assemble_trajectory_view(
         }
 
     return {
+        "submission_id": str(submission.id) if submission else None,
         "header": header,
         "turns": turns,
         "scorers": scorers,

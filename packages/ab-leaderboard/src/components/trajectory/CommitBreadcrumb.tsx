@@ -1,53 +1,75 @@
 import { ExternalLink, Github } from "lucide-react";
-import { Avatar } from "../ui/Avatar";
 import { TrustDot } from "../domain/TrustDot";
-import { useDefaultTrajectory, useOperators } from "../../api/hooks";
-import { shortSha } from "../../lib/format";
+import { fmtIsoRelative, shortSha } from "../../lib/format";
+import type { TrajectoryViewHeader, TrajectoryViewTrust, TrustTier } from "../../lib/types";
 
-/** Provenance strip: who ran this, where it lives, which commit, run id. */
-export function CommitBreadcrumb(): JSX.Element {
-  const { data: trajectory } = useDefaultTrajectory();
-  const { data: operators } = useOperators();
-  if (!trajectory) return <></>;
-  const op = (operators ?? []).find((o) => o.handle === trajectory.operator);
-  if (!op) return <></>;
+const TRUST_TIERS: TrustTier[] = ["official", "verified", "self_reported"];
+
+function asTrustTier(tier: string | null): TrustTier {
+  return TRUST_TIERS.includes(tier as TrustTier) ? (tier as TrustTier) : "self_reported";
+}
+
+interface CommitBreadcrumbProps {
+  trust: TrajectoryViewTrust;
+  header: TrajectoryViewHeader;
+}
+
+/** Provenance strip: where it lives, which commit, run id, trust + re-score time. */
+export function CommitBreadcrumb({ trust, header }: CommitBreadcrumbProps): JSX.Element {
+  const tier = asTrustTier(trust.tier);
+  const commit = trust.source_commit_sha;
+  const repoUrl = trust.repo_url;
   return (
     <div className="flex items-center gap-2 px-6 py-1.5 bg-background-2 border-b border-border-soft text-[11px]">
-      <span className="inline-flex items-center gap-1.5 text-foreground-2 font-medium">
-        <Avatar operator={op} size={14} />
-        @{op.handle}
-      </span>
-      <Sep />
-      <a
-        href={`https://${trajectory.source_repo}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono text-muted-foreground hover:text-foreground"
-      >
-        <Github className="size-3" />
-        {trajectory.source_repo}
-      </a>
-      <Sep />
-      <a
-        href={`https://${trajectory.source_repo}/commit/${trajectory.source_commit_sha}`}
-        target="_blank"
-        rel="noreferrer"
-        className="font-mono text-accent hover:underline"
-      >
-        {shortSha(trajectory.source_commit_sha)}
-      </a>
-      <Sep />
-      <span className="font-mono text-foreground-2">{trajectory.run_id}</span>
+      {repoUrl && (
+        <>
+          <a
+            href={repoUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-muted-foreground hover:text-foreground"
+          >
+            <Github className="size-3" />
+            {repoUrl.replace(/^https?:\/\//, "")}
+          </a>
+          <Sep />
+        </>
+      )}
+      {commit && (
+        <>
+          <a
+            href={repoUrl ? `${repoUrl}/commit/${commit}` : undefined}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-accent hover:underline"
+          >
+            {shortSha(commit)}
+          </a>
+          <Sep />
+        </>
+      )}
+      {header.run_id && <span className="font-mono text-foreground-2">{header.run_id}</span>}
       <span className="flex-1" />
       <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-        <TrustDot tier={trajectory.trust_tier} size={11} commit={trajectory.source_commit_sha} />
-        official
+        <TrustDot tier={tier} size={11} commit={commit ?? undefined} />
+        {tier}
       </span>
-      <Sep />
-      <span className="text-muted-foreground">re-scored 2h ago</span>
-      <a href="#commit" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-        view commit <ExternalLink className="size-2.5" />
-      </a>
+      {trust.re_scored_at && (
+        <>
+          <Sep />
+          <span className="text-muted-foreground">re-scored {fmtIsoRelative(trust.re_scored_at)}</span>
+        </>
+      )}
+      {repoUrl && commit && (
+        <a
+          href={`${repoUrl}/commit/${commit}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        >
+          view commit <ExternalLink className="size-2.5" />
+        </a>
+      )}
     </div>
   );
 }

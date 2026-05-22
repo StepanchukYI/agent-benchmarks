@@ -169,12 +169,13 @@ def _compute_task_stats(session: Session, task_id: str) -> dict[str, Any]:
     pass_rate = passed / runs_count
     costs = [tr.cost_usd for tr, _ in within]
     latencies = [tr.latency_ms for tr, _ in within]
+    turns = [tr.turns_total for tr, _ in within if tr.turns_total]
     return {
         "runs_count_30d": runs_count,
         "pass_rate_30d": pass_rate,
         "median_cost_usd": median(costs) if costs else None,
         "median_latency_ms": median(latencies) if latencies else None,
-        "median_turns": None,
+        "median_turns": median(turns) if turns else None,
     }
 
 

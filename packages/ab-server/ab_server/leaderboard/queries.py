@@ -31,9 +31,10 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlmodel import Session, select
 
+from ab_server.models.alert import AlertRule
 from ab_server.models.repo import RegisteredRepo
 from ab_server.models.run import Run
 from ab_server.models.submission import Submission
@@ -43,12 +44,18 @@ from ab_server.models.user import User
 from .schemas import (
     CIGateStatus,
     DatasetPin,
+    HeatmapCell,
+    HeatmapResponse,
+    HeatmapRow,
     LeaderboardCell,
     LeaderboardMatrix,
     LeaderboardMatrixRow,
     LeaderboardResponse,
     LeaderboardRow,
     LeaderboardSummary,
+    ParetoHistoryPoint,
+    ParetoHistorySeries,
+    ParetoHistorySeriesItem,
     ParetoPoint,
     ParetoSeries,
     RegressionItem,
@@ -157,14 +164,28 @@ def compute_matrix(
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
         .join(Run, Run.id == TaskResult.run_id, isouter=True)
-    )
-
-    if operator is not None:
-        stmt = stmt.join(
+        # Always LEFT JOIN the repo so archived repos can be excluded.
+        # delete_repo only soft-archives (status="archived") and leaves the
+        # submissions in place; without this filter, unregister+re-register
+        # of the same results repo double-counts every run (the bug that
+        # turned 84 haiku runs into 168 on the board).
+        .join(
             RegisteredRepo,
             RegisteredRepo.id == Submission.registered_repo_id,
             isouter=True,
-        ).join(User, User.id == RegisteredRepo.user_id, isouter=True)
+        )
+    )
+    # Drop submission rows whose repo is archived. Run-based rows (local
+    # runs, no submission/repo) are kept via the NULL check.
+    stmt = stmt.where(
+        or_(
+            Submission.registered_repo_id.is_(None),
+            RegisteredRepo.status != "archived",
+        )
+    )
+
+    if operator is not None:
+        stmt = stmt.join(User, User.id == RegisteredRepo.user_id, isouter=True)
         stmt = stmt.where(User.handle == operator)
 
     if suites:
@@ -486,6 +507,141 @@ def compute_pareto(
     return ParetoSeries(points=points)
 
 
+def compute_heatmap(
+    session: Session,
+    *,
+    suites: Sequence[str] | None = None,
+    models: Sequence[str] | None = None,
+    tiers: Sequence[str] | None = None,
+) -> HeatmapResponse:
+    """Per (model, tier) × suite mean correctness, for the FE ScoreHeatmap.
+
+    One GROUP BY over task_results. Each cell is the mean of
+    ``score_correctness`` (0..1) over the rows in that (model, tier, suite)
+    bucket, plus the row count. Empty DB returns rows=[], suites=[].
+    """
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.tier,
+            TaskResult.suite,
+            func.avg(TaskResult.score_correctness).label("corr_mean"),
+            func.count(TaskResult.id).label("n"),
+        )
+        .group_by(TaskResult.model, TaskResult.tier, TaskResult.suite)
+    )
+    if suites:
+        stmt = stmt.where(TaskResult.suite.in_(list(suites)))
+    if models:
+        stmt = stmt.where(TaskResult.model.in_(list(models)))
+    if tiers:
+        stmt = stmt.where(TaskResult.tier.in_(list(tiers)))
+
+    raw = session.exec(stmt).all()
+
+    cell_index: dict[tuple[str, str], dict[str, HeatmapCell]] = {}
+    suite_set: set[str] = set()
+    for model, tier, suite, corr_mean, n in raw:
+        suite_set.add(suite)
+        cell_index.setdefault((model, tier), {})[suite] = HeatmapCell(
+            score_correctness=float(corr_mean) if corr_mean is not None else None,
+            n=int(n or 0),
+        )
+
+    rows = [
+        HeatmapRow(model=model, tier=tier, cells=cells)
+        for (model, tier), cells in sorted(cell_index.items())
+    ]
+    return HeatmapResponse(
+        rows=rows,
+        suites=sorted(suite_set),
+        generated_at=datetime.now(UTC),
+    )
+
+
+def _iso_week_floor(value: datetime) -> datetime:
+    """Monday 00:00 UTC of the ISO week containing ``value``."""
+    d = value.astimezone(UTC)
+    monday = d.date() - timedelta(days=d.weekday())
+    return datetime(monday.year, monday.month, monday.day, tzinfo=UTC)
+
+
+def compute_pareto_history(
+    session: Session,
+    *,
+    window_days: int = 30,
+    suites: Sequence[str] | None = None,
+    tiers: Sequence[str] | None = None,
+) -> ParetoHistorySeries:
+    """Historical (cost, correctness-via-score_total) trail per (model, tier).
+
+    One SELECT over task_results within [now - window_days, now), bucketed
+    by ISO week in Python (so the date proxy is reused). Each point is the
+    mean cost_usd and mean score_total for that (model, tier) in that week.
+    Empty DB / empty window returns series=[].
+    """
+    if window_days <= 0:
+        return ParetoHistorySeries(series=[], window_days=0, generated_at=datetime.now(UTC))
+
+    cutoff = datetime.now(UTC) - timedelta(days=window_days)
+    date_proxy = _date_proxy()
+
+    stmt = (
+        select(
+            TaskResult.model,
+            TaskResult.tier,
+            TaskResult.cost_usd,
+            TaskResult.score_total,
+            date_proxy.label("ts"),
+        )
+        .select_from(TaskResult)
+        .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
+        .join(Run, Run.id == TaskResult.run_id, isouter=True)
+        .where(date_proxy >= cutoff)
+    )
+    if suites:
+        stmt = stmt.where(TaskResult.suite.in_(list(suites)))
+    if tiers:
+        stmt = stmt.where(TaskResult.tier.in_(list(tiers)))
+
+    Bucket = tuple[str, str, datetime]
+    costs: dict[Bucket, list[float]] = {}
+    scores: dict[Bucket, list[float]] = {}
+    for model, tier, cost_usd, score_total, ts_val in session.exec(stmt).all():
+        ts = _coalesce_dt(ts_val)
+        if ts is None:
+            continue
+        week = _iso_week_floor(ts)
+        key: Bucket = (model, tier, week)
+        costs.setdefault(key, []).append(float(cost_usd or 0.0))
+        scores.setdefault(key, []).append(float(score_total or 0.0))
+
+    by_series: dict[tuple[str, str], list[ParetoHistoryPoint]] = {}
+    for (model, tier, week), cost_list in costs.items():
+        score_list = scores.get((model, tier, week), [])
+        by_series.setdefault((model, tier), []).append(
+            ParetoHistoryPoint(
+                at=week,
+                cost_usd_mean=sum(cost_list) / len(cost_list) if cost_list else 0.0,
+                score_mean=sum(score_list) / len(score_list) if score_list else 0.0,
+                n=len(cost_list),
+            )
+        )
+
+    series: list[ParetoHistorySeriesItem] = []
+    for (model, tier), points in sorted(by_series.items()):
+        points.sort(key=lambda p: p.at)
+        series.append(
+            ParetoHistorySeriesItem(model=model, tier=tier, history=points)
+        )
+
+    return ParetoHistorySeries(
+        series=series,
+        window_days=window_days,
+        generated_at=datetime.now(UTC),
+    )
+
+
 def _collect_regression_buckets(
     session: Session,
     *,
@@ -602,6 +758,24 @@ def _last_full_sweep_at(session: Session) -> datetime | None:
     if isinstance(value, tuple):
         value = value[0]
     return _coalesce_dt(value)
+
+
+def _alerts_fired_in_window(session: Session, *, window_days: int, now: datetime) -> int:
+    """Count alert rules that fired within the last ``window_days``.
+
+    Mirrors AlertRule.derive_state's "firing" definition (fired no more than
+    window_days ago). Platform-wide count — not user-scoped — consistent with
+    the rest of the overview.
+    """
+    floor = now - timedelta(days=window_days)
+    stmt = select(func.count(AlertRule.id)).where(
+        AlertRule.last_fired_at.is_not(None),
+        AlertRule.last_fired_at >= floor,
+    )
+    value = session.exec(stmt).one()
+    if isinstance(value, tuple):
+        value = value[0]
+    return int(value or 0)
 
 
 def _collect_regression_buckets_window(
@@ -745,10 +919,15 @@ def compute_overview(
         improvements_delta_30d=improvements_delta_30d,
         ci_gate_status=status,
         ci_gate_blocked_merges_48h=blocked,
-        alerts_count_window=0,
-        alerts_actioned=0,
+        alerts_count_window=_alerts_fired_in_window(
+            session, window_days=window_days, now=now_ts
+        ),
+        # No acknowledged/resolved field on AlertRule, and no scheduled
+        # full-sweep mechanism exists — surface honest None rather than a
+        # fabricated 0 / cadence string.
+        alerts_actioned=None,
         last_full_sweep_at=_last_full_sweep_at(session),
-        last_full_sweep_cadence="scheduled · 03:00 daily",
+        last_full_sweep_cadence=None,
     )
 
 
@@ -856,9 +1035,12 @@ def _summary_aggregate(
     run_keys: set[tuple[Any, Any]] = set()
 
     for model, s_corr, cost_usd, run_id, sub_id in raw:
-        c = float(s_corr or 0.0)
-        corr_vals.append(c)
-        per_model_corr.setdefault(model, []).append(c)
+        # Skip rows where correctness was not measured (None) so the KPI mean
+        # isn't dragged down by a phantom 0; a genuine measured 0.0 still counts.
+        if s_corr is not None:
+            c = float(s_corr)
+            corr_vals.append(c)
+            per_model_corr.setdefault(model, []).append(c)
         per_model_cost.setdefault(model, []).append(float(cost_usd or 0.0))
         # Count distinct run "groups": either run_id (local) or submission_id (pulled).
         if run_id is not None or sub_id is not None:
@@ -1031,6 +1213,8 @@ def compute_leaderboard_response(
             TaskResult.score_latency,
             TaskResult.cost_usd,
             TaskResult.latency_ms,
+            TaskResult.tokens_total,
+            TaskResult.turns_total,
             Submission.trust_tier,
             Submission.source_commit_sha,
             Submission.dataset_version,
@@ -1087,6 +1271,8 @@ def compute_leaderboard_response(
     pillars_by_key: dict[Bucket, dict[str, list[float]]] = {}
     costs: dict[Bucket, list[float]] = {}
     latencies_ms: dict[Bucket, list[float]] = {}
+    tokens_by_key: dict[Bucket, list[int]] = {}
+    turns_by_key: dict[Bucket, list[int]] = {}
     suites_seen: dict[Bucket, list[str]] = {}
     tasks_seen: dict[Bucket, set[tuple[str, str]]] = {}
     sweep_cost: dict[Bucket, float] = {}
@@ -1109,6 +1295,8 @@ def compute_leaderboard_response(
             s_lat,
             cost_usd,
             latency_ms,
+            tokens_total,
+            turns_total,
             trust_tier,
             commit_sha,
             sub_dataset_version,
@@ -1124,13 +1312,23 @@ def compute_leaderboard_response(
         bucket_pillars = pillars_by_key.setdefault(
             key, {k: [] for k in pillar_keys}
         )
-        bucket_pillars["correctness"].append(float(s_corr or 0.0))
-        bucket_pillars["context_eff"].append(float(s_ctx or 0.0))
-        bucket_pillars["tool_skill"].append(float(s_tool or 0.0))
-        bucket_pillars["memory"].append(float(s_mem or 0.0))
-        bucket_pillars["latency"].append(float(s_lat or 0.0))
+        # A pillar column is None when the task did not measure that pillar, and
+        # a float (including a genuine 0.0) when it did. Count only non-None
+        # contributions — a real 0.0 IS data. A pillar with zero non-None
+        # contributions aggregates to an empty list → null downstream.
+        for pillar_key, raw_score in (
+            ("correctness", s_corr),
+            ("context_eff", s_ctx),
+            ("tool_skill", s_tool),
+            ("memory", s_mem),
+            ("latency", s_lat),
+        ):
+            if raw_score is not None:
+                bucket_pillars[pillar_key].append(float(raw_score))
         costs.setdefault(key, []).append(float(cost_usd or 0.0))
         latencies_ms.setdefault(key, []).append(float(latency_ms or 0))
+        tokens_by_key.setdefault(key, []).append(int(tokens_total or 0))
+        turns_by_key.setdefault(key, []).append(int(turns_total or 0))
         suites_seen.setdefault(key, []).append(suite)
         tasks_seen.setdefault(key, set()).add((task_id, suite))
         tiers_by_key.setdefault(key, []).append(tier)
@@ -1184,29 +1382,46 @@ def compute_leaderboard_response(
         model_p, c_p, ctx_p, tool_p, mem_p, lat_p, handle_p = prow
         kp: Bucket = (model_p, handle_p or "self")
         bp = prev_pillars.setdefault(kp, {k: [] for k in pillar_keys})
-        bp["correctness"].append(float(c_p or 0.0))
-        bp["context_eff"].append(float(ctx_p or 0.0))
-        bp["tool_skill"].append(float(tool_p or 0.0))
-        bp["memory"].append(float(mem_p or 0.0))
-        bp["latency"].append(float(lat_p or 0.0))
+        # Same non-None rule as the current window so prev-window pillar means
+        # (used for deltas) count genuine 0.0s and ignore unmeasured pillars.
+        for pillar_key, raw_score in (
+            ("correctness", c_p),
+            ("context_eff", ctx_p),
+            ("tool_skill", tool_p),
+            ("memory", mem_p),
+            ("latency", lat_p),
+        ):
+            if raw_score is not None:
+                bp[pillar_key].append(float(raw_score))
 
     out_rows: list[LeaderboardRow] = []
     for key, score_list in scores.items():
         model, operator = key
         bucket_pillars = pillars_by_key.get(key, {k: [] for k in pillar_keys})
-        scores_arr = [
-            (sum(bucket_pillars[k]) / len(bucket_pillars[k]) if bucket_pillars[k] else 0.0) * 100.0
+        # Null (not 0) when a pillar had no measured contribution, so the FE can
+        # skip it in the overall mean instead of averaging in a phantom zero.
+        scores_arr: list[float | None] = [
+            (sum(bucket_pillars[k]) / len(bucket_pillars[k]) * 100.0)
+            if bucket_pillars[k]
+            else None
             for k in pillar_keys
         ]
         prev_bp = prev_pillars.get(key)
         if prev_bp is None:
-            delta_arr = [0.0] * 5
+            delta_arr: list[float | None] = [None] * 5
         else:
-            prev_arr = [
-                (sum(prev_bp[k]) / len(prev_bp[k]) if prev_bp[k] else 0.0) * 100.0
+            prev_arr: list[float | None] = [
+                (sum(prev_bp[k]) / len(prev_bp[k]) * 100.0) if prev_bp[k] else None
                 for k in pillar_keys
             ]
-            delta_arr = [scores_arr[i] - prev_arr[i] for i in range(5)]
+            # Delta is null when either window lacks a measured value for the
+            # pillar — a delta against a phantom 0 baseline would be misleading.
+            delta_arr = [
+                (scores_arr[i] - prev_arr[i])
+                if scores_arr[i] is not None and prev_arr[i] is not None
+                else None
+                for i in range(5)
+            ]
 
         version_list = versions_by_key.get(key, [])
         if version_list:
@@ -1229,6 +1444,8 @@ def compute_leaderboard_response(
                 variance=_stddev([s * 100.0 for s in score_list]),
                 cost_per_task=_median(costs.get(key, [])),
                 latency_s=_median(latencies_ms.get(key, [])) / 1000.0,
+                tokens_total=int(_median([float(t) for t in tokens_by_key.get(key, [])])),
+                turns_total=int(_median([float(t) for t in turns_by_key.get(key, [])])),
                 sweep_cost=sweep_cost.get(key, 0.0),
                 dataset_pin=DatasetPin(version=latest_version, behind=behind),
                 tier=_mode(tiers_by_key.get(key, []), "T0"),
@@ -1244,13 +1461,19 @@ def compute_leaderboard_response(
             raise ValueError(f"Unknown pillar param: {pillar!r}")
         out_rows.sort(
             key=lambda r: (
-                -(r.scores[idx] if idx < len(r.scores) else 0.0),
+                -(r.scores[idx] if idx < len(r.scores) and r.scores[idx] is not None else 0.0),
                 r.model,
                 r.operator,
             )
         )
     else:
-        out_rows.sort(key=lambda r: (-sum(r.scores) / 5.0, r.model, r.operator))
+        # Rank by the mean of measured pillars only (skip nulls), matching the
+        # FE's overall-mean semantics. A row with no measured pillars sorts last.
+        def _overall(r: LeaderboardRow) -> float:
+            present = [s for s in r.scores if s is not None]
+            return sum(present) / len(present) if present else 0.0
+
+        out_rows.sort(key=lambda r: (-_overall(r), r.model, r.operator))
 
     summary = compute_leaderboard_summary(
         session,

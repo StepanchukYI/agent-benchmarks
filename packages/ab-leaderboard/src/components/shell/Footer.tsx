@@ -1,12 +1,14 @@
 import { Github } from "lucide-react";
+import { useVersion } from "../../api/hooks";
 
 /**
- * Global footer — OSS posture, build hash, mode marker.
+ * Global footer — OSS posture, version marker, mode marker.
  *
  * Sticky bottom is intentionally avoided: pages with long scrolls (Trends
  * heatmap) push the footer down naturally and the user can reach it.
  */
 export function Footer(): JSX.Element {
+  const { data: version } = useVersion();
   return (
     <footer className="flex items-center justify-between gap-4 px-4 py-3 text-[11.5px] text-muted-foreground border-t border-border bg-background">
       <div className="flex items-center gap-2.5">
@@ -26,13 +28,12 @@ export function Footer(): JSX.Element {
         <Sep />
         <a href="#docs" className="hover:text-foreground">Docs</a>
         <Sep />
-        <a href="#cli" className="hover:text-foreground">CLI · ab v0.5.0</a>
+        <a href="#cli" className="hover:text-foreground">
+          CLI · ab{version ? ` v${version.server}` : ""}
+        </a>
       </div>
       <div className="flex items-center gap-2.5">
-        <span className="font-mono text-[10px] px-1.5 py-[1px] rounded border border-border bg-panel-2">
-          build a7c2b09
-        </span>
-        <span>· pull-based aggregation · active</span>
+        <span>pull-based aggregation · active</span>
       </div>
     </footer>
   );

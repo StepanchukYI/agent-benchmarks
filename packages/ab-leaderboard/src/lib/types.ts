@@ -139,10 +139,14 @@ export interface LeaderboardRow {
   operator: string;
   trust_tier: TrustTier;
   source_commit_sha: string;
-  /** Score per pillar, indexed by PILLARS array. */
-  scores: number[];
-  /** Δ vs previous 7d, per pillar. */
-  delta: number[];
+  /**
+   * Score per pillar, indexed by PILLARS array. An entry is null when no run
+   * measured that pillar for this row; consumers skip nulls in aggregates
+   * (e.g. the overall mean) rather than averaging in 0.
+   */
+  scores: (number | null)[];
+  /** Δ vs previous 7d, per pillar. Null where the pillar has no data. */
+  delta: (number | null)[];
   runs: number;
   /** Standard deviation across reruns, percentage points. */
   variance: number;
@@ -154,6 +158,10 @@ export interface LeaderboardRow {
   sweep_cost: number;
   dataset_pin: DatasetPin;
   tier: Tier;
+  /** Median total tokens consumed per task. */
+  tokens_total: number;
+  /** Median total turns per task. */
+  turns_total: number;
 }
 
 export interface RunSummary {
@@ -203,6 +211,90 @@ export interface Trajectory {
   tokens_out: number;
   pillar_scores: Record<string, number>;
   turns: TurnEvent[];
+}
+
+/**
+ * Server response shape from `GET /trajectories/default` and
+ * `GET /submissions/{id}/trajectory` (see
+ * `ab_server/api/_trajectory_view.py::assemble_trajectory_view`). This is the
+ * raw payload; the FE normalizes it into the consumption shapes below. A 404
+ * (no public trajectory) maps to `null` at the hook layer, not an error.
+ */
+export interface TrajectoryViewHeaderTotals {
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  latency_ms?: number | null;
+  cost_usd?: number | null;
+  score?: number | null;
+}
+
+export interface TrajectoryViewHeader {
+  run_id: string | null;
+  task_id: string | null;
+  model: string | null;
+  harness: string | null;
+  tier: string | null;
+  tier_hash: string | null;
+  dataset_version: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  status: string | null;
+  totals: TrajectoryViewHeaderTotals | null;
+}
+
+export interface TrajectoryViewToolCall {
+  name: string | null;
+  args: unknown;
+  truncated: boolean;
+}
+
+export interface TrajectoryViewToolReturn {
+  path: string | null;
+  content: unknown;
+  truncated: boolean;
+}
+
+export interface TrajectoryViewTurn {
+  idx: number;
+  role: string | null;
+  model_output: unknown;
+  tool_calls: TrajectoryViewToolCall[];
+  tool_returns: TrajectoryViewToolReturn[];
+  vault_state_diff: unknown;
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  cost_usd: number;
+  truncated: boolean;
+}
+
+export interface TrajectoryViewScorer {
+  scorer_name: string | null;
+  kind: string | null;
+  pass: boolean | null;
+  score: number | null;
+  detail: unknown;
+}
+
+export interface TrajectoryViewTrust {
+  tier: TrustTier | string | null;
+  re_scored_at: string | null;
+  discrepancy_pct: number | null;
+  source_commit_sha: string | null;
+  source_path: string | null;
+  repo_url: string | null;
+}
+
+export interface TrajectoryView {
+  header: TrajectoryViewHeader;
+  turns: TrajectoryViewTurn[];
+  scorers: TrajectoryViewScorer[];
+  /** Pre-computed timeline events matching {@link TurnEvent}. */
+  events: TurnEvent[];
+  trust: TrajectoryViewTrust;
+  pillars: Record<string, number | null> | null;
+  /** Submission id for the privacy-scan call; null in the default view if absent. */
+  submission_id: string | null;
 }
 
 /**

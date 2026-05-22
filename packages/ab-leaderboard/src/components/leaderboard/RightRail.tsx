@@ -1,6 +1,5 @@
-import { AlertTriangle, ChevronRight } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Panel, PanelHeader } from "../ui/Panel";
-import { Button } from "../ui/Button";
 import { ParetoChart } from "../charts/ParetoChart";
 import { useLeaderboard, useModels, useTrendsRegressions } from "../../api/hooks";
 import { ModelCell } from "../domain/ModelCell";
@@ -36,7 +35,7 @@ export function RightRail(): JSX.Element {
                 <span className="w-3.5 text-muted-foreground text-[10.5px] tnum">{i + 1}</span>
                 <ModelCell model={m} compact />
                 <span className="flex-1" />
-                <span className="font-semibold text-[12px] tnum">{r.scores[0]!.toFixed(1)}</span>
+                <span className="font-semibold text-[12px] tnum">{(r.scores[0] ?? 0).toFixed(1)}</span>
                 <span className={cn("text-[10px] tnum", d > 0 ? "text-pass" : "text-fail")}>
                   {d > 0 ? "▲" : "▼"}{Math.abs(d).toFixed(1)}
                 </span>
@@ -65,7 +64,6 @@ export function RightRail(): JSX.Element {
                 <span className="text-fail font-semibold text-[12px]">
                   ▼ {Math.abs(r.delta_pct).toFixed(1)}%
                 </span>
-                <Button size="sm" variant="ghost">Diff <ChevronRight className="size-3" /></Button>
               </div>
             </li>
           ))}

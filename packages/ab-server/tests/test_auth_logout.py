@@ -2,20 +2,26 @@
 
 We end-to-end the device flow to mint a real token, hit /me to confirm the
 token is live, POST /auth/logout, then confirm /me returns 401 and the
-user's session_token column is null.
+backing AuthSession row is gone — while a second concurrent session for the
+same user keeps working.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import pytest
-from ab_server.auth.github_oauth import reset_github_client, set_github_client
+from ab_server.auth.github_oauth import (
+    hash_session_token,
+    reset_github_client,
+    set_github_client,
+)
 from ab_server.db import get_session
 from ab_server.main import app
-from ab_server.models import User
+from ab_server.models import AuthSession, User
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -96,32 +102,64 @@ def _mint_token(client: TestClient) -> str:
     return poll_resp.json()["access_token"]
 
 
-def test_logout_invalidates_session(
+def test_logout_invalidates_only_used_session(
+    db_engine: object,
+    github_mock: httpx.MockTransport,
+) -> None:
+    """Two concurrent sessions for one user; logout kills only the one used."""
+    client = TestClient(app)
+    token_a = _mint_token(client)
+    token_b = _mint_token(client)
+    assert token_a != token_b
+    header_a = {"Authorization": f"Bearer {token_a}"}
+    header_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Both tokens authenticate the same single user.
+    assert client.get("/api/v1/me", headers=header_a).status_code == 200
+    assert client.get("/api/v1/me", headers=header_b).status_code == 200
+    with Session(db_engine) as session:  # type: ignore[arg-type]
+        assert len(session.exec(select(User)).all()) == 1
+        assert len(session.exec(select(AuthSession)).all()) == 2
+
+    # Logout with token_a returns 204 and drops only its row.
+    out = client.post("/api/v1/auth/logout", headers=header_a)
+    assert out.status_code == 204, out.text
+    assert out.content == b""
+
+    with Session(db_engine) as session:  # type: ignore[arg-type]
+        rows = session.exec(select(AuthSession)).all()
+        assert len(rows) == 1
+        assert rows[0].token_hash == hash_session_token(token_b)
+
+    # token_a is dead; token_b still lives.
+    assert client.get("/api/v1/me", headers=header_a).status_code == 401
+    assert client.get("/api/v1/me", headers=header_b).status_code == 200
+
+
+def test_expired_session_rejected(
     db_engine: object,
     github_mock: httpx.MockTransport,
 ) -> None:
     client = TestClient(app)
     token = _mint_token(client)
-    auth_header = {"Authorization": f"Bearer {token}"}
+    header = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/me", headers=header).status_code == 200
 
-    # Sanity: token works before logout.
-    pre = client.get("/api/v1/me", headers=auth_header)
-    assert pre.status_code == 200, pre.text
-
-    # Logout returns 204 and clears the DB column.
-    out = client.post("/api/v1/auth/logout", headers=auth_header)
-    assert out.status_code == 204, out.text
-    assert out.content == b""
-
+    # Backdate the session expiry past now.
     with Session(db_engine) as session:  # type: ignore[arg-type]
-        users = session.exec(select(User)).all()
-        assert len(users) == 1
-        assert users[0].session_token is None
-        assert users[0].session_expires_at is None
+        row = session.exec(
+            select(AuthSession).where(
+                AuthSession.token_hash == hash_session_token(token)
+            )
+        ).first()
+        assert row is not None
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.add(row)
+        session.commit()
 
-    # Subsequent calls with the same token must 401.
-    post = client.get("/api/v1/me", headers=auth_header)
-    assert post.status_code == 401
+    resp = client.get("/api/v1/me", headers=header)
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "session expired"
 
 
 def test_logout_requires_auth(db_engine: object) -> None:

@@ -19,34 +19,51 @@ import { CostLedger } from "../components/charts/CostLedger";
 import { useDefaultTrajectory, useSubmissionsList, useTasksList } from "../api/hooks";
 import { toState } from "../lib/ui-state";
 import { useTheme } from "../lib/theme";
-import type { Task, Trajectory } from "../lib/types";
+import type { Task, TrajectoryView } from "../lib/types";
 
 type TabId = "overview" | "tasks" | "trajectories" | "cost" | "diff" | "export";
 
 export default function TrajectoryViewer(): JSX.Element {
   const { trajectoryLayout, setTrajectoryLayout } = useTheme();
-  const [active, setActive] = useState<number>(6);
+  const [active, setActive] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<TabId>("trajectories");
   const [compareOn, setCompareOn] = useState(false);
   const trajectoryQuery = useDefaultTrajectory();
   const tasksQuery = useTasksList();
   const submissionsQuery = useSubmissionsList();
+  // null (404 / no public trajectory) and a turnless payload both → EmptyState.
   const trajectoryState = toState(
     trajectoryQuery,
-    (t: Trajectory) => !t || t.turns.length === 0,
+    (t: TrajectoryView | null) => !t || t.turns.length === 0,
   );
 
   const tasksCount = tasksQuery.data?.length ?? 0;
   const submissionsCount = submissionsQuery.data?.length ?? 0;
+
+  const view = trajectoryState.kind === "ok" ? trajectoryState.value : null;
+  const turnCount = view?.turns.length ?? 0;
+  const activePos = view ? view.turns.findIndex((t) => t.idx === active) : -1;
+  const crumbModel = view?.header.model ?? null;
+  const crumbTask = view?.header.task_id ?? null;
+  const crumbRun = view?.header.run_id ?? null;
+
+  const stepTurn = (dir: -1 | 1): void => {
+    if (!view || view.turns.length === 0) return;
+    const cur = activePos < 0 ? 0 : activePos;
+    const next = Math.min(Math.max(cur + dir, 0), view.turns.length - 1);
+    setActive(view.turns[next]!.idx);
+  };
 
   return (
     <>
       <SubNav
         crumbs={[
           { label: "Runs" },
-          { label: "ab-2026-21-04", mono: true },
+          ...(crumbRun ? [{ label: crumbRun, mono: true }] : []),
           { label: "Trajectories" },
-          { label: "L1_001 · claude-sonnet-4-5", mono: true, current: true },
+          ...(crumbTask || crumbModel
+            ? [{ label: [crumbTask, crumbModel].filter(Boolean).join(" · "), mono: true, current: true }]
+            : []),
         ]}
         tabs={[
           { id: "overview", label: "Overview", active: activeTab === "overview", onSelect: () => setActiveTab("overview") },
@@ -78,9 +95,15 @@ export default function TrajectoryViewer(): JSX.Element {
                 </Button>
               </div>
               <div className="flex gap-1 ml-2">
-                <Button size="icon-sm"><ChevronLeft className="size-3" /></Button>
-                <span className="text-muted-foreground font-mono tnum text-[11px] self-center px-1">14 / 80</span>
-                <Button size="icon-sm"><ChevronRight className="size-3" /></Button>
+                <Button size="icon-sm" onClick={() => stepTurn(-1)} disabled={turnCount === 0 || activePos <= 0}>
+                  <ChevronLeft className="size-3" />
+                </Button>
+                <span className="text-muted-foreground font-mono tnum text-[11px] self-center px-1">
+                  {turnCount === 0 ? "—" : `${(activePos < 0 ? 0 : activePos) + 1} / ${turnCount}`}
+                </span>
+                <Button size="icon-sm" onClick={() => stepTurn(1)} disabled={turnCount === 0 || activePos >= turnCount - 1}>
+                  <ChevronRight className="size-3" />
+                </Button>
               </div>
             </div>
           ) : undefined
@@ -99,9 +122,6 @@ export default function TrajectoryViewer(): JSX.Element {
 
       {activeTab === "trajectories" && (
         <>
-          <CommitBreadcrumb />
-          <TrajectoryToolbar compareOn={compareOn} onToggleCompare={() => setCompareOn((v) => !v)} />
-
           {trajectoryState.kind === "loading" && (
             <div className="p-5"><LoadingSkeleton rows={6} columns={3} /></div>
           )}
@@ -116,18 +136,26 @@ export default function TrajectoryViewer(): JSX.Element {
           {trajectoryState.kind === "empty" && (
             <div className="p-5">
               <EmptyState
-                title="Pick a run from Runs to inspect its trajectory."
-                hint="Trajectories appear once a run finishes and the trajectory.jsonl is committed."
+                title="No public trajectory yet."
+                hint="A trajectory appears here once a public submission is ingested and re-scored."
               />
             </div>
           )}
-          {trajectoryState.kind === "ok" && (
-            <TrajectoryBody
-              trajectory={trajectoryState.value}
-              layout={trajectoryLayout}
-              active={active}
-              setActive={setActive}
-            />
+          {trajectoryState.kind === "ok" && view && (
+            <>
+              <CommitBreadcrumb trust={view.trust} header={view.header} />
+              <TrajectoryToolbar
+                header={view.header}
+                compareOn={compareOn}
+                onToggleCompare={() => setCompareOn((v) => !v)}
+              />
+              <TrajectoryBody
+                view={view}
+                layout={trajectoryLayout}
+                active={active}
+                setActive={setActive}
+              />
+            </>
           )}
         </>
       )}
@@ -208,15 +236,40 @@ function TasksTab({ tasks }: TasksTabProps): JSX.Element {
 }
 
 interface TrajectoryBodyProps {
-  trajectory: Trajectory;
+  view: TrajectoryView;
   layout: "three-pane" | "stacked";
   active: number;
   setActive: (n: number) => void;
 }
 
-function TrajectoryBody({ trajectory, layout, active, setActive }: TrajectoryBodyProps): JSX.Element {
-  const turns = trajectory.turns;
-  const turn = turns.find((t) => t.idx === active) ?? turns[0]!;
+/**
+ * Verdict pill kind from the real scorer chain: pass only if every decided
+ * scorer passed. "info" stands in for "pending" — StatusPill's kind union has
+ * no "pending", so an undecided/empty chain renders as a neutral info pill.
+ */
+function verdictKind(scorers: TrajectoryView["scorers"]): "pass" | "fail" | "info" {
+  const decided = scorers.filter((s) => s.pass != null);
+  if (decided.length === 0) return "info";
+  return decided.every((s) => s.pass) ? "pass" : "fail";
+}
+
+/** Pillar map with nulls dropped — PillarRadar + the bar list only plot real scores. */
+function realPillars(pillars: TrajectoryView["pillars"]): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!pillars) return out;
+  for (const [k, v] of Object.entries(pillars)) {
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
+
+function TrajectoryBody({ view, layout, active, setActive }: TrajectoryBodyProps): JSX.Element {
+  const turns = view.turns;
+  const events = view.events;
+  const activeEvent = events.find((e) => e.idx === active) ?? events[0]!;
+  const turn = turns.find((t) => t.idx === active);
+  const verdict = verdictKind(view.scorers);
+  const pillars = realPillars(view.pillars);
 
   if (layout === "three-pane") {
     return (
@@ -226,46 +279,48 @@ function TrajectoryBody({ trajectory, layout, active, setActive }: TrajectoryBod
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Timeline
             </span>
-            <span className="text-muted-foreground text-[11px]">· {turns.length} turns</span>
+            <span className="text-muted-foreground text-[11px]">· {events.length} turns</span>
             <span className="flex-1" />
             <Button size="icon-sm" variant="ghost"><SlidersHorizontal className="size-3" /></Button>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <TurnTimeline turns={turns} active={active} onSelect={setActive} />
+            <TurnTimeline turns={events} active={active} onSelect={setActive} />
           </div>
         </aside>
 
         <main className="flex-1 min-w-0 bg-background flex flex-col">
-          <TurnDetail turn={turn} />
+          <TurnDetail event={activeEvent} turn={turn} />
         </main>
 
         <aside className="w-[320px] shrink-0 border-l border-border bg-background-2 p-3.5 flex flex-col gap-3.5 overflow-y-auto">
           <Panel>
-            <PanelHeader title="Verdict" actions={<StatusPill kind="pass" size="sm" />} />
-            <div className="p-3"><ScorerVerdictPanel /></div>
+            <PanelHeader title="Verdict" actions={<StatusPill kind={verdict} size="sm" />} />
+            <div className="p-3"><ScorerVerdictPanel scorers={view.scorers} /></div>
           </Panel>
 
-          <PrivacyScrubber />
+          <PrivacyScrubber submissionId={view.submission_id} />
 
-          <Panel>
-            <PanelHeader title="Pillars" actions={<span className="text-[11px] text-muted-foreground">0–100</span>} />
-            <div className="p-3">
-              <div className="flex justify-center"><PillarRadar scores={trajectory.pillar_scores} size={190} /></div>
-              <div className="flex flex-col gap-1.5 mt-2.5">
-                {Object.entries(trajectory.pillar_scores).map(([k, v]) => (
-                  <div key={k} className="grid items-center gap-2" style={{ gridTemplateColumns: "1fr 60px 32px" }}>
-                    <span className="text-muted-foreground text-[11px]">{k}</span>
-                    <MiniBar value={v} tone={v > 85 ? "pass" : v > 70 ? "neutral" : "warn"} width="100%" />
-                    <span className="font-mono text-[11px] font-semibold tnum text-right">{v}</span>
-                  </div>
-                ))}
+          {Object.keys(pillars).length > 0 && (
+            <Panel>
+              <PanelHeader title="Pillars" actions={<span className="text-[11px] text-muted-foreground">0–100</span>} />
+              <div className="p-3">
+                <div className="flex justify-center"><PillarRadar scores={pillars} size={190} /></div>
+                <div className="flex flex-col gap-1.5 mt-2.5">
+                  {Object.entries(pillars).map(([k, v]) => (
+                    <div key={k} className="grid items-center gap-2" style={{ gridTemplateColumns: "1fr 60px 32px" }}>
+                      <span className="text-muted-foreground text-[11px]">{k}</span>
+                      <MiniBar value={v} tone={v > 85 ? "pass" : v > 70 ? "neutral" : "warn"} width="100%" />
+                      <span className="font-mono text-[11px] font-semibold tnum text-right">{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </Panel>
+            </Panel>
+          )}
 
           <Panel>
             <PanelHeader title="Cost ledger" actions={<span className="text-[11px] text-muted-foreground">per turn</span>} />
-            <div className="p-3"><CostLedger /></div>
+            <div className="p-3"><CostLedger turns={turns} totals={view.header.totals} /></div>
           </Panel>
         </aside>
       </div>
@@ -277,38 +332,43 @@ function TrajectoryBody({ trajectory, layout, active, setActive }: TrajectoryBod
       <div className="max-w-[1100px] mx-auto p-5 flex flex-col gap-3.5">
         <div className="grid grid-cols-3 gap-3.5">
           <Panel className="col-span-2">
-            <PanelHeader title="Verdict" actions={<StatusPill kind="pass" size="sm" />} />
+            <PanelHeader title="Verdict" actions={<StatusPill kind={verdict} size="sm" />} />
             <div className="p-4 grid items-center gap-6" style={{ gridTemplateColumns: "1fr 220px" }}>
-              <ScorerVerdictPanel />
-              <div className="flex flex-col items-center">
-                <PillarRadar scores={trajectory.pillar_scores} size={200} />
-                <div className="text-muted-foreground text-[10.5px] mt-1.5">Pillar scores · 0–100</div>
-              </div>
+              <ScorerVerdictPanel scorers={view.scorers} />
+              {Object.keys(pillars).length > 0 && (
+                <div className="flex flex-col items-center">
+                  <PillarRadar scores={pillars} size={200} />
+                  <div className="text-muted-foreground text-[10.5px] mt-1.5">Pillar scores · 0–100</div>
+                </div>
+              )}
             </div>
           </Panel>
           <Panel>
             <PanelHeader title="Cost ledger" />
-            <div className="p-3"><CostLedger /></div>
+            <div className="p-3"><CostLedger turns={turns} totals={view.header.totals} /></div>
           </Panel>
         </div>
 
-        {turns.map((t) => (
-          <Panel key={t.idx} className={t.idx === active ? "ring-1 ring-accent" : ""}>
-            <PanelHeader
-              title={
-                <span className="flex items-center gap-1.5">
-                  <span className="font-mono text-muted-foreground text-[11px]">#{String(t.idx).padStart(2, "0")}</span>
-                  <span>{t.label}</span>
-                  <span className="text-muted-foreground font-normal text-[11px]">· {t.meta}</span>
-                </span>
-              }
-              actions={
-                <Button size="sm" variant="ghost" onClick={() => setActive(t.idx)}>focus →</Button>
-              }
-            />
-            <div className="p-3"><TurnDetail turn={t} /></div>
-          </Panel>
-        ))}
+        {events.map((e) => {
+          const t = turns.find((tt) => tt.idx === e.idx);
+          return (
+            <Panel key={e.idx} className={e.idx === active ? "ring-1 ring-accent" : ""}>
+              <PanelHeader
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono text-muted-foreground text-[11px]">#{String(e.idx).padStart(2, "0")}</span>
+                    <span>{e.label}</span>
+                    {e.meta && <span className="text-muted-foreground font-normal text-[11px]">· {e.meta}</span>}
+                  </span>
+                }
+                actions={
+                  <Button size="sm" variant="ghost" onClick={() => setActive(e.idx)}>focus →</Button>
+                }
+              />
+              <div className="p-3"><TurnDetail event={e} turn={t} /></div>
+            </Panel>
+          );
+        })}
       </div>
     </div>
   );

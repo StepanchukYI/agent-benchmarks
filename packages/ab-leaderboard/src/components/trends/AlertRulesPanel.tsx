@@ -9,14 +9,19 @@ import { LoadingSkeleton } from "../ui/LoadingSkeleton";
 import { useAlertRules } from "../../api/hooks";
 import { toState } from "../../lib/ui-state";
 
-export function AlertRulesPanel(): JSX.Element {
+interface AlertRulesPanelProps {
+  /** Opens the full Alerts tab where the create form lives. */
+  onNewRule?: () => void;
+}
+
+export function AlertRulesPanel({ onNewRule }: AlertRulesPanelProps): JSX.Element {
   const alertsQuery = useAlertRules();
   const state = toState(alertsQuery);
   return (
     <Panel>
       <PanelHeader
         title="Active alert rules"
-        actions={<Button size="sm"><Plus className="size-3" /> New rule</Button>}
+        actions={<Button size="sm" onClick={onNewRule}><Plus className="size-3" /> New rule</Button>}
       />
       <div className="p-3.5 flex flex-col gap-2.5">
         {state.kind === "loading" && <LoadingSkeleton rows={3} columns={1} />}

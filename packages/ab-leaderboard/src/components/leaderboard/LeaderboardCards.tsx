@@ -5,7 +5,7 @@ import { StaleDatasetPill } from "../domain/StaleDatasetPill";
 import { TrustDot } from "../domain/TrustDot";
 import { PILLARS } from "../../lib/mock-data";
 import { useLeaderboard, useModels, useTrendsSeries } from "../../api/hooks";
-import { deltaArrow, deltaTone, fmtMoney } from "../../lib/format";
+import { deltaArrow, deltaTone, fmtMoney, fmtScore } from "../../lib/format";
 import { cn } from "../../lib/utils";
 
 const VENDOR_HEX: Record<string, string> = {
@@ -15,6 +15,15 @@ const VENDOR_HEX: Record<string, string> = {
   zhipu: "#8b5cf6",
   minimax: "#f59e0b",
 };
+
+/** PILLARS index of the Context pillar — shows real token usage, not a score. */
+const CONTEXT_PILLAR_IDX = 1;
+
+/** Median tokens/task as "12,400 tok"; "—" when unmeasured (0). */
+function fmtTokens(n: number | null | undefined): string {
+  if (n == null || n === 0) return "—";
+  return `${n.toLocaleString("en-US")} tok`;
+}
 
 export function LeaderboardCards(): JSX.Element {
   const { data: leaderboard } = useLeaderboard({});
@@ -31,7 +40,9 @@ export function LeaderboardCards(): JSX.Element {
         const m = modelList.find((x) => x.id === r.model);
         if (!m) return null;
         const color = VENDOR_HEX[m.vendor]!;
-        const overall = r.scores.reduce((a, b) => a + b, 0) / r.scores.length;
+        // null = pillar had no runs (excluded from the headline mean); 0 = real score (kept).
+        const present = r.scores.filter((s): s is number => s != null);
+        const overall = present.length ? present.reduce((a, b) => a + b, 0) / present.length : 0;
         return (
           <div key={r.model} className="rounded-lg border border-border bg-panel p-4 flex flex-col gap-3.5">
             <div className="flex items-start justify-between">
@@ -65,7 +76,30 @@ export function LeaderboardCards(): JSX.Element {
 
             <div className="flex flex-col gap-1.5">
               {pillars.map((p, idx) => {
-                const s = r.scores[idx]!;
+                if (idx === CONTEXT_PILLAR_IDX) {
+                  // Context pillar shows ACTUAL median tokens/task, not the
+                  // synthetic 0..100 efficiency score (product-owner ask).
+                  return (
+                    <div key={p} className="grid items-center gap-2.5" style={{ gridTemplateColumns: "90px 1fr 64px" }}>
+                      <span className="text-muted-foreground text-[11px]">{p}</span>
+                      <span className="text-muted-foreground text-[11px]">tokens / task</span>
+                      <span className="text-[11.5px] tnum flex justify-end font-semibold">
+                        {fmtTokens(r.tokens_total)}
+                      </span>
+                    </div>
+                  );
+                }
+                const s = r.scores[idx] ?? null;
+                if (s == null) {
+                  // No runs for this pillar — show an honest em-dash, no bar/delta.
+                  return (
+                    <div key={p} className="grid items-center gap-2.5" style={{ gridTemplateColumns: "90px 1fr 64px" }}>
+                      <span className="text-muted-foreground text-[11px]">{p}</span>
+                      <span className="text-muted-foreground text-[11px]">no data</span>
+                      <span className="text-[11.5px] tnum flex justify-end text-muted-foreground">{fmtScore(s)}</span>
+                    </div>
+                  );
+                }
                 const d = r.delta[idx] ?? 0;
                 const tone = deltaTone(d);
                 return (
@@ -73,7 +107,7 @@ export function LeaderboardCards(): JSX.Element {
                     <span className="text-muted-foreground text-[11px]">{p}</span>
                     <MiniBar value={s} tone={s > 80 ? "pass" : s > 65 ? "neutral" : "warn"} width="100%" />
                     <span className="text-[11.5px] tnum flex justify-end items-baseline gap-1">
-                      <span className="font-semibold">{s.toFixed(1)}</span>
+                      <span className="font-semibold">{fmtScore(s)}</span>
                       <span
                         className={cn(
                           "text-[10px]",

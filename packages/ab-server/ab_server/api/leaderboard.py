@@ -9,16 +9,20 @@ from sqlmodel import Session
 from ab_server.db import get_session
 from ab_server.leaderboard import (
     CIGateStatus,
+    HeatmapResponse,
     LeaderboardResponse,
+    ParetoHistorySeries,
     ParetoSeries,
     RegressionsPanel,
     TrendsOverview,
     TrendsSeries,
     TrendsSeriesResponse,
     compute_ci_gate,
+    compute_heatmap,
     compute_leaderboard_response,
     compute_overview,
     compute_pareto,
+    compute_pareto_history,
     compute_regressions,
     compute_trends,
     compute_trends_series,
@@ -160,6 +164,37 @@ def get_pareto(
 ) -> ParetoSeries:
     return compute_pareto(
         session,
+        suites=_split_csv(suites),
+        tiers=_split_csv(tiers),
+    )
+
+
+@router.get("/leaderboard/heatmap", response_model=HeatmapResponse)
+def get_heatmap(
+    session: Annotated[Session, Depends(get_session)],
+    suites: Annotated[list[str] | None, Query()] = None,
+    models: Annotated[list[str] | None, Query()] = None,
+    tiers: Annotated[list[str] | None, Query()] = None,
+) -> HeatmapResponse:
+    return compute_heatmap(
+        session,
+        suites=_split_csv(suites),
+        models=_split_csv(models),
+        tiers=_split_csv(tiers),
+    )
+
+
+@router.get("/leaderboard/pareto/history", response_model=ParetoHistorySeries)
+def get_pareto_history(
+    session: Annotated[Session, Depends(get_session)],
+    window: Literal["7d", "30d", "90d"] = "30d",
+    suites: Annotated[list[str] | None, Query()] = None,
+    tiers: Annotated[list[str] | None, Query()] = None,
+) -> ParetoHistorySeries:
+    days = {"7d": 7, "30d": 30, "90d": 90}[window]
+    return compute_pareto_history(
+        session,
+        window_days=days,
         suites=_split_csv(suites),
         tiers=_split_csv(tiers),
     )

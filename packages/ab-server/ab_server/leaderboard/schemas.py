@@ -50,12 +50,17 @@ class LeaderboardRow(BaseModel):
     operator: str
     trust_tier: str
     source_commit_sha: str
-    scores: list[float] = Field(default_factory=list)
-    delta: list[float] = Field(default_factory=list)
+    # Per-pillar scores (0..100), aligned to the pillar order. An entry is null
+    # when no run measured that pillar for this row — the FE skips nulls in the
+    # overall mean rather than averaging in a phantom 0.
+    scores: list[float | None] = Field(default_factory=list)
+    delta: list[float | None] = Field(default_factory=list)
     runs: int = 0
     variance: float = 0.0
     cost_per_task: float = 0.0
     latency_s: float = 0.0
+    tokens_total: int = 0
+    turns_total: int = 0
     sweep_cost: float = 0.0
     dataset_pin: DatasetPin
     tier: str
@@ -167,6 +172,42 @@ class ParetoSeries(BaseModel):
     points: list[ParetoPoint] = Field(default_factory=list)
 
 
+class HeatmapCell(BaseModel):
+    score_correctness: float | None = None
+    n: int = 0
+
+
+class HeatmapRow(BaseModel):
+    model: str
+    tier: str
+    cells: dict[str, HeatmapCell] = Field(default_factory=dict)
+
+
+class HeatmapResponse(BaseModel):
+    rows: list[HeatmapRow] = Field(default_factory=list)
+    suites: list[str] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=_utcnow)
+
+
+class ParetoHistoryPoint(BaseModel):
+    at: datetime
+    cost_usd_mean: float
+    score_mean: float
+    n: int
+
+
+class ParetoHistorySeriesItem(BaseModel):
+    model: str
+    tier: str
+    history: list[ParetoHistoryPoint] = Field(default_factory=list)
+
+
+class ParetoHistorySeries(BaseModel):
+    series: list[ParetoHistorySeriesItem] = Field(default_factory=list)
+    window_days: int = 0
+    generated_at: datetime = Field(default_factory=_utcnow)
+
+
 class RegressionItem(BaseModel):
     model: str
     tier: str
@@ -195,9 +236,9 @@ class TrendsOverview(BaseModel):
     ci_gate_status: str
     ci_gate_blocked_merges_48h: int
     alerts_count_window: int
-    alerts_actioned: int
+    alerts_actioned: int | None = None
     last_full_sweep_at: datetime | None = None
-    last_full_sweep_cadence: str
+    last_full_sweep_cadence: str | None = None
 
 
 class CIGateStatus(BaseModel):

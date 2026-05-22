@@ -1,7 +1,7 @@
 import { Bell, Box, Cog, Folder, Github, Key, KeyRound, Network, ShieldCheck, Zap } from "lucide-react";
 import { type ElementType } from "react";
 import { cn } from "../../lib/utils";
-import { useConnectedRepos, useModels, useTokensList } from "../../api/hooks";
+import { useAlertRules, useConnectedRepos, useModels, useTokensList } from "../../api/hooks";
 
 export type SettingsTab = "account" | "repos" | "tokens" | "privacy" | "models" | "mcp" | "skills" | "vaults" | "ci" | "alerts";
 
@@ -21,18 +21,21 @@ export function SettingsSidebar({ active, onSelect }: SettingsSidebarProps): JSX
   const { data: connectedRepos } = useConnectedRepos();
   const { data: models } = useModels();
   const { data: tokens } = useTokensList();
+  const { data: alertRules } = useAlertRules();
   const activeTokenCount = (tokens ?? []).filter((t) => t.revoked_at == null).length;
+  // MCP/Skills/Vaults tabs are unimplemented stubs with no backing data source,
+  // so they carry no count badge rather than a fabricated one.
   const items: SidebarItem[] = [
     { id: "account",  label: "Account",         icon: Github },
     { id: "repos",    label: "Connected repos", icon: KeyRound, count: (connectedRepos ?? []).length },
     { id: "tokens",   label: "API tokens",      icon: Key,      count: activeTokenCount },
     { id: "privacy",  label: "Privacy",         icon: ShieldCheck },
     { id: "models",   label: "Models",          icon: Box,      count: (models ?? []).length },
-    { id: "mcp",      label: "MCP servers",     icon: Network,  count: 11 },
-    { id: "skills",   label: "Skills",          icon: Zap,      count: 47 },
-    { id: "vaults",   label: "Vault snapshots", icon: Folder,   count: 3 },
+    { id: "mcp",      label: "MCP servers",     icon: Network },
+    { id: "skills",   label: "Skills",          icon: Zap },
+    { id: "vaults",   label: "Vault snapshots", icon: Folder },
     { id: "ci",       label: "CI gate",         icon: Cog },
-    { id: "alerts",   label: "Alert channels",  icon: Bell,     count: 2 },
+    { id: "alerts",   label: "Alert channels",  icon: Bell,     count: (alertRules ?? []).length },
   ];
   return (
     <aside className="w-[220px] shrink-0 border-r border-border bg-background-2 overflow-y-auto">

@@ -186,6 +186,44 @@ def get_submission_trajectory(
     )
 
 
+@router.get("/trajectories/default")
+def get_default_trajectory(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    """Most-recent public submission's trajectory view.
+
+    Powers the Trajectory viewer's default payload (FE useDefaultTrajectory).
+    Only public-repo submissions are eligible — mirrors the is_public gate on
+    list_submissions so a private trajectory never surfaces here.
+    """
+    submission = session.exec(
+        select(Submission)
+        .join(RegisteredRepo, RegisteredRepo.id == Submission.registered_repo_id)
+        .where(RegisteredRepo.is_public == True)  # noqa: E712 — SQL bool
+        .order_by(Submission.ingested_at.desc())
+    ).first()
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no public trajectory available",
+        )
+    settings = Settings()
+    traj_path, repo, task_result = resolve_submission_paths(
+        session, submission, settings.fetcher_cache_dir
+    )
+    if not traj_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"trajectory file missing at {traj_path}",
+        )
+    return assemble_trajectory_view(
+        traj_path,
+        submission=submission,
+        task_result=task_result,
+        repo=repo,
+    )
+
+
 @router.get("/submissions/{id}/privacy-scan")
 def get_submission_privacy_scan(
     id: str,

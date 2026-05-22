@@ -3,19 +3,46 @@ import { useState } from "react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { StatusPill } from "../ui/StatusPill";
 import { Button } from "../ui/Button";
+import { EmptyState } from "../ui/EmptyState";
 import { useSubmissionPrivacyScan } from "../../api/hooks";
+
+interface PrivacyScrubberProps {
+  /** Submission backing the trajectory, or null when none is linked. */
+  submissionId: string | null;
+}
 
 /**
  * Pre-publish privacy scrubber preview (LSN-006).
  * Shows what `ab publish`'s privacy_check would catch and offers an Auto-scrub
  * action; toggles to "ready to publish" once applied.
  */
-export function PrivacyScrubber(): JSX.Element {
+export function PrivacyScrubber({ submissionId }: PrivacyScrubberProps): JSX.Element {
   const [scrubbed, setScrubbed] = useState(false);
-  // No submission selected in this view — the hook falls back to mock data
-  // until the trajectory carries a submission_id we can scan against.
-  const { data: scrubberFinds } = useSubmissionPrivacyScan("preview");
+  // No linked submission (submission_id == null) → pass undefined so the query
+  // disables (enabled: !!submissionId) and we never invent findings; render an
+  // honest "no submission" state instead.
+  const { data: scrubberFinds } = useSubmissionPrivacyScan(submissionId ?? undefined);
   const finds = scrubberFinds ?? [];
+
+  if (!submissionId) {
+    return (
+      <Panel>
+        <PanelHeader
+          title={
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <Eye className="size-3" /> Publish preview
+            </span>
+          }
+        />
+        <div className="p-3.5">
+          <EmptyState
+            title="No submission linked to this trajectory."
+            hint="The privacy scrubber preview runs against a published submission. Publish this run to scan it."
+          />
+        </div>
+      </Panel>
+    );
+  }
 
   return (
     <Panel>

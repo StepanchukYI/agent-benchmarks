@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
 import { SubNav } from "../components/shell/SubNav";
 import { PageHero } from "../components/shell/PageHero";
-import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { LoadingSkeleton } from "../components/ui/LoadingSkeleton";
@@ -51,9 +49,6 @@ export default function Tasks(): JSX.Element {
             className="px-0 pt-0 pb-3.5"
             title="Task library"
             subtitle="Every task is a YAML in packages/ab-datasets. Hit `ab task validate` to lint before commit."
-            actions={
-              <Button variant="primary"><Plus className="size-3" /> New task</Button>
-            }
           />
           {tasksState.kind === "loading" && <LoadingSkeleton rows={4} columns={2} />}
           {tasksState.kind === "error" && (

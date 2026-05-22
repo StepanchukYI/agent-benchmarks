@@ -1,11 +1,75 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
+from pathlib import Path
 
 from sqlmodel import Session, select
 
 from ab_server.fetcher.parser import ParsedRun
 from ab_server.models import RegisteredRepo, Submission, TaskResult
+
+
+def _token_turn_counts(traj_path: Path) -> tuple[int, int, int, int]:
+    """Extract (tokens_total, tokens_in, tokens_out, turns_total) from a trajectory.
+
+    Source priority for tokens: the run_end ``totals`` block (the authoritative
+    per-run aggregate). If a run_end has no totals, sum the per-turn tokens. If
+    neither is present, fall back to the ``context_efficiency`` scorer verdict's
+    ``detail.total_tokens``. Turn count is the number of assistant turns (the
+    units a model is actually billed/measured on). Returns zeros for an
+    unreadable/missing file rather than raising — ingest must stay idempotent.
+    """
+    if not traj_path.exists():
+        return 0, 0, 0, 0
+
+    totals_in: int | None = None
+    totals_out: int | None = None
+    sum_in = 0
+    sum_out = 0
+    assistant_turns = 0
+    ce_total_tokens: int | None = None
+
+    try:
+        with traj_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                kind = ev.get("event")
+                if kind == "turn":
+                    sum_in += int(ev.get("tokens_in") or 0)
+                    sum_out += int(ev.get("tokens_out") or 0)
+                    if ev.get("role") == "assistant":
+                        assistant_turns += 1
+                elif kind == "run_end":
+                    totals = ev.get("totals")
+                    if isinstance(totals, dict):
+                        totals_in = int(totals.get("tokens_in") or 0)
+                        totals_out = int(totals.get("tokens_out") or 0)
+                elif kind == "scorer" and ev.get("scorer_name") == "context_efficiency":
+                    detail = ev.get("detail")
+                    if isinstance(detail, dict) and detail.get("total_tokens") is not None:
+                        ce_total_tokens = int(detail.get("total_tokens") or 0)
+    except OSError:
+        return 0, 0, 0, 0
+
+    if totals_in is not None or totals_out is not None:
+        t_in = totals_in or 0
+        t_out = totals_out or 0
+    elif sum_in or sum_out:
+        t_in, t_out = sum_in, sum_out
+    elif ce_total_tokens is not None:
+        # Scorer detail only carries a combined total; we cannot split it.
+        return ce_total_tokens, 0, 0, assistant_turns
+    else:
+        t_in, t_out = 0, 0
+
+    return t_in + t_out, t_in, t_out, assistant_turns
 
 
 def ingest_runs(
@@ -46,10 +110,10 @@ def ingest_runs(
         status_value = "passed" if passed else "failed"
 
         # Per-pillar scores live in scores.json["per_pillar"] (written by the
-        # local runner; key names match SCORER_PILLAR_MAP values). Without
-        # this, TaskResult.score_correctness / score_context_eff / ... stay
-        # at the model default of 0.0 and the leaderboard aggregates render
-        # every pillar as 0.0% even when individual submissions scored well.
+        # local runner; key names match SCORER_PILLAR_MAP values). A key is
+        # ABSENT when the task carried no scorer for that pillar — we store
+        # None (not 0.0) so the leaderboard can tell "not measured" apart from
+        # a genuine measured 0.0. A present value (including 0.0) is kept as-is.
         per_pillar = run.scores.get("per_pillar") or {}
         # Cost + latency come from the trajectory's run_end / cost_usd
         # aggregate — older ingest code read from metadata.yaml where they
@@ -66,6 +130,9 @@ def ingest_runs(
             or run.scores.get("total_latency_ms")
             or 0
         )
+        tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
+            run.path / "trajectory.jsonl"
+        )
 
         task_result = TaskResult(
             submission_id=submission.id,
@@ -76,13 +143,17 @@ def ingest_runs(
             tier_hash=str(run.metadata.get("tier_hash") or ""),
             status=status_value,
             score_total=score_total,
-            score_correctness=float(per_pillar.get("correctness") or 0.0),
-            score_context_eff=float(per_pillar.get("context_efficiency") or 0.0),
-            score_tool_skill=float(per_pillar.get("tool_skill") or 0.0),
-            score_memory=float(per_pillar.get("memory_specific") or 0.0),
-            score_latency=float(per_pillar.get("latency_cost") or 0.0),
+            score_correctness=_pillar_score(per_pillar, "correctness"),
+            score_context_eff=_pillar_score(per_pillar, "context_efficiency"),
+            score_tool_skill=_pillar_score(per_pillar, "tool_skill"),
+            score_memory=_pillar_score(per_pillar, "memory_specific"),
+            score_latency=_pillar_score(per_pillar, "latency_cost"),
             cost_usd=cost_usd,
             latency_ms=latency_ms,
+            tokens_total=tokens_total,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            turns_total=turns_total,
             trajectory_blob_ref=str(run.path / "trajectory.jsonl"),
         )
         session.add(task_result)
@@ -90,6 +161,17 @@ def ingest_runs(
         inserted += 1
 
     return inserted, skipped
+
+
+def _pillar_score(per_pillar: dict, key: str) -> float | None:
+    """Return the measured pillar score, or None when the key is absent.
+
+    None means "not measured" (task carried no scorer for this pillar); a
+    present value, including a genuine 0.0, is kept so the leaderboard can tell
+    a real zero apart from missing data.
+    """
+    val = per_pillar.get(key)
+    return float(val) if val is not None else None
 
 
 def _suite_from_task(task_id: str) -> str:

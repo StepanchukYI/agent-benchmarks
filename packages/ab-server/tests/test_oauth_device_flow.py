@@ -8,7 +8,7 @@ import pytest
 from ab_server.auth.github_oauth import reset_github_client, set_github_client
 from ab_server.db import get_session
 from ab_server.main import app
-from ab_server.models import User
+from ab_server.models import AuthSession, User
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -110,9 +110,12 @@ def test_device_flow_creates_user_and_session(
         users = session.exec(select(User)).all()
         assert len(users) == 1
         assert users[0].github_id == "4242"
-        # Token stored hashed, never plaintext.
-        assert users[0].session_token == hash_session_token(token)
-        assert users[0].session_token != token
+        # Token stored hashed in its own session row, never plaintext.
+        sessions = session.exec(select(AuthSession)).all()
+        assert len(sessions) == 1
+        assert sessions[0].token_hash == hash_session_token(token)
+        assert sessions[0].token_hash != token
+        assert sessions[0].user_id == users[0].id
 
 
 def test_me_requires_token(db_engine: object) -> None:

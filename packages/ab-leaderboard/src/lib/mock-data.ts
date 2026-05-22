@@ -51,7 +51,7 @@ export const SUITES: Suite[] = [
 ];
 
 export const OPERATORS: Operator[] = [
-  { handle: "evgeniy",         name: "Evgeniy",         initials: "EV", color: "#3b82f6", repo: "github.com/evgeniy/agent-benchmarks-results", trust_default: "official",      is_self: true },
+  { handle: "demo-operator",   name: "Demo Operator",   initials: "DO", color: "#3b82f6", repo: "github.com/example/agent-benchmarks-results", trust_default: "official",      is_self: true },
   { handle: "rachel-yeh",      name: "Rachel Yeh",      initials: "RY", color: "#ec4899", repo: "github.com/rachel-yeh/ab-runs",               trust_default: "verified" },
   { handle: "noamb",           name: "Noam B.",         initials: "NB", color: "#10b981", repo: "github.com/noamb/agent-bench-results",         trust_default: "verified" },
   { handle: "kpyrne",          name: "Kira Pyrne",      initials: "KP", color: "#f59e0b", repo: "github.com/kpyrne/ab-eval",                    trust_default: "self_reported" },
@@ -68,13 +68,13 @@ export function modelById(id: string): Model | undefined {
 }
 
 export const LEADERBOARD: LeaderboardRow[] = [
-  { model: "claude-opus-4-1",   operator: "evgeniy",     trust_tier: "official", source_commit_sha: "a7c2b09", tier: "T2", scores: [89.4, 84.1, 91.2, 87.8, 62.5], delta: [+1.2, +0.4, +2.1, +0.8, -3.1], runs: 412, variance: 1.8, cost_per_task: 0.0982, latency_s: 26.3, sweep_cost: 4.21, dataset_pin: { version: "v1.0", behind: 0 } },
-  { model: "claude-sonnet-4-5", operator: "evgeniy",     trust_tier: "official", source_commit_sha: "a7c2b09", tier: "T2", scores: [87.1, 82.6, 88.4, 84.2, 78.1], delta: [+2.1, +1.6, +0.9, +1.3, +0.4], runs: 489, variance: 2.1, cost_per_task: 0.0241, latency_s: 14.8, sweep_cost: 1.12, dataset_pin: { version: "v1.0", behind: 0 } },
-  { model: "gpt-5",             operator: "evgeniy",     trust_tier: "verified", source_commit_sha: "3f81e44", tier: "T2", scores: [85.6, 86.0, 84.7, 79.3, 81.4], delta: [+0.4, +2.2, -0.6, -1.1, +1.2], runs: 421, variance: 2.4, cost_per_task: 0.0298, latency_s: 17.5, sweep_cost: 1.31, dataset_pin: { version: "v1.0", behind: 0 } },
-  { model: "o3",                operator: "rachel-yeh",  trust_tier: "verified", source_commit_sha: "d9a1c02", tier: "T2", scores: [88.2, 83.7, 86.1, 81.6, 58.2], delta: [+0.8, -0.3, +1.4, +2.1, -2.4], runs: 318, variance: 1.9, cost_per_task: 0.118,  latency_s: 38.2, sweep_cost: 4.96, dataset_pin: { version: "v0.9", behind: 2 } },
-  { model: "gemini-2.5-pro",    operator: "noamb",       trust_tier: "verified", source_commit_sha: "1e0f7a8", tier: "T1", scores: [82.4, 88.2, 80.5, 76.8, 84.6], delta: [-0.7, +1.1, -2.3, -0.4, +0.7], runs: 402, variance: 2.6, cost_per_task: 0.0189, latency_s: 11.2, sweep_cost: 0.78, dataset_pin: { version: "v1.0", behind: 0 } },
-  { model: "glm-4-6",           operator: "kpyrne",      trust_tier: "self_reported", source_commit_sha: "b240cf6", tier: "T0", scores: [74.8, 71.3, 76.2, 69.5, 91.4], delta: [+3.4, +0.8, +1.9, +2.6, -0.2], runs: 376, variance: 3.1, cost_per_task: 0.0052, latency_s: 9.4,  sweep_cost: 0.22, dataset_pin: { version: "v0.8", behind: 3 } },
-  { model: "minimax-m2",        operator: "djun-kim",    trust_tier: "verified", source_commit_sha: "7b3d551", tier: "T2", scores: [68.1, 64.5, 71.8, 62.4, 94.2], delta: [+1.9, +2.4, +0.4, +0.9, +0.1], runs: 341, variance: 3.4, cost_per_task: 0.0027, latency_s: 7.8,  sweep_cost: 0.11, dataset_pin: { version: "v1.0", behind: 0 } },
+  { model: "claude-opus-4-1",   operator: "demo-operator",     trust_tier: "official", source_commit_sha: "a7c2b09", tier: "T2", scores: [89.4, 84.1, 91.2, null, 62.5], delta: [+1.2, +0.4, +2.1, null, -3.1], runs: 412, variance: 1.8, cost_per_task: 0.0982, latency_s: 26.3, sweep_cost: 4.21, dataset_pin: { version: "v1.0", behind: 0 }, tokens_total: 48200, turns_total: 23 },
+  { model: "claude-sonnet-4-5", operator: "demo-operator",     trust_tier: "official", source_commit_sha: "a7c2b09", tier: "T2", scores: [87.1, 82.6, 88.4, 84.2, 78.1], delta: [+2.1, +1.6, +0.9, +1.3, +0.4], runs: 489, variance: 2.1, cost_per_task: 0.0241, latency_s: 14.8, sweep_cost: 1.12, dataset_pin: { version: "v1.0", behind: 0 }, tokens_total: 31500, turns_total: 18 },
+  { model: "gpt-5",             operator: "demo-operator",     trust_tier: "verified", source_commit_sha: "3f81e44", tier: "T2", scores: [85.6, 86.0, 84.7, null, 81.4], delta: [+0.4, +2.2, -0.6, null, +1.2], runs: 421, variance: 2.4, cost_per_task: 0.0298, latency_s: 17.5, sweep_cost: 1.31, dataset_pin: { version: "v1.0", behind: 0 }, tokens_total: 39800, turns_total: 21 },
+  { model: "o3",                operator: "rachel-yeh",  trust_tier: "verified", source_commit_sha: "d9a1c02", tier: "T2", scores: [88.2, 83.7, 86.1, 81.6, 58.2], delta: [+0.8, -0.3, +1.4, +2.1, -2.4], runs: 318, variance: 1.9, cost_per_task: 0.118,  latency_s: 38.2, sweep_cost: 4.96, dataset_pin: { version: "v0.9", behind: 2 }, tokens_total: 52100, turns_total: 27 },
+  { model: "gemini-2.5-pro",    operator: "noamb",       trust_tier: "verified", source_commit_sha: "1e0f7a8", tier: "T1", scores: [82.4, 88.2, 80.5, 76.8, 84.6], delta: [-0.7, +1.1, -2.3, -0.4, +0.7], runs: 402, variance: 2.6, cost_per_task: 0.0189, latency_s: 11.2, sweep_cost: 0.78, dataset_pin: { version: "v1.0", behind: 0 }, tokens_total: 28700, turns_total: 16 },
+  { model: "glm-4-6",           operator: "kpyrne",      trust_tier: "self_reported", source_commit_sha: "b240cf6", tier: "T0", scores: [74.8, 71.3, 76.2, 69.5, 91.4], delta: [+3.4, +0.8, +1.9, +2.6, -0.2], runs: 376, variance: 3.1, cost_per_task: 0.0052, latency_s: 9.4,  sweep_cost: 0.22, dataset_pin: { version: "v0.8", behind: 3 }, tokens_total: 22400, turns_total: 14 },
+  { model: "minimax-m2",        operator: "djun-kim",    trust_tier: "verified", source_commit_sha: "7b3d551", tier: "T2", scores: [68.1, 64.5, 71.8, null, 94.2], delta: [+1.9, +2.4, +0.4, null, +0.1], runs: 341, variance: 3.4, cost_per_task: 0.0027, latency_s: 7.8,  sweep_cost: 0.11, dataset_pin: { version: "v1.0", behind: 0 }, tokens_total: 19800, turns_total: 12 },
 ];
 
 function seededTrend(seed: number, base: number, drift: number, noise: number): number[] {
@@ -102,7 +102,7 @@ export const TRENDS: Record<string, number[]> = {
 };
 
 export const OPERATOR_TRENDS: Record<string, number[]> = {
-  "evgeniy":     TRENDS["claude-sonnet-4-5"]!,
+  "demo-operator": TRENDS["claude-sonnet-4-5"]!,
   "rachel-yeh":  seededTrend(101, 81, 0.07, 2.4),
   "noamb":       seededTrend(102, 78, 0.04, 2.2),
   "djun-kim":    seededTrend(103, 83, 0.12, 2.9),
@@ -179,9 +179,9 @@ export function taskById(id: string): Task | undefined {
 export const TRAJECTORY: Trajectory = {
   task: TASKS.find((t) => t.id === "L1_001")!,
   model: MODELS.find((m) => m.id === "claude-sonnet-4-5")!,
-  operator: "evgeniy",
+  operator: "demo-operator",
   run_id: "ab-2026-21-04",
-  source_repo: "github.com/evgeniy/agent-benchmarks-results",
+  source_repo: "github.com/example/agent-benchmarks-results",
   source_commit_sha: "a7c2b09",
   tier: "T2",
   trust_tier: "official",
@@ -205,7 +205,7 @@ export const TRAJECTORY: Trajectory = {
 };
 
 export const CONNECTED_REPOS: RegistryRepo[] = [
-  { id: "mock-1", repo: "github.com/evgeniy/agent-benchmarks-results", owner: "evgeniy",     branch: "main",    runs: 412, last_synced: "2 min ago",  status: "ok" },
+  { id: "mock-1", repo: "github.com/example/agent-benchmarks-results", owner: "demo-operator", branch: "main",    runs: 412, last_synced: "2 min ago",  status: "ok" },
   { id: "mock-2", repo: "github.com/rachel-yeh/ab-runs",                owner: "rachel-yeh",  branch: "main",    runs: 188, last_synced: "14 min ago", status: "ok" },
   { id: "mock-3", repo: "github.com/noamb/agent-bench-results",         owner: "noamb",       branch: "main",    runs: 96,  last_synced: "1 hr ago",   status: "ok" },
   { id: "mock-4", repo: "github.com/djun-kim/agent-bench",              owner: "djun-kim",    branch: "main",    runs: 71,  last_synced: "3 hr ago",   status: "ok" },
@@ -214,14 +214,14 @@ export const CONNECTED_REPOS: RegistryRepo[] = [
 ];
 
 export const REGRESSIONS: RegressionItem[] = [
-  { model: "gemini-2.5-pro",  suite: "L1_memory_write",  operator: "evgeniy",     delta_pct: -7.2, window_days: 14, prev_run_id: "ab-2026-13-04", current_run_id: "ab-2026-21-04" },
+  { model: "gemini-2.5-pro",  suite: "L1_memory_write",  operator: "demo-operator",     delta_pct: -7.2, window_days: 14, prev_run_id: "ab-2026-13-04", current_run_id: "ab-2026-21-04" },
   { model: "o3",              suite: "L2_mcp",            operator: "rachel-yeh",  delta_pct: -5.4, window_days: 9,  prev_run_id: "ab-2026-15-02", current_run_id: "ab-2026-21-02" },
-  { model: "claude-opus-4-1", suite: "L1_consolidation",  operator: "evgeniy",     delta_pct: -3.9, window_days: 7,  prev_run_id: "ab-2026-14-08", current_run_id: "ab-2026-21-04" },
+  { model: "claude-opus-4-1", suite: "L1_consolidation",  operator: "demo-operator",     delta_pct: -3.9, window_days: 7,  prev_run_id: "ab-2026-14-08", current_run_id: "ab-2026-21-04" },
 ];
 
 export const IMPROVEMENTS: RegressionItem[] = [
   { model: "glm-4-6",           suite: "L0_smoke",      operator: "noamb",     delta_pct: +5.8, window_days: 7,  prev_run_id: "ab-2026-14-09", current_run_id: "ab-2026-21-04" },
-  { model: "minimax-m2",        suite: "L1_retrieval",  operator: "evgeniy",   delta_pct: +4.1, window_days: 14, prev_run_id: "ab-2026-13-04", current_run_id: "ab-2026-19-05" },
+  { model: "minimax-m2",        suite: "L1_retrieval",  operator: "demo-operator",   delta_pct: +4.1, window_days: 14, prev_run_id: "ab-2026-13-04", current_run_id: "ab-2026-19-05" },
   { model: "claude-sonnet-4-5", suite: "L3_skills",     operator: "djun-kim",  delta_pct: +3.6, window_days: 7,  prev_run_id: "ab-2026-14-08", current_run_id: "ab-2026-21-03" },
 ];
 
@@ -235,7 +235,7 @@ export const ALERT_RULES: AlertRule[] = [
 export const SCRUBBER_FINDS: ScrubberFinding[] = [
   { line: 12, kind: "vault path",  match: "/Users/<placeholder>/vault/decisions/db-choice.md", severity: "med" },
   { line: 17, kind: "vault path",  match: "/Users/<placeholder>/vault/templates/decision.md",  severity: "med" },
-  { line: 31, kind: "account ref", match: "decided_by: Evgeniy",                                severity: "low" },
+  { line: 31, kind: "account ref", match: "decided_by: Demo Operator",                           severity: "low" },
 ];
 
 export const SCRUBBER_RULES: ScrubberRule[] = [
@@ -254,5 +254,5 @@ export function totalCostInWindow(): number {
   return LEADERBOARD.reduce((acc, r) => acc + r.sweep_cost * r.runs * 0.1, 0);
 }
 export function meanCorrectness(): number {
-  return LEADERBOARD.reduce((acc, r) => acc + r.scores[0]!, 0) / LEADERBOARD.length;
+  return LEADERBOARD.reduce((acc, r) => acc + (r.scores[0] ?? 0), 0) / LEADERBOARD.length;
 }

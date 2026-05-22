@@ -13,7 +13,7 @@ from fastapi import status as http_status
 from sqlmodel import Session, select
 
 from ab_server.config import Settings
-from ab_server.models import User
+from ab_server.models import AuthSession, User
 
 log = logging.getLogger(__name__)
 
@@ -225,12 +225,16 @@ def _mint_session(
     user: User,
     *,
     ttl_seconds: int,
+    origin: str | None = None,
 ) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
-    user.session_token = hash_session_token(token)
-    user.session_expires_at = expires_at
-    session.add(user)
+    auth_session = AuthSession(
+        user_id=user.id,
+        token_hash=hash_session_token(token),
+        expires_at=expires_at,
+        origin=origin,
+    )
+    session.add(auth_session)
     session.commit()
-    session.refresh(user)
     return token, expires_at

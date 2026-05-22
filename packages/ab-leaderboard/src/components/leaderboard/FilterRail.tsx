@@ -26,9 +26,14 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
   const { data: models } = useModels();
   const { data: operators } = useOperators();
   const { data: suites } = useSuites();
-  const modelList = models ?? [];
   const operatorList = operators ?? [];
-  const suiteList = suites ?? [];
+  const q = search.trim().toLowerCase();
+  const modelList = (models ?? []).filter(
+    (m) => !q || m.id.toLowerCase().includes(q),
+  );
+  const suiteList = (suites ?? []).filter(
+    (s) => !q || s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
+  );
 
   function toggle<K extends keyof LeaderboardFilters>(key: K, value: string): void {
     const cur = filters[key] as unknown as string[];
@@ -89,7 +94,7 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
       <Group title="Dataset version">
         <Row
           on={filters.datasetCurrentOnly}
-          onClick={() => setFilters({ ...filters, datasetCurrentOnly: !filters.datasetCurrentOnly })}
+          onClick={() => setFilters({ ...filters, datasetCurrentOnly: true })}
           label="≥ current (v1.0)"
         />
         <Row
@@ -99,7 +104,11 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
         />
       </Group>
 
-      <Group title="Suite" action="Clear">
+      <Group
+        title="Suite"
+        action={filters.suites.length ? "Clear" : undefined}
+        onAction={() => setFilters({ ...filters, suites: [] })}
+      >
         {suiteList.map((s) => (
           <Row
             key={s.id}
@@ -143,13 +152,27 @@ export function FilterRail({ filters, setFilters }: FilterRailProps): JSX.Elemen
   );
 }
 
-function Group({ title, action, children }: { title: string; action?: string; children: ReactNode }): JSX.Element {
+function Group({
+  title,
+  action,
+  onAction,
+  children,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <div className="border-b border-border-soft pb-2.5 last:border-b-0">
       <div className="px-3.5 pt-3 pb-1.5 flex items-center justify-between text-[10.5px] uppercase tracking-wider font-semibold text-muted-foreground">
         <span>{title}</span>
         {action && (
-          <button className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={onAction}
+            className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground hover:text-foreground"
+          >
             {action}
           </button>
         )}

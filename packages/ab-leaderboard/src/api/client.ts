@@ -37,6 +37,9 @@ export function setStoredToken(token: string | null): void {
 
 /** All endpoints, keyed by surface. Pure URL builders — no fetch coupling. */
 export const endpoints = {
+  /* ─── System ─── */
+  version: () => "/version",
+
   /* ─── Auth ─── */
   authClientId: () => "/auth/github/client-id",
   authDeviceStart: () => "/auth/github/device-start",
@@ -55,6 +58,13 @@ export const endpoints = {
     pillar?: "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
   }) => withQuery("/leaderboard", q),
   leaderboardPareto: () => "/leaderboard/pareto",
+  leaderboardHeatmap: (q?: { suites?: string[]; models?: string[]; tiers?: string[] }) =>
+    withQuery("/leaderboard/heatmap", q),
+  leaderboardParetoHistory: (q?: {
+    window?: "7d" | "30d" | "90d";
+    suites?: string[];
+    tiers?: string[];
+  }) => withQuery("/leaderboard/pareto/history", q),
 
   /* ─── Trends ─── */
   trends: (q?: { range?: "7d" | "30d" | "90d"; show_operators?: boolean }) =>
@@ -80,6 +90,9 @@ export const endpoints = {
   submissionTrajectory: (id: string) => `/submissions/${encodeURIComponent(id)}/trajectory`,
   submissionPrivacyScan: (id: string) =>
     `/submissions/${encodeURIComponent(id)}/privacy-scan`,
+
+  /* ─── Trajectories ─── */
+  trajectoriesDefault: () => "/trajectories/default",
 
   /* ─── Tasks ─── */
   tasksList: () => "/tasks",

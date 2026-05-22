@@ -37,9 +37,13 @@ describe("Pages — smoke", () => {
     expect(screen.getByRole("heading", { name: /Task library/i })).toBeDefined();
   });
 
-  it("renders Trajectory viewer with the provenance breadcrumb", () => {
+  it("renders Trajectory viewer without fabricating a trajectory when none is available", () => {
+    // With no live server (test env), useDefaultTrajectory resolves to null
+    // (404 → no public trajectory) and the viewer shows an honest state — never
+    // a fabricated operator/breadcrumb. The page chrome (tabs) still renders.
     render(withRoute("/trajectories", <TrajectoryViewer />));
-    expect(screen.getAllByText(/@evgeniy/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Trajectories/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/@demo-operator/i)).toBeNull();
   });
 
   it("renders Trends with overview cards", () => {

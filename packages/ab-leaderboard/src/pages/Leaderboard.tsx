@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Play, RefreshCw } from "lucide-react";
 import { SubNav } from "../components/shell/SubNav";
 import { PageHero } from "../components/shell/PageHero";
@@ -20,13 +21,14 @@ import type { LeaderboardSummary } from "../lib/types";
 type PillarFilter = "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
 
 export default function Leaderboard(): JSX.Element {
+  const navigate = useNavigate();
   const { leaderboardView, setLeaderboardView } = useTheme();
   const suitesQuery = useSuites();
   const suiteList = suitesQuery.data ?? [];
   const [activePillar, setActivePillar] = useState<PillarFilter | null>(null);
   // Empty arrays = no constraint (show all). The sidebar toggles narrow
   // from there. Defaults must NOT pre-exclude rows — an earlier default of
-  // operators:["evgeniy"] + trust:[official,verified] would have hidden
+  // operators:["demo-operator"] + trust:[official,verified] would have hidden
   // every self_reported StepanchukYI run.
   const [filters, setFilters] = useState<LeaderboardFilters>({
     suites: [],
@@ -99,7 +101,7 @@ export default function Leaderboard(): JSX.Element {
                       Cards
                     </Button>
                   </div>
-                  <Button variant="primary"><Play className="size-3" fill="currentColor" /> New run</Button>
+                  <Button variant="primary" onClick={() => navigate("/tasks")}><Play className="size-3" fill="currentColor" /> New run</Button>
                 </>
               }
             />

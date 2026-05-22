@@ -1,7 +1,6 @@
-import { AlertTriangle, ChevronRight, TrendingUp } from "lucide-react";
+import { AlertTriangle, TrendingUp } from "lucide-react";
 import { Panel, PanelHeader } from "../ui/Panel";
 import { Pill } from "../ui/Pill";
-import { Button } from "../ui/Button";
 import { Avatar } from "../ui/Avatar";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorBanner } from "../ui/ErrorBanner";
@@ -42,7 +41,6 @@ export function HotList({
             {head}
           </span>
         }
-        actions={<Button size="sm" variant="ghost">All →</Button>}
       />
       {state === "loading" && (
         <div className="p-3.5"><LoadingSkeleton rows={4} columns={1} /></div>
@@ -94,7 +92,6 @@ export function HotList({
                 <span className={"font-semibold tnum " + color}>
                   {sign}{value}%
                 </span>
-                <Button size="icon-sm" variant="ghost"><ChevronRight className="size-3" /></Button>
               </li>
             );
           })}

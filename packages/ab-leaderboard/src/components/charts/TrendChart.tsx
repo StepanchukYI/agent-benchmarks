@@ -1,4 +1,3 @@
-import { MODELS, OPERATORS } from "../../lib/mock-data";
 import { useModels, useOperators, useTrendsSeries } from "../../api/hooks";
 import type { Model } from "../../lib/types";
 
@@ -20,6 +19,7 @@ const OP_COLORS = ["#ec4899", "#10b981", "#06b6d4", "#f59e0b", "#8b5cf6"];
 
 export function TrendChart({ showOperators = false, width = 880, height = 280 }: TrendChartProps): JSX.Element {
   const { data: models } = useModels();
+  const { data: operators } = useOperators();
   const { data: trendsSeries } = useTrendsSeries("30d", showOperators);
   const modelList: Model[] = models ?? [];
   // Series values can be null for days with no runs (gaps). Keep null in the
@@ -59,9 +59,10 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
     return null;
   };
 
+  const selfHandles = new Set((operators ?? []).filter((o) => o.is_self).map((o) => o.handle));
   const opLines = showOperators
     ? Object.entries(perOperator)
-        .filter(([h]) => h !== "evgeniy")
+        .filter(([h]) => !selfHandles.has(h))
         .map(([handle, data], i) => ({ handle, data, color: OP_COLORS[i % OP_COLORS.length]! }))
     : [];
 
@@ -116,17 +117,17 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
 }
 
 /**
- * Hook-driven legend data. Backed by `useModels`/`useOperators` — placeholder
- * data from mock-data means these return immediately on first render.
+ * Hook-driven legend data. Backed by `useModels`/`useOperators`. Returns an
+ * empty legend until real data loads — never falls back to mock fixtures.
  */
 export function useTrendLegendData(): { vendor: Model; color: string }[] {
   const { data: models } = useModels();
-  return (models ?? MODELS).map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
+  return (models ?? []).map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
 }
 
 export function useOperatorLegendData(): { handle: string; color: string }[] {
   const { data: operators } = useOperators();
-  return (operators ?? OPERATORS)
+  return (operators ?? [])
     .filter((o) => !o.is_self)
     .slice(0, 5)
     .map((o, i) => ({

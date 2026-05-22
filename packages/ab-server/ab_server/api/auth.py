@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from ab_server.auth.dependency import get_current_user
-from ab_server.auth.github_oauth import device_poll, device_start
+from ab_server.auth.dependency import _bearer_token, get_current_user
+from ab_server.auth.github_oauth import device_poll, device_start, hash_session_token
 from ab_server.config import Settings
 from ab_server.db import get_session
-from ab_server.models import User
+from ab_server.models import AuthSession, User
 
 router = APIRouter(tags=["auth"])
 
@@ -116,17 +116,22 @@ def update_me_visibility(
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
+    request: Request,
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Invalidate the caller's session token.
+    """Invalidate only the session row backing the caller's bearer token.
 
-    Clears the hashed session_token (and its expiry) on the user row so the
-    bearer token can no longer authenticate. Subsequent requests with the
-    same token will 401 in get_current_user.
+    Deletes the single AuthSession matching this token's hash, so the user's
+    other concurrent sessions (e.g. a separate CLI login) stay alive.
     """
-    user.session_token = None
-    user.session_expires_at = None
-    session.add(user)
-    session.commit()
+    token = _bearer_token(request)
+    if token:
+        token_hash = hash_session_token(token)
+        row = session.exec(
+            select(AuthSession).where(AuthSession.token_hash == token_hash)
+        ).first()
+        if row is not None:
+            session.delete(row)
+            session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

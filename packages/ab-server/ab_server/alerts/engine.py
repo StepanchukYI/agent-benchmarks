@@ -93,7 +93,12 @@ def _collect_window_means(
             continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
-        v = float(value or 0.0)
+        # A per-pillar metric column is None when that pillar was not measured
+        # for the task; skip it so an unmeasured pillar isn't counted as a 0.0
+        # and skew the alert window mean. A genuine measured 0.0 still counts.
+        if value is None:
+            continue
+        v = float(value)
         if ts >= current_floor:
             cur.append(v)
         else:

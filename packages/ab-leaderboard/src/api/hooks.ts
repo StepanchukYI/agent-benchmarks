@@ -54,6 +54,7 @@ import type {
   Suite,
   Task,
   Trajectory,
+  TrajectoryView,
 } from "../lib/types";
 
 const USE_MOCK = (import.meta.env.AB_USE_MOCK ?? "0") === "1";
@@ -138,12 +139,78 @@ export function useLeaderboardPareto() {
   const mock = LEADERBOARD.map<ParetoPoint>((r) => ({
     model: r.model,
     cost_per_sweep_usd: r.sweep_cost,
-    correctness: r.scores[0]!,
+    correctness: r.scores[0] ?? 0,
   }));
   return useQuery({
     queryKey: ["leaderboard", "pareto"],
     queryFn: () => fetchOrMock(endpoints.leaderboardPareto(), mock),
     ...mockSeed(mock),
+  });
+}
+
+/** One (model, tier) × suite cell: mean correctness (0..1) + sample count. */
+export interface HeatmapCell {
+  score_correctness: number | null;
+  n: number;
+}
+
+export interface HeatmapRow {
+  model: string;
+  tier: string;
+  /** Keyed by suite id. Missing suite = no runs in that (model, tier, suite). */
+  cells: Record<string, HeatmapCell>;
+}
+
+export interface HeatmapResponse {
+  rows: HeatmapRow[];
+  suites: string[];
+  generated_at: string;
+}
+
+/**
+ * Model × suite correctness heatmap. No mock fallback — the grid is real or
+ * the UI renders an honest empty/error state (the old synthetic-hash grid is
+ * gone). Network-level dev fallback resolves to an empty grid, never fake
+ * scores.
+ */
+export function useHeatmap() {
+  return useQuery<HeatmapResponse>({
+    queryKey: ["leaderboard", "heatmap"],
+    queryFn: () => apiFetch<HeatmapResponse>(endpoints.leaderboardHeatmap()),
+  });
+}
+
+/** One historical point: weekly-bucketed mean cost (USD) + mean total score (0..100). */
+export interface ParetoHistoryPoint {
+  at: string;
+  cost_usd_mean: number;
+  score_mean: number;
+  n: number;
+}
+
+export interface ParetoHistorySeriesItem {
+  model: string;
+  tier: string;
+  /** Ascending by `at`; trail start → today. */
+  history: ParetoHistoryPoint[];
+}
+
+export interface ParetoHistorySeries {
+  series: ParetoHistorySeriesItem[];
+  window_days: number;
+  generated_at: string;
+}
+
+/**
+ * Per-(model, tier) historical cost/score trail for the ParetoTrail chart.
+ * No mock fallback — real history or an honest empty/error state (the old
+ * fabricated 14d offset is gone).
+ */
+export function useParetoHistory(window: "7d" | "30d" | "90d" = "30d") {
+  return useQuery<ParetoHistorySeries>({
+    queryKey: ["leaderboard", "pareto", "history", window],
+    queryFn: () =>
+      apiFetch<ParetoHistorySeries>(endpoints.leaderboardParetoHistory({ window })),
   });
 }
 
@@ -607,29 +674,29 @@ export function useSuites() {
   });
 }
 
-/* ─── Pillars (UI constants — server may serve these alongside leaderboard) ── */
-
-export function usePillars() {
-  const mock = PILLARS as readonly string[];
-  return useQuery({
-    queryKey: ["pillars"],
-    queryFn: () => fetchOrMock<readonly string[]>("/pillars", mock),
-    ...mockSeed(mock),
-  });
-}
-
-/* ─── Trajectory placeholder (used by trajectory page chrome until server has runId/taskId) ── */
+/* ─── Default trajectory (most-recent public submission) ─────────────────── */
 
 /**
- * Returns the current viewer's pinned trajectory. The viewer page renders even
- * without an explicit run/task selection — this is the "default" payload.
+ * Most-recent public trajectory for the viewer page, from
+ * `GET /trajectories/default`. Returns the raw server {@link TrajectoryView}.
+ *
+ * A 404 means no public trajectory exists yet — we resolve to `null` (the page
+ * renders an EmptyState) rather than surfacing an error. Any other HTTP error
+ * propagates so the UI shows an ErrorBanner. No mock fallback: the viewer wires
+ * to real data only, never fabricated turns.
  */
 export function useDefaultTrajectory() {
-  const mock: Trajectory = TRAJECTORY;
-  return useQuery<Trajectory>({
+  return useQuery<TrajectoryView | null>({
     queryKey: ["trajectory", "default"],
-    queryFn: () => fetchOrMock("/trajectories/default", mock),
-    ...mockSeed(mock),
+    queryFn: async () => {
+      try {
+        return await apiFetch<TrajectoryView>(endpoints.trajectoriesDefault());
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    retry: false,
   });
 }
 
@@ -683,5 +750,25 @@ export function useUpdateMeVisibility() {
     onSuccess: (data) => {
       qc.setQueryData(["auth", "me"], data);
     },
+  });
+}
+
+/* ─── System version ─────────────────────────────────────────────────────── */
+
+export interface VersionResponse {
+  server: string;
+  ab_datasets: string;
+}
+
+/**
+ * Server build/version info from GET /version. Cosmetic — no mock fallback;
+ * on failure the consumer simply renders nothing rather than a fabricated tag.
+ */
+export function useVersion() {
+  return useQuery<VersionResponse>({
+    queryKey: ["version"],
+    queryFn: () => apiFetch<VersionResponse>(endpoints.version()),
+    staleTime: Infinity,
+    retry: false,
   });
 }

@@ -4,9 +4,8 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../lib/theme";
 import { Avatar } from "../ui/Avatar";
-import { Kbd } from "../ui/Tag";
 import { Button } from "../ui/Button";
-import { useMe, useOperators } from "../../api/hooks";
+import { useMe, useOperators, useVersion } from "../../api/hooks";
 import { SignInModal } from "../settings/SignInModal";
 
 interface TopNavProps {
@@ -37,6 +36,7 @@ export function TopNav({ counts = {} }: TopNavProps): JSX.Element {
   const navigate = useNavigate();
   const { data: me } = useMe();
   const { data: operators } = useOperators();
+  const { data: version } = useVersion();
   const signedIn = me != null;
   const self = (operators ?? []).find((o) => o.handle === me?.handle);
   const [signInOpen, setSignInOpen] = useState(false);
@@ -55,7 +55,9 @@ export function TopNav({ counts = {} }: TopNavProps): JSX.Element {
           </svg>
         </span>
         <span>agent-benchmarks</span>
-        <span className="font-mono font-normal text-[11px] text-muted-foreground pt-[1px]">v0.5.0</span>
+        {version && (
+          <span className="font-mono font-normal text-[11px] text-muted-foreground pt-[1px]">v{version.server}</span>
+        )}
       </NavLink>
 
       <nav className="flex gap-0.5 ml-2">
@@ -87,24 +89,11 @@ export function TopNav({ counts = {} }: TopNavProps): JSX.Element {
       <button
         type="button"
         onClick={() => navigate("/tasks")}
-        title="Jump to tasks"
-        className="h-7 w-[260px] inline-flex items-center gap-2 px-2.5 rounded-md border border-border bg-panel-2 text-[12px] text-muted-foreground hover:text-foreground"
+        title="Jump to the task library"
+        className="h-7 w-[200px] inline-flex items-center gap-2 px-2.5 rounded-md border border-border bg-panel-2 text-[12px] text-muted-foreground hover:text-foreground"
       >
         <Search className="size-3.5" />
-        <span className="flex-1 text-left">Search runs, tasks, models…</span>
-        <Kbd>⌘K</Kbd>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => navigate("/runs")}
-        title="Pull-aggregation status — view runs"
-        className="h-7 w-7 grid place-items-center rounded-md border border-border bg-panel-2 hover:bg-panel-3"
-      >
-        <span className="relative size-2">
-          <span className="absolute inset-0 rounded-full bg-pass" />
-          <span className="absolute -inset-1 rounded-full bg-pass/30 animate-pulse-ring" />
-        </span>
+        <span className="flex-1 text-left">Browse tasks</span>
       </button>
 
       <Button

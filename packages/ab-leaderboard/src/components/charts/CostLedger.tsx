@@ -1,55 +1,50 @@
 import { cn } from "../../lib/utils";
+import type { TrajectoryViewTurn, TrajectoryViewHeaderTotals } from "../../lib/types";
 
 interface CostLedgerProps {
-  /** Per-turn cost. */
-  turns?: TurnCost[];
+  /** Per-turn cost/token data from the real trajectory. */
+  turns: TrajectoryViewTurn[];
+  /** Run totals (tokens, latency, cost) from the trajectory header. */
+  totals: TrajectoryViewHeaderTotals | null;
 }
 
-interface TurnCost {
-  idx: number;
-  tokens_in: number;
-  tokens_out: number;
-  cost_usd: number;
-}
+export function CostLedger({ turns, totals }: CostLedgerProps): JSX.Element {
+  if (!totals && turns.length === 0) {
+    return (
+      <div className="text-[11.5px] text-muted-foreground py-3 text-center">
+        No cost data for this trajectory.
+      </div>
+    );
+  }
 
-const DEFAULT_TURNS: TurnCost[] = [
-  { idx: 1, tokens_in: 4210, tokens_out: 0,    cost_usd: 0.0126 },
-  { idx: 2, tokens_in: 28,   tokens_out: 19,   cost_usd: 0.0001 },
-  { idx: 3, tokens_in: 240,  tokens_out: 8,    cost_usd: 0.0008 },
-  { idx: 4, tokens_in: 1240, tokens_out: 312,  cost_usd: 0.0084 },
-  { idx: 5, tokens_in: 124,  tokens_out: 6,    cost_usd: 0.0004 },
-  { idx: 6, tokens_in: 86,   tokens_out: 1402, cost_usd: 0.0213 },
-  { idx: 7, tokens_in: 32,   tokens_out: 4,    cost_usd: 0.0001 },
-  { idx: 8, tokens_in: 6520, tokens_out: 353,  cost_usd: 0.0249 },
-  { idx: 9, tokens_in: 0,    tokens_out: 0,    cost_usd: 0.0182 },
-];
-
-export function CostLedger({ turns = DEFAULT_TURNS }: CostLedgerProps): JSX.Element {
-  const total = turns.reduce((a, t) => a + t.cost_usd, 0);
-  const tokensIn = turns.reduce((a, t) => a + t.tokens_in, 0);
-  const tokensOut = turns.reduce((a, t) => a + t.tokens_out, 0);
-  const max = Math.max(...turns.map((t) => t.cost_usd));
+  const tokensIn = totals?.tokens_in ?? turns.reduce((a, t) => a + t.tokens_in, 0);
+  const tokensOut = totals?.tokens_out ?? turns.reduce((a, t) => a + t.tokens_out, 0);
+  const total = totals?.cost_usd ?? turns.reduce((a, t) => a + t.cost_usd, 0);
+  const latencyMs = totals?.latency_ms ?? turns.reduce((a, t) => a + t.latency_ms, 0);
+  const max = turns.length ? Math.max(...turns.map((t) => t.cost_usd)) : 0;
 
   return (
     <div>
-      <div className="flex items-end gap-1 h-[60px] py-2 px-1">
-        {turns.map((t) => (
-          <div key={t.idx} className="flex-1 flex flex-col items-center gap-[3px]">
-            <div
-              title={`#${t.idx} · $${t.cost_usd.toFixed(4)}`}
-              className={cn("w-full rounded-sm bg-accent/80")}
-              style={{ height: Math.max(2, (t.cost_usd / max) * 44) + "px" }}
-            />
-            <span className="font-mono text-[9px] text-muted-foreground">{t.idx}</span>
-          </div>
-        ))}
-      </div>
+      {turns.length > 0 && (
+        <div className="flex items-end gap-1 h-[60px] py-2 px-1">
+          {turns.map((t) => (
+            <div key={t.idx} className="flex-1 flex flex-col items-center gap-[3px]">
+              <div
+                title={`#${t.idx} · $${t.cost_usd.toFixed(4)}`}
+                className={cn("w-full rounded-sm bg-accent/80")}
+                style={{ height: Math.max(2, max > 0 ? (t.cost_usd / max) * 44 : 2) + "px" }}
+              />
+              <span className="font-mono text-[9px] text-muted-foreground">{t.idx}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="h-px bg-border-soft my-2" />
       <div className="grid grid-cols-2 gap-2 px-0.5">
-        <Cell label="Tokens in" value={tokensIn.toLocaleString()} />
-        <Cell label="Tokens out" value={tokensOut.toLocaleString()} />
-        <Cell label="Total cost" value={"$" + total.toFixed(4)} accent />
-        <Cell label="Wall clock" value="18.4 s" />
+        <Cell label="Tokens in" value={(tokensIn ?? 0).toLocaleString()} />
+        <Cell label="Tokens out" value={(tokensOut ?? 0).toLocaleString()} />
+        <Cell label="Total cost" value={"$" + (total ?? 0).toFixed(4)} accent />
+        <Cell label="Wall clock" value={(latencyMs ?? 0) > 0 ? ((latencyMs ?? 0) / 1000).toFixed(1) + " s" : "—"} />
       </div>
     </div>
   );

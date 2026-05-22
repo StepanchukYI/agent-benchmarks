@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from ab_server.auth.github_oauth import hash_session_token
 from ab_server.config import Settings
 from ab_server.db import get_session
-from ab_server.models import ApiToken, User
+from ab_server.models import ApiToken, AuthSession, User
 
 
 def _bearer_token(request: Request) -> str | None:
@@ -37,17 +37,26 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token")
 
     token_hash = hash_session_token(token)
-    user = session.exec(select(User).where(User.session_token == token_hash)).first()
-    if user is not None:
-        if user.session_expires_at is not None:
-            expires = user.session_expires_at
+    auth_session = session.exec(
+        select(AuthSession).where(AuthSession.token_hash == token_hash)
+    ).first()
+    if auth_session is not None:
+        if auth_session.expires_at is not None:
+            expires = auth_session.expires_at
             if expires.tzinfo is None:
                 expires = expires.replace(tzinfo=UTC)
             if expires < datetime.now(UTC):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="session expired"
                 )
-        return user
+        auth_session.last_used_at = datetime.now(UTC)
+        session.add(auth_session)
+        session.commit()
+        owner = session.exec(
+            select(User).where(User.id == auth_session.user_id)
+        ).first()
+        if owner is not None:
+            return owner
 
     # Fall back to a long-lived API token (minted via POST /account/tokens).
     # ApiToken uses the same sha256(plaintext) scheme as session tokens, so

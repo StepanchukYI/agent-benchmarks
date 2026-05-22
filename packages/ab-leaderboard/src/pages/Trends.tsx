@@ -70,8 +70,8 @@ export default function Trends(): JSX.Element {
       deltaValue: improvementsDelta,
     },
     { label: <span className="inline-flex items-center gap-1.5"><Check className="size-3 text-pass" /> CI gate</span>, value: overview?.ci_gate.status ?? "passing", unit: "last 48h", delta: `${overview?.ci_gate.blocked_merges ?? 0} blocked merges`, deltaValue: 0 },
-    { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: overview?.alerts_fired_30d ?? 0, unit: "fired", delta: "9 actioned", deltaValue: 0 },
-    { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: overview?.last_full_sweep_at ?? "", delta: "scheduled · 03:00 daily", deltaValue: 0 },
+    { label: <span className="inline-flex items-center gap-1.5"><Bell className="size-3" /> Alerts (30d)</span>, value: overview?.alerts_fired_30d ?? 0, unit: "fired", delta: undefined, deltaValue: null },
+    { label: <span className="inline-flex items-center gap-1.5"><Clock className="size-3" /> Last full sweep</span>, value: overview?.last_full_sweep_at ?? "", delta: undefined, deltaValue: null },
   ];
 
   const overviewMissing =
@@ -111,9 +111,11 @@ export default function Trends(): JSX.Element {
                   </Button>
                 ))}
               </div>
-              <Button>
+              <Button onClick={() => setActiveTab("alerts")}>
                 <Bell className="size-3" /> Alert rules
-                <span className="ml-1 font-mono text-[10.5px] bg-panel-3 text-muted-foreground px-1 py-px rounded">2</span>
+                {alertCount != null && (
+                  <span className="ml-1 font-mono text-[10.5px] bg-panel-3 text-muted-foreground px-1 py-px rounded">{alertCount}</span>
+                )}
               </Button>
             </>
           }
@@ -158,7 +160,7 @@ export default function Trends(): JSX.Element {
                       onClick={() => setShowOperators((v) => !v)}
                     >
                       <Network className="size-3" /> Show friends
-                      {showOperators && <span className="opacity-80 text-[10px] ml-0.5">· 5</span>}
+                      {showOperators && <span className="opacity-80 text-[10px] ml-0.5">· {operatorLegend.length}</span>}
                     </Button>
                     <div className="flex gap-2.5 text-[11px] text-muted-foreground">
                       {trendLegend.slice(0, 3).map((m) => (
@@ -215,7 +217,7 @@ export default function Trends(): JSX.Element {
               <PanelHeader title="Cost vs. Correctness — trails" actions={<span className="text-[11px] text-muted-foreground">14d → today</span>} />
               <div className="p-2.5"><ParetoTrail /></div>
             </Panel>
-            <AlertRulesPanel />
+            <AlertRulesPanel onNewRule={() => setActiveTab("alerts")} />
           </div>
 
           <Panel className="overflow-hidden">
