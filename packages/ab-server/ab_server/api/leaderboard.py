@@ -250,5 +250,10 @@ def get_row_tasks(
     model: str,
     operator: str,
     tier: str,
+    harness: str | None = None,
+    effort: str | None = None,
 ) -> list[RowTaskItem]:
-    return compute_row_tasks(session, model=model, operator=operator, tier=tier)
+    return compute_row_tasks(
+        session, model=model, operator=operator, tier=tier,
+        harness=harness, effort=effort,
+    )

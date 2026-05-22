@@ -141,6 +141,10 @@ export interface LeaderboardRow {
   operator: string;
   trust_tier: TrustTier;
   source_commit_sha: string;
+  /** Runner harness used, e.g. "claude-code", "codex-cli". Null when unknown. */
+  harness: string | null;
+  /** Effort level: off | low | medium | high | xhigh | auto. Null when unknown. */
+  effort: string | null;
   /**
    * Score per pillar, indexed by PILLARS array. An entry is null when no run
    * measured that pillar for this row; consumers skip nulls in aggregates

@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
-from ab_server.fetcher.ingest import ingest_runs
+from ab_server.fetcher.ingest import _config_from_trajectory, ingest_runs
 from ab_server.fetcher.parser import iter_parsed_runs
+from ab_server.leaderboard.queries import compute_leaderboard_response
 from ab_server.models import RegisteredRepo, Submission, TaskResult, User
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -304,3 +305,98 @@ def test_ingest_idempotent_second_call(
     assert (inserted2, skipped2) == (0, 2)
     subs = session.exec(select(Submission)).all()
     assert len(subs) == 2
+
+
+# ── _config_from_trajectory unit tests ──────────────────────────────────────
+
+
+def test_config_from_trajectory_present(tmp_path: Path) -> None:
+    """run_start with harness and reasoning.effort → both extracted."""
+    traj = tmp_path / "trajectory.jsonl"
+    traj.write_text(
+        json.dumps({"event": "run_start", "harness": "claude-code",
+                    "reasoning": {"effort": "high", "budget_tokens": 1000}}) + "\n"
+        + json.dumps({"event": "run_end"}) + "\n"
+    )
+    harness, effort = _config_from_trajectory(traj)
+    assert harness == "claude-code"
+    assert effort == "high"
+
+
+def test_config_from_trajectory_reasoning_null(tmp_path: Path) -> None:
+    """run_start with reasoning=null → harness extracted, effort is None."""
+    traj = tmp_path / "trajectory.jsonl"
+    traj.write_text(
+        json.dumps({"event": "run_start", "harness": "mock", "reasoning": None}) + "\n"
+    )
+    harness, effort = _config_from_trajectory(traj)
+    assert harness == "mock"
+    assert effort is None
+
+
+def test_config_from_trajectory_no_run_start(tmp_path: Path) -> None:
+    """Trajectory without run_start → (None, None)."""
+    traj = tmp_path / "trajectory.jsonl"
+    traj.write_text(json.dumps({"event": "turn", "idx": 0}) + "\n")
+    assert _config_from_trajectory(traj) == (None, None)
+
+
+def test_config_from_trajectory_missing_file(tmp_path: Path) -> None:
+    """Non-existent trajectory path → (None, None)."""
+    assert _config_from_trajectory(tmp_path / "no_such.jsonl") == (None, None)
+
+
+def test_ingest_persists_harness_and_effort(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """harness + effort are read from run_start and persisted on TaskResult."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    run_dir = clone / "results" / "20260521T000000Z-run-1"
+    traj = [
+        {"event": "run_start", "run_id": "run-1", "task_id": "L0_001",
+         "harness": "claude-code", "reasoning": {"effort": "medium"}},
+        {"event": "run_end", "status": "completed"},
+    ]
+    _write_run_with_trajectory(run_dir, "run-1", "L0_001", traj)
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    inserted, _ = ingest_runs(session, repo, parsed)
+    assert inserted == 1
+
+    tr = session.exec(select(TaskResult)).first()
+    assert tr is not None
+    assert tr.harness == "claude-code"
+    assert tr.effort == "medium"
+
+
+def test_two_configs_produce_two_leaderboard_rows(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """Same (model, operator, tier) but different harness → two distinct rows."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+
+    traj_a = [
+        {"event": "run_start", "run_id": "run-a", "task_id": "L0_001",
+         "harness": "claude-code", "reasoning": {"effort": "low"}},
+        {"event": "run_end", "status": "completed"},
+    ]
+    traj_b = [
+        {"event": "run_start", "run_id": "run-b", "task_id": "L0_002",
+         "harness": "codex-cli", "reasoning": {"effort": "low"}},
+        {"event": "run_end", "status": "completed"},
+    ]
+    _write_run_with_trajectory(clone / "results" / "20260521T000000Z-run-a", "run-a", "L0_001", traj_a)
+    _write_run_with_trajectory(clone / "results" / "20260521T000100Z-run-b", "run-b", "L0_002", traj_b)
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    inserted, _ = ingest_runs(session, repo, parsed)
+    assert inserted == 2
+
+    resp = compute_leaderboard_response(session)
+    # Both runs share model=claude-sonnet, operator=alice (from repo fixture),
+    # tier=T0 — but differ in harness → must produce two rows.
+    assert len(resp.rows) == 2
+    harnesses = {r.harness for r in resp.rows}
+    assert harnesses == {"claude-code", "codex-cli"}

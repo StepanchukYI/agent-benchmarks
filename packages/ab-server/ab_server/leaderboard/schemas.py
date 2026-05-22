@@ -70,6 +70,9 @@ class LeaderboardRow(BaseModel):
     # Per-pillar sample sizes, index-aligned to `scores`. Each value is the
     # count of task-results that contributed a non-null score to that pillar.
     pillar_counts: list[int] = Field(default_factory=list)
+    # harness/effort from the run_start trajectory event; null for pre-B1 rows.
+    harness: str | None = None
+    effort: str | None = None
 
 
 class LeaderboardSummary(BaseModel):

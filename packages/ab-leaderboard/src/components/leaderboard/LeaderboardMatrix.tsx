@@ -47,9 +47,21 @@ function fmtTokens(n: number | null | undefined): string {
   return `${n.toLocaleString("en-US")} tok`;
 }
 
-/** Stable row key for expand state. */
+/** Stable row key for expand state — includes harness+effort so per-config rows stay distinct. */
 function rowKey(r: LeaderboardRow): string {
-  return `${r.model}/${r.operator}/${r.tier}`;
+  return `${r.model}/${r.operator}/${r.tier}/${r.harness ?? ""}/${r.effort ?? ""}`;
+}
+
+/**
+ * Build the muted config chip label: "harness · effort · tier".
+ * NULL-SAFE: parts that are null are omitted; tier always renders.
+ */
+function buildConfigChip(r: LeaderboardRow): string {
+  const parts: string[] = [];
+  if (r.harness != null) parts.push(r.harness);
+  if (r.effort != null) parts.push(r.effort);
+  parts.push(r.tier);
+  return parts.join(" · ");
 }
 
 export function LeaderboardMatrix(): JSX.Element {
@@ -206,7 +218,7 @@ export function LeaderboardMatrix(): JSX.Element {
                     <Td className="pl-4">
                       <div className="flex items-center gap-2.5">
                         <span className="w-[18px] text-muted-foreground text-[11px] tnum">{i + 1}</span>
-                        <ModelCell model={m} />
+                        <ModelCell model={m} configChip={buildConfigChip(r)} />
                         <span className="flex gap-1">
                           <Tag>{m.capabilities[0]}</Tag>
                         </span>
@@ -257,7 +269,7 @@ export function LeaderboardMatrix(): JSX.Element {
                   {isExpanded && (
                     <tr key={`${key}__drill`}>
                       <td colSpan={colSpan} className="bg-panel-2/40 border-b border-border-soft px-5 py-3">
-                        <RowDrillPanel model={r.model} operator={r.operator} tier={r.tier} />
+                        <RowDrillPanel model={r.model} operator={r.operator} tier={r.tier} harness={r.harness} effort={r.effort} />
                       </td>
                     </tr>
                   )}
@@ -277,15 +289,22 @@ interface RowDrillPanelProps {
   model: string;
   operator: string;
   tier: string;
+  /** Null-safe — omitted from query when null (backend behavior TBD). */
+  harness: string | null;
+  /** Null-safe — omitted from query when null (backend behavior TBD). */
+  effort: string | null;
 }
 
 /**
  * Per-row task drill panel. Fetches `GET /leaderboard/row/tasks` with the row's
- * exact (model, operator, tier) — operator is passed verbatim per backend
- * contract. null-verdict rows render neutral "not measured", never "fail".
+ * exact (model, operator, tier, harness, effort) — operator is passed verbatim
+ * per backend contract. harness/effort are threaded when non-null; null params
+ * are omitted (withQuery skips null values). null-verdict rows render neutral
+ * "not measured", never "fail".
  */
-function RowDrillPanel({ model, operator, tier }: RowDrillPanelProps): JSX.Element {
-  const drillQuery = useRowTaskDrill({ model, operator, tier });
+function RowDrillPanel({ model, operator, tier, harness, effort }: RowDrillPanelProps): JSX.Element {
+  const drillKey = { model, operator, tier, harness, effort };
+  const drillQuery = useRowTaskDrill(drillKey);
   const state = toState(drillQuery);
 
   if (state.kind === "loading") {

@@ -72,6 +72,36 @@ def _token_turn_counts(traj_path: Path) -> tuple[int, int, int, int]:
     return t_in + t_out, t_in, t_out, assistant_turns
 
 
+def _config_from_trajectory(traj_path: Path) -> tuple[str | None, str | None]:
+    """Extract (harness, effort) from the run_start event in trajectory.jsonl.
+
+    harness is a top-level key on run_start; effort is nested at
+    reasoning.effort (reasoning may be null/absent). Missing/unreadable file
+    or no run_start event returns (None, None) — same defensive handling as
+    _token_turn_counts.
+    """
+    if not traj_path.exists():
+        return None, None
+    try:
+        with traj_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("event") == "run_start":
+                    harness = ev.get("harness") or None
+                    reasoning = ev.get("reasoning")
+                    effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
+                    return harness, effort or None
+    except OSError:
+        return None, None
+    return None, None
+
+
 def ingest_runs(
     session: Session,
     repo: RegisteredRepo,
@@ -135,6 +165,7 @@ def ingest_runs(
         tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
             run.path / "trajectory.jsonl"
         )
+        harness, effort = _config_from_trajectory(run.path / "trajectory.jsonl")
 
         task_result = TaskResult(
             submission_id=submission.id,
@@ -158,6 +189,8 @@ def ingest_runs(
             turns_total=turns_total,
             trajectory_blob_ref=str(run.path / "trajectory.jsonl"),
             passed=passed,
+            harness=harness,
+            effort=effort,
         )
         session.add(task_result)
         session.commit()

@@ -58,8 +58,11 @@ export const endpoints = {
     pillar?: "correctness" | "tool_skill" | "context_efficiency" | "latency_cost" | "memory_specific";
   }) => withQuery("/leaderboard", q),
   leaderboardPareto: () => "/leaderboard/pareto",
-  /** Per-operator task drill: GET /leaderboard/row/tasks?model=&operator=&tier= */
-  leaderboardRowTasks: (q: { model: string; operator: string; tier: string }) =>
+  /**
+   * Per-config task drill: GET /leaderboard/row/tasks?model=&operator=&tier=[&harness=][&effort=]
+   * harness and effort are optional — omitted (not sent) when null.
+   */
+  leaderboardRowTasks: (q: { model: string; operator: string; tier: string; harness?: string | null; effort?: string | null }) =>
     withQuery("/leaderboard/row/tasks", q),
   leaderboardHeatmap: (q?: { suites?: string[]; models?: string[]; tiers?: string[] }) =>
     withQuery("/leaderboard/heatmap", q),

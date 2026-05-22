@@ -150,16 +150,17 @@ export function useLeaderboardPareto() {
 }
 
 /**
- * Per-operator task drill for a single leaderboard row.
+ * Per-config task drill for a single leaderboard row.
  *
- * Fetches `GET /leaderboard/row/tasks?model=&operator=&tier=` and returns a
- * `RowTaskDrillItem[]`. Disabled (no fetch) when `key` is null so the query
- * only fires when the user expands a row.
+ * Fetches `GET /leaderboard/row/tasks?model=&operator=&tier=[&harness=][&effort=]`
+ * and returns a `RowTaskDrillItem[]`. Disabled (no fetch) when `key` is null so
+ * the query only fires when the user expands a row. harness/effort are optional
+ * and omitted from the URL when null — withQuery already skips null via `v == null`.
  *
  * No mock fallback — real data or honest empty/error state.
  */
 export function useRowTaskDrill(
-  key: { model: string; operator: string; tier: string } | null,
+  key: { model: string; operator: string; tier: string; harness?: string | null; effort?: string | null } | null,
 ) {
   return useQuery<RowTaskDrillItem[]>({
     queryKey: ["leaderboard", "row-tasks", key],

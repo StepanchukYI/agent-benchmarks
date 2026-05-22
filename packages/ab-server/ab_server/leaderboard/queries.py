@@ -968,15 +968,6 @@ def _best_trust(trusts: Sequence[str]) -> str:
     return max(trusts, key=lambda t: _TRUST_RANK.get(t, -1))
 
 
-def _mode(values: Sequence[str], default: str) -> str:
-    if not values:
-        return default
-    counts: dict[str, int] = {}
-    for v in values:
-        counts[v] = counts.get(v, 0) + 1
-    return max(counts.items(), key=lambda kv: kv[1])[0]
-
-
 def _summary_aggregate(
     session: Session,
     *,
@@ -1239,6 +1230,8 @@ def compute_leaderboard_response(
             Run.dataset_version,
             Run.started_at,
             User.handle,
+            TaskResult.harness,
+            TaskResult.effort,
         )
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
@@ -1282,7 +1275,10 @@ def compute_leaderboard_response(
         exc = frozenset(exclude_task_tags) if exclude_task_tags else None
         raw = [row for row in raw if task_matches_filters(row[3], include=inc, exclude=exc)]
 
-    Bucket = tuple[str, str]
+    # Bucket = (model, operator, tier, harness, effort): each distinct config
+    # is its own leaderboard row. tier/harness/effort are part of the key so
+    # aggregates never conflate runs with different configs.
+    Bucket = tuple[str, str, str, str | None, str | None]
     pillar_keys = ("correctness", "context_eff", "tool_skill", "memory", "latency")
     scores: dict[Bucket, list[float]] = {}
     pillars_by_key: dict[Bucket, dict[str, list[float]]] = {}
@@ -1294,7 +1290,6 @@ def compute_leaderboard_response(
     tasks_seen: dict[Bucket, set[tuple[str, str]]] = {}
     sweep_cost: dict[Bucket, float] = {}
     trust_by_key: dict[Bucket, list[str]] = {}
-    tiers_by_key: dict[Bucket, list[str]] = {}
     shas: dict[Bucket, tuple[str, datetime]] = {}
     versions_by_key: dict[Bucket, list[tuple[str, datetime | None]]] = {}
     # pass counts: [passed_true_count, decided_count]
@@ -1325,10 +1320,12 @@ def compute_leaderboard_response(
             run_dataset_version,
             started_at,
             handle,
+            harness,
+            effort,
         ) = row
 
         operator = handle or "self"
-        key: Bucket = (model, operator)
+        key: Bucket = (model, operator, tier, harness, effort)
         scores.setdefault(key, []).append(float(score_total or 0.0))
         bucket_pillars = pillars_by_key.setdefault(
             key, {k: [] for k in pillar_keys}
@@ -1352,7 +1349,6 @@ def compute_leaderboard_response(
         turns_by_key.setdefault(key, []).append(int(turns_total or 0))
         suites_seen.setdefault(key, []).append(suite)
         tasks_seen.setdefault(key, set()).add((task_id, suite))
-        tiers_by_key.setdefault(key, []).append(tier)
         if suite.startswith("L0_") or suite.startswith("L1_"):
             sweep_cost[key] = sweep_cost.get(key, 0.0) + float(cost_usd or 0.0)
         if trust_tier:
@@ -1388,6 +1384,9 @@ def compute_leaderboard_response(
             TaskResult.score_memory,
             TaskResult.score_latency,
             User.handle,
+            TaskResult.tier,
+            TaskResult.harness,
+            TaskResult.effort,
         )
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
@@ -1407,8 +1406,8 @@ def compute_leaderboard_response(
         prev_stmt = prev_stmt.where(User.handle.in_(list(operators)))
     prev_pillars: dict[Bucket, dict[str, list[float]]] = {}
     for prow in session.exec(prev_stmt).all():
-        model_p, c_p, ctx_p, tool_p, mem_p, lat_p, handle_p = prow
-        kp: Bucket = (model_p, handle_p or "self")
+        model_p, c_p, ctx_p, tool_p, mem_p, lat_p, handle_p, tier_p, harness_p, effort_p = prow
+        kp: Bucket = (model_p, handle_p or "self", tier_p, harness_p, effort_p)
         bp = prev_pillars.setdefault(kp, {k: [] for k in pillar_keys})
         # Same non-None rule as the current window so prev-window pillar means
         # (used for deltas) count genuine 0.0s and ignore unmeasured pillars.
@@ -1424,7 +1423,7 @@ def compute_leaderboard_response(
 
     out_rows: list[LeaderboardRow] = []
     for key, score_list in scores.items():
-        model, operator = key
+        model, operator, row_tier, row_harness, row_effort = key
         bucket_pillars = pillars_by_key.get(key, {k: [] for k in pillar_keys})
         # Null (not 0) when a pillar had no measured contribution, so the FE can
         # skip it in the overall mean instead of averaging in a phantom zero.
@@ -1485,9 +1484,11 @@ def compute_leaderboard_response(
                 turns_total=int(_median([float(t) for t in turns_by_key.get(key, [])])),
                 sweep_cost=sweep_cost.get(key, 0.0),
                 dataset_pin=DatasetPin(version=latest_version, behind=behind),
-                tier=_mode(tiers_by_key.get(key, []), "T0"),
+                tier=row_tier,
                 pass_rate=row_pass_rate,
                 pillar_counts=counts_arr,
+                harness=row_harness,
+                effort=row_effort,
             )
         )
 
@@ -1662,8 +1663,14 @@ def compute_row_tasks(
     model: str,
     operator: str,
     tier: str,
+    harness: str | None = None,
+    effort: str | None = None,
 ) -> list[RowTaskItem]:
     """Per-task drill for a leaderboard row identified by (model, operator, tier).
+
+    harness and effort are optional — when provided, only task-results matching
+    those config values are returned. Omitting them applies no filter on those
+    dimensions (back-compat with pre-B1 rows where the columns are null).
 
     Operator matches the same `handle or "self"` logic used by
     compute_leaderboard_response (queries.py:1309). Rows with no RegisteredRepo
@@ -1705,6 +1712,10 @@ def compute_row_tasks(
             )
         )
     )
+    if harness is not None:
+        stmt = stmt.where(TaskResult.harness == harness)
+    if effort is not None:
+        stmt = stmt.where(TaskResult.effort == effort)
 
     rows = session.exec(stmt).all()
 

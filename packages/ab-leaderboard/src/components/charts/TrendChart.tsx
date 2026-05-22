@@ -117,12 +117,21 @@ export function TrendChart({ showOperators = false, width = 880, height = 280 }:
 }
 
 /**
- * Hook-driven legend data. Backed by `useModels`/`useOperators`. Returns an
- * empty legend until real data loads — never falls back to mock fixtures.
+ * Hook-driven legend data. Returns only models that have ACTUAL series data in
+ * the 30d trends response — a model must have at least one non-null value in
+ * per_model[model.id] to appear. Models with no entry or all-null values are
+ * excluded so the legend matches exactly what the chart body plots.
  */
 export function useTrendLegendData(): { vendor: Model; color: string }[] {
   const { data: models } = useModels();
-  return (models ?? []).map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
+  const { data: trendsSeries } = useTrendsSeries("30d");
+  const perModel: Record<string, (number | null)[]> = trendsSeries?.per_model ?? {};
+  return (models ?? [])
+    .filter((m) => {
+      const series = perModel[m.id];
+      return series != null && series.some((v) => v != null);
+    })
+    .map((m) => ({ vendor: m, color: VENDOR_HEX[m.vendor]! }));
 }
 
 export function useOperatorLegendData(): { handle: string; color: string }[] {

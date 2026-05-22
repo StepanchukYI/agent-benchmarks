@@ -42,3 +42,7 @@ class TaskResult(SQLModel, table=True):
     # passed=False → at least one decided scorer failed
     # passed=None  → zero decided scorers (not measured)
     passed: bool | None = Field(default=None, nullable=True)
+    # harness/effort: populated from run_start event in trajectory.jsonl.
+    # None when the run pre-dates this column or the trajectory lacks run_start.
+    harness: str | None = Field(default=None, nullable=True)
+    effort: str | None = Field(default=None, nullable=True)

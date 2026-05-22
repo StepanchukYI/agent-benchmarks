@@ -7,6 +7,11 @@ interface ModelCellProps {
   showHarness?: boolean;
   /** Smaller text — used in table rows. */
   compact?: boolean;
+  /**
+   * Run-config chip rendered beneath the model id.
+   * Pass pre-built label; null/undefined = no chip.
+   */
+  configChip?: string | null;
 }
 
 const VENDOR_DOT_CLASS: Record<Vendor, string> = {
@@ -17,7 +22,7 @@ const VENDOR_DOT_CLASS: Record<Vendor, string> = {
   minimax:   "bg-vendor-minimax",
 };
 
-export function ModelCell({ model, showHarness = false, compact = false }: ModelCellProps): JSX.Element {
+export function ModelCell({ model, showHarness = false, compact = false, configChip }: ModelCellProps): JSX.Element {
   return (
     <span className="inline-flex items-center gap-2.5">
       <span className={cn("size-2 rounded-full shrink-0", VENDOR_DOT_CLASS[model.vendor])} />
@@ -27,6 +32,9 @@ export function ModelCell({ model, showHarness = false, compact = false }: Model
         </span>
         {showHarness && (
           <span className="text-muted-foreground text-[10.5px]">{model.harness}</span>
+        )}
+        {configChip != null && (
+          <span className="text-muted-foreground text-[10.5px] font-mono">{configChip}</span>
         )}
       </span>
     </span>

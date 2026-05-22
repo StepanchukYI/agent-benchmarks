@@ -53,6 +53,7 @@ from ab_server.config import Settings  # noqa: E402
 from ab_server.db import get_engine  # noqa: E402
 from ab_server.fetcher.ingest import (  # noqa: E402
     _compute_passed,
+    _config_from_trajectory,
     _pillar_score,
     _suite_from_task,
     _token_turn_counts,
@@ -238,6 +239,7 @@ def _ingest_one(
     tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
         run_dir / "trajectory.jsonl"
     )
+    harness, effort = _config_from_trajectory(run_dir / "trajectory.jsonl")
 
     result = TaskResult(
         run_id=None,
@@ -256,6 +258,8 @@ def _ingest_one(
         turns_total=turns_total,
         trajectory_blob_ref=str((run_dir / "trajectory.jsonl").resolve()),
         passed=passed,
+        harness=harness,
+        effort=effort,
         **_pillar_scores(scores),
     )
     session.add(result)
