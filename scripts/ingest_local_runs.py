@@ -51,6 +51,12 @@ sys.path.insert(0, str(_REPO_ROOT / "packages" / "ab-harness"))
 from ab_sdk.publish_gate import check_publish_ready  # noqa: E402
 from ab_server.config import Settings  # noqa: E402
 from ab_server.db import get_engine  # noqa: E402
+from ab_server.fetcher.ingest import (  # noqa: E402
+    _compute_passed,
+    _pillar_score,
+    _suite_from_task,
+    _token_turn_counts,
+)
 from ab_server.models import (  # noqa: E402
     RegisteredRepo,
     Submission,
@@ -135,15 +141,17 @@ def _existing_submission(
     ).first()
 
 
-def _pillar_scores(scores: dict[str, Any]) -> dict[str, float]:
+def _pillar_scores(scores: dict[str, Any]) -> dict[str, float | None]:
+    # None when the pillar key is absent — "not measured", not 0.0.
+    # Uses the shared _pillar_score helper from fetcher/ingest to stay in sync.
     pp = scores.get("per_pillar") or {}
     return {
-        "score_correctness": float(pp.get("correctness", 0.0)),
-        "score_context_eff": float(pp.get("context_efficiency", 0.0)),
-        "score_tool_skill": float(pp.get("tool_skill", 0.0)),
-        "score_memory": float(pp.get("memory_specific", 0.0)),
-        "score_latency": float(pp.get("latency_cost", 0.0)),
-        "score_total": float(scores.get("total_score", 0.0)),
+        "score_correctness": _pillar_score(pp, "correctness"),
+        "score_context_eff": _pillar_score(pp, "context_efficiency"),
+        "score_tool_skill": _pillar_score(pp, "tool_skill"),
+        "score_memory": _pillar_score(pp, "memory_specific"),
+        "score_latency": _pillar_score(pp, "latency_cost"),
+        "score_total": float(scores.get("total_score") or 0.0),
     }
 
 
@@ -186,13 +194,20 @@ def _ingest_one(
     session.commit()
     session.refresh(submission)
 
-    suite = (
-        task_id.split("_")[0] + "_smoke"
-        if task_id.startswith("L0_")
-        else "unknown"
-    )
+    # Suite: prefer scores.json "suite" key (set by runner), fall back to
+    # _suite_from_task — same logic as the fetcher (no metadata.yaml here).
+    suite = str(scores.get("suite") or _suite_from_task(task_id))
     tier_hash = scores.get("tier_hash") or ""
 
+    passed = _compute_passed(scores.get("verdicts") or [])
+    # status mirrors fetcher: "passed"/"failed" based on verdicts.
+    # datasets.py pass_rate_30d reads the authoritative `passed` flag (B8), not
+    # status — so this is purely informational / run-lifecycle context.
+    status_value = "passed" if passed else "failed"
+
+    # Cost + latency: trajectory run_end totals (primary), then scores.json
+    # fallback keys — mirrors the fetcher's source priority (minus metadata.yaml
+    # which local runs don't have).
     cost_usd = 0.0
     latency_ms = 0
     try:
@@ -207,6 +222,22 @@ def _ingest_one(
                     latency_ms = int(totals.get("latency_ms") or 0)
     except OSError:
         pass
+    # scores.json fallback (matches fetcher's scores.get("cost_usd") chain)
+    if not cost_usd:
+        cost_usd = float(
+            scores.get("cost_usd") or scores.get("total_cost_usd") or 0.0
+        )
+    if not latency_ms:
+        latency_ms = int(
+            scores.get("latency_ms") or scores.get("total_latency_ms") or 0
+        )
+    # NOTE: _token_turn_counts opens the trajectory a second time; the block
+    # above already opened it for cost/latency. Minor double-read in a one-off
+    # script — acceptable per task scope; not worth merging without a broader
+    # cost/latency refactor.
+    tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
+        run_dir / "trajectory.jsonl"
+    )
 
     result = TaskResult(
         run_id=None,
@@ -216,10 +247,15 @@ def _ingest_one(
         model=model,
         tier=tier,
         tier_hash=tier_hash,
-        status="completed",
+        status=status_value,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
+        tokens_total=tokens_total,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        turns_total=turns_total,
         trajectory_blob_ref=str((run_dir / "trajectory.jsonl").resolve()),
+        passed=passed,
         **_pillar_scores(scores),
     )
     session.add(result)

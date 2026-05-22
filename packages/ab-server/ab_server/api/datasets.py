@@ -163,10 +163,12 @@ def _compute_task_stats(session: Session, task_id: str) -> dict[str, Any]:
             "median_turns": None,
         }
 
-    passed = sum(
-        1 for tr, _ in within if tr.status == "completed" and tr.score_total >= 0.99
-    )
-    pass_rate = passed / runs_count
+    # Use the authoritative tri-state `passed` flag (B1) — not status/score
+    # heuristic. Denominator is `decided` (rows with a non-None passed), so
+    # pass_rate is None when no scorer ran (honest: not measured ≠ 0).
+    passed = sum(1 for tr, _ in within if tr.passed is True)
+    decided = sum(1 for tr, _ in within if tr.passed is not None)
+    pass_rate: float | None = passed / decided if decided else None
     costs = [tr.cost_usd for tr, _ in within]
     latencies = [tr.latency_ms for tr, _ in within]
     turns = [tr.turns_total for tr, _ in within if tr.turns_total]
