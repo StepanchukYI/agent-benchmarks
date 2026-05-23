@@ -107,3 +107,76 @@ def test_missing_privacy_check_blocks_publish(tmp_path):
     ok, issues = check_publish_ready(tmp_path, patterns_path=PATTERNS_PATH)
     assert not ok
     assert any("privacy gate" in issue for issue in issues), issues
+
+
+# ── Custom-prompt privacy tests ──────────────────────────────────────────────
+# The verbatim CLAUDE.md text lands in run_start.system_prompt_verbatim which
+# is serialised into the run_start line of trajectory.jsonl by
+# _trajectory_to_events. check_publish_ready scans every trajectory.jsonl line
+# so a leaked secret in the prompt is caught before publish — verified below.
+
+
+def _trajectory_with_prompt(
+    run_id: str = "run-custom",
+    system_prompt_verbatim: str | None = None,
+    prompt_label: str | None = None,
+) -> Trajectory:
+    now = datetime.now(UTC)
+    return Trajectory(
+        run_id=run_id,
+        task_id="L0_001",
+        model="claude",
+        harness="claude-code-cli@0.4.1",
+        tier=Tier.T0,
+        dataset_version="ab-datasets==0.0.1",
+        started_at=now,
+        finished_at=now,
+        turns=[],
+        status="completed",
+        totals=Totals(tokens_in=0, tokens_out=0, latency_ms=0, cost_usd=0.0, score=0.0),
+        system_prompt_verbatim=system_prompt_verbatim,
+        prompt_label=prompt_label,
+    )
+
+
+def test_custom_prompt_clean_passes_publish(tmp_path):
+    """A custom prompt with no secrets should pass the publish gate."""
+    traj = _trajectory_with_prompt(
+        system_prompt_verbatim="You are a helpful assistant.\nFocus on code quality.",
+        prompt_label="my-custom-prompt",
+    )
+    write_run_dir(
+        tmp_path,
+        traj,
+        {"model": "claude", "tier": "T0", "dataset_version": "0.0.1"},
+        scorer_verdicts=[_privacy_pass_verdict()],
+    )
+
+    ok, issues = check_publish_ready(tmp_path, patterns_path=PATTERNS_PATH)
+    assert ok, issues
+    assert issues == []
+
+
+def test_custom_prompt_with_secret_blocks_publish(tmp_path):
+    """A custom prompt containing a HIGH-severity token is caught by the
+    publish gate because system_prompt_verbatim is in the run_start line
+    of trajectory.jsonl which check_publish_ready scans line-by-line.
+
+    Uses a synthetic github token (ghp_ + 36 chars) — NOT a real credential.
+    """
+    # Synthetic token — matches github-token pattern, not a real secret.
+    fake_token = "ghp_" + "A" * 36
+    traj = _trajectory_with_prompt(
+        system_prompt_verbatim=f"You are a helpful assistant.\nToken: {fake_token}",
+        prompt_label="leaked-prompt",
+    )
+    write_run_dir(
+        tmp_path,
+        traj,
+        {"model": "claude", "tier": "T0", "dataset_version": "0.0.1"},
+        scorer_verdicts=[_privacy_pass_verdict()],
+    )
+
+    ok, issues = check_publish_ready(tmp_path, patterns_path=PATTERNS_PATH)
+    assert not ok, "publish gate should block run with secret in system_prompt_verbatim"
+    assert any("github-token" in issue for issue in issues), issues

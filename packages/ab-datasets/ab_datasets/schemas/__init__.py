@@ -13,6 +13,7 @@ from .task import (
 )
 from .tier import Tier, TierManifest
 from .trajectory import (
+    IsolationInfo,
     ReasoningConfig,
     RunStatus,
     SamplingConfig,
@@ -26,6 +27,7 @@ __all__ = [
     "AgentConfig",
     "Difficulty",
     "Fixture",
+    "IsolationInfo",
     "Layer",
     "ReasoningConfig",
     "RunStatus",

@@ -101,6 +101,15 @@ def _trajectory_to_events(trajectory: Trajectory) -> list[dict[str, Any]]:
         "tier_hash": dumped.get("tier_hash"),
         "dataset_version": dumped["dataset_version"],
         "prompt_template_hash": dumped.get("prompt_template_hash"),
+        "prompt_label": dumped.get("prompt_label"),
+        # system_prompt_verbatim is the verbatim CLAUDE.md / operator prompt
+        # text. Serialised here so the publish gate's line-by-line privacy
+        # scan (check_publish_ready) covers it before the run goes public.
+        "system_prompt_verbatim": dumped.get("system_prompt_verbatim"),
+        # isolation records how the runner sandboxed the subprocess (clean-HOME
+        # path, fake_home location, bare flag). None for runners that don't
+        # record isolation provenance yet.
+        "isolation": dumped.get("isolation"),
         "started_at": dumped["started_at"],
     }
     events.append(run_start)
@@ -343,6 +352,7 @@ def write_run_dir(
     )
     enriched.setdefault("status", status_val)
     enriched.setdefault("prompt_template_hash", trajectory.prompt_template_hash)
+    enriched.setdefault("prompt_label", trajectory.prompt_label)
     write_metadata(run_dir / METADATA_FILE, enriched)
 
 
@@ -428,6 +438,9 @@ def _reconstruct_trajectory(path: Path, events: list[dict[str, Any]]) -> Traject
         "tier_hash": run_start.get("tier_hash"),
         "dataset_version": run_start.get("dataset_version"),
         "prompt_template_hash": run_start.get("prompt_template_hash"),
+        "prompt_label": run_start.get("prompt_label"),
+        "system_prompt_verbatim": run_start.get("system_prompt_verbatim"),
+        "isolation": run_start.get("isolation"),
         "started_at": run_start.get("started_at"),
         "finished_at": run_end.get("finished_at"),
         "status": run_end.get("status"),

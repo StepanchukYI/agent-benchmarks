@@ -187,13 +187,16 @@ def test_native_runners_use_isolation() -> None:
 
 
 def test_subscription_runners_keep_real_home() -> None:
-    """Runners whose CLI uses subscription auth (claude Max, codex ChatGPT,
-    gemini OAuth, opencode multi-provider login, pi multi-provider login)
-    must preserve the operator's real HOME so the keychain / oauth_creds /
-    auth.json files are reachable. Pinned via source-grep for
-    ``use_fake_home=False``."""
+    """Runners whose CLI uses subscription auth (codex ChatGPT, gemini OAuth,
+    opencode multi-provider login, pi multi-provider login) must preserve the
+    operator's real HOME so the keychain / oauth_creds / auth.json files are
+    reachable. Pinned via source-grep for ``use_fake_home=False``.
+
+    Note: claude-code is EXCLUDED — it uses clean-HOME isolation
+    (use_fake_home=True) with ANTHROPIC_API_KEY, not Max subscription auth.
+    """
     runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
-    for name in ["claude_code.py", "codex_cli.py", "gemini_cli.py", "opencode.py", "pi_agent.py"]:
+    for name in ["codex_cli.py", "gemini_cli.py", "opencode.py", "pi_agent.py"]:
         text = (runners_dir / name).read_text()
         assert "use_fake_home=False" in text, (
             f"{name} must call IsolatedEnv.build(use_fake_home=False) so "
@@ -201,6 +204,18 @@ def test_subscription_runners_keep_real_home() -> None:
             f"reach ~/.{name.split('_')[0]}/ login state and the bench fails "
             f"with 'Not logged in'."
         )
+
+
+def test_claude_code_uses_clean_home_isolation() -> None:
+    """claude_code.py must use use_fake_home=True — clean-HOME isolation makes
+    the operator's real ~/.claude physically invisible to the benchmark agent.
+    Max-subscription path is no longer supported; ANTHROPIC_API_KEY is required."""
+    runners_dir = Path(__file__).resolve().parents[1] / "ab_harness" / "runners"
+    text = (runners_dir / "claude_code.py").read_text()
+    assert "use_fake_home=True" in text, (
+        "claude_code.py must call IsolatedEnv.build(use_fake_home=True) — "
+        "clean-HOME isolation. Real HOME is no longer preserved for claude-code."
+    )
 
 
 def test_claude_argv_blocks_user_config_via_flags() -> None:

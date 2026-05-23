@@ -7,7 +7,7 @@ import pytest
 from ab_server.fetcher.ingest import _config_from_trajectory, ingest_runs
 from ab_server.fetcher.parser import iter_parsed_runs
 from ab_server.leaderboard.queries import compute_leaderboard_response
-from ab_server.models import RegisteredRepo, Submission, TaskResult, User
+from ab_server.models import PromptBlob, RegisteredRepo, Submission, TaskResult, User
 from sqlmodel import Session, SQLModel, create_engine, select
 
 
@@ -311,16 +311,23 @@ def test_ingest_idempotent_second_call(
 
 
 def test_config_from_trajectory_present(tmp_path: Path) -> None:
-    """run_start with harness and reasoning.effort → both extracted."""
+    """run_start with harness and reasoning.effort → all four fields extracted."""
     traj = tmp_path / "trajectory.jsonl"
     traj.write_text(
-        json.dumps({"event": "run_start", "harness": "claude-code",
-                    "reasoning": {"effort": "high", "budget_tokens": 1000}}) + "\n"
+        json.dumps({
+            "event": "run_start",
+            "harness": "claude-code",
+            "reasoning": {"effort": "high", "budget_tokens": 1000},
+            "prompt_label": "my-prompt",
+            "system_prompt_verbatim": "You are a helpful assistant.",
+        }) + "\n"
         + json.dumps({"event": "run_end"}) + "\n"
     )
-    harness, effort = _config_from_trajectory(traj)
+    harness, effort, prompt_label, system_prompt_verbatim = _config_from_trajectory(traj)
     assert harness == "claude-code"
     assert effort == "high"
+    assert prompt_label == "my-prompt"
+    assert system_prompt_verbatim == "You are a helpful assistant."
 
 
 def test_config_from_trajectory_reasoning_null(tmp_path: Path) -> None:
@@ -329,21 +336,23 @@ def test_config_from_trajectory_reasoning_null(tmp_path: Path) -> None:
     traj.write_text(
         json.dumps({"event": "run_start", "harness": "mock", "reasoning": None}) + "\n"
     )
-    harness, effort = _config_from_trajectory(traj)
+    harness, effort, prompt_label, system_prompt_verbatim = _config_from_trajectory(traj)
     assert harness == "mock"
     assert effort is None
+    assert prompt_label is None
+    assert system_prompt_verbatim is None
 
 
 def test_config_from_trajectory_no_run_start(tmp_path: Path) -> None:
-    """Trajectory without run_start → (None, None)."""
+    """Trajectory without run_start → (None, None, None, None)."""
     traj = tmp_path / "trajectory.jsonl"
     traj.write_text(json.dumps({"event": "turn", "idx": 0}) + "\n")
-    assert _config_from_trajectory(traj) == (None, None)
+    assert _config_from_trajectory(traj) == (None, None, None, None)
 
 
 def test_config_from_trajectory_missing_file(tmp_path: Path) -> None:
-    """Non-existent trajectory path → (None, None)."""
-    assert _config_from_trajectory(tmp_path / "no_such.jsonl") == (None, None)
+    """Non-existent trajectory path → (None, None, None, None)."""
+    assert _config_from_trajectory(tmp_path / "no_such.jsonl") == (None, None, None, None)
 
 
 def test_ingest_persists_harness_and_effort(
@@ -400,3 +409,200 @@ def test_two_configs_produce_two_leaderboard_rows(
     assert len(resp.rows) == 2
     harnesses = {r.harness for r in resp.rows}
     assert harnesses == {"claude-code", "codex-cli"}
+
+
+# ── prompt_label + prompt_blobs tests ────────────────────────────────────────
+
+
+# Sandbox preamble injected by base.compose_system_prompt for all runs.
+_SANDBOX_PREAMBLE = "You are a helpful assistant. Complete the task precisely."
+# Operator CLAUDE.md text used in custom-prompt tests.
+_OPERATOR_CLAUDE_MD = "You are a strict code reviewer.\nFocus on correctness."
+# Full composed system_prompt_verbatim as emitted by base.compose_system_prompt
+# when --claude-md is active: preamble + marker + operator CLAUDE.md.
+_CUSTOM_SYSTEM_PROMPT = (
+    _SANDBOX_PREAMBLE
+    + "\n\n--- project CLAUDE.md ---\n"
+    + _OPERATOR_CLAUDE_MD
+)
+
+
+def _write_run_with_custom_prompt(
+    run_dir: Path,
+    run_id: str,
+    task_id: str,
+    tier_hash: str,
+    prompt_label: str,
+    system_prompt_verbatim: str,
+) -> None:
+    """Write a run dir whose trajectory has a custom prompt on run_start.
+
+    system_prompt_verbatim should be the full composed string (preamble +
+    marker + operator text) as emitted by base.compose_system_prompt.
+    """
+    run_dir.mkdir(parents=True)
+    (run_dir / "metadata.yaml").write_text(
+        f"run_id: {run_id}\ntask_id: {task_id}\nmodel: claude-sonnet\ntier: T2\n"
+        f"tier_hash: {tier_hash}\nsuite: file-ops\ndataset_version: 0.0.1\n"
+        "harness: test\nstarted_at: 2026-05-21T00:00:00Z\nfinished_at: 2026-05-21T00:00:01Z\n"
+    )
+    (run_dir / "scores.json").write_text(
+        json.dumps({
+            "run_id": run_id,
+            "task_id": task_id,
+            "model": "claude-sonnet",
+            "tier": "T2",
+            "tier_hash": tier_hash,
+            "dataset_version": "0.0.1",
+            "total_score": 0.8,
+            "pass": True,
+            "per_pillar": {"correctness": 0.8},
+        }) + "\n"
+    )
+    traj = [
+        {
+            "event": "run_start",
+            "run_id": run_id,
+            "task_id": task_id,
+            "harness": "claude-code",
+            "tier_hash": tier_hash,
+            "prompt_label": prompt_label,
+            "system_prompt_verbatim": system_prompt_verbatim,
+        },
+        {"event": "run_end", "status": "completed"},
+    ]
+    (run_dir / "trajectory.jsonl").write_text(
+        "".join(json.dumps(ev) + "\n" for ev in traj)
+    )
+
+
+def test_ingest_persists_prompt_label_on_task_result(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """prompt_label from run_start is persisted on TaskResult.prompt_label."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    _write_run_with_custom_prompt(
+        clone / "results" / "20260521T000000Z-run-1",
+        "run-1",
+        "L0_001",
+        tier_hash="abc123",
+        prompt_label="strict-reviewer",
+        system_prompt_verbatim=_CUSTOM_SYSTEM_PROMPT,
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    inserted, _ = ingest_runs(session, repo, parsed)
+    assert inserted == 1
+
+    tr = session.exec(select(TaskResult)).first()
+    assert tr is not None
+    assert tr.prompt_label == "strict-reviewer"
+
+
+def test_ingest_upserts_prompt_blob(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """Ingesting a custom-prompt run creates a PromptBlob keyed by tier_hash.
+
+    blob.text must be the CLEAN operator CLAUDE.md — no sandbox preamble,
+    no marker line.
+    """
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    _write_run_with_custom_prompt(
+        clone / "results" / "20260521T000000Z-run-1",
+        "run-1",
+        "L0_001",
+        tier_hash="deadbeef",
+        prompt_label="my-prompt",
+        system_prompt_verbatim=_CUSTOM_SYSTEM_PROMPT,
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    blob = session.get(PromptBlob, "deadbeef")
+    assert blob is not None
+    # Stored text must be the clean operator CLAUDE.md, not the full composite.
+    assert blob.text == _OPERATOR_CLAUDE_MD
+    assert _SANDBOX_PREAMBLE not in blob.text
+    assert "--- project CLAUDE.md ---" not in blob.text
+    assert blob.label == "my-prompt"
+
+
+def test_ingest_prompt_blob_dedup(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """Ingesting the same prompt hash twice keeps only one PromptBlob row."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    # Two runs with the same tier_hash (same custom prompt) but different run_ids.
+    _write_run_with_custom_prompt(
+        clone / "results" / "20260521T000000Z-run-1",
+        "run-1",
+        "L0_001",
+        tier_hash="sharedprompt",
+        prompt_label="shared",
+        system_prompt_verbatim=_CUSTOM_SYSTEM_PROMPT,
+    )
+    _write_run_with_custom_prompt(
+        clone / "results" / "20260521T000100Z-run-2",
+        "run-2",
+        "L0_002",
+        tier_hash="sharedprompt",
+        prompt_label="shared",
+        system_prompt_verbatim=_CUSTOM_SYSTEM_PROMPT,
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    inserted, _ = ingest_runs(session, repo, parsed)
+    assert inserted == 2
+
+    blobs = session.exec(select(PromptBlob)).all()
+    assert len(blobs) == 1
+    assert blobs[0].prompt_hash == "sharedprompt"
+
+
+def test_ingest_no_prompt_blob_without_verbatim(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """A run without system_prompt_verbatim creates no PromptBlob row."""
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    _write_run(clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001")
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    blobs = session.exec(select(PromptBlob)).all()
+    assert blobs == []
+
+
+def test_ingest_no_prompt_blob_for_vanilla_run(
+    tmp_path: Path, session: Session, repo: RegisteredRepo
+) -> None:
+    """A run with system_prompt_verbatim but NO custom marker creates no blob.
+
+    Vanilla runs emit only the sandbox guardrail in system_prompt_verbatim
+    (no '--- project CLAUDE.md ---' marker). They must NOT produce a
+    prompt_blobs row — the vanilla guardrail is not an operator custom prompt.
+    """
+    clone = tmp_path / "clone"
+    (clone / "results").mkdir(parents=True)
+    run_dir = clone / "results" / "20260521T000000Z-run-1"
+    _write_run_with_custom_prompt(
+        run_dir,
+        "run-1",
+        "L0_001",
+        tier_hash="vanillahash",
+        prompt_label="",
+        # No marker — vanilla run, only the sandbox preamble.
+        system_prompt_verbatim=_SANDBOX_PREAMBLE,
+    )
+
+    parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
+    ingest_runs(session, repo, parsed)
+
+    blobs = session.exec(select(PromptBlob)).all()
+    assert blobs == [], "vanilla run must not produce a prompt_blob"

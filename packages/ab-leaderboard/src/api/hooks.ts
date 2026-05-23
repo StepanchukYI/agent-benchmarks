@@ -46,6 +46,7 @@ import type {
   LeaderboardRow,
   LeaderboardSummary,
   Operator,
+  PromptReveal,
   RegistryRepo,
   RegressionItem,
   RowTaskDrillItem,
@@ -721,6 +722,30 @@ export function useDefaultTrajectory() {
       }
     },
     retry: false,
+  });
+}
+
+/**
+ * Prompt reveal for a custom behavior prompt.
+ * `GET /leaderboard/prompt/{prompt_hash}` → {@link PromptReveal}.
+ *
+ * Disabled when promptHash is null (vanilla row — skip the fetch entirely).
+ * 404 → resolves to null (vanilla / no custom prompt stored), not an error.
+ * Any other HTTP error propagates so the UI renders an error state.
+ */
+export function useRowPrompt(promptHash: string | null) {
+  return useQuery<PromptReveal | null>({
+    queryKey: ["leaderboard", "prompt", promptHash],
+    enabled: promptHash !== null,
+    retry: false,
+    queryFn: async () => {
+      try {
+        return await apiFetch<PromptReveal>(endpoints.leaderboardPrompt(promptHash!));
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
   });
 }
 

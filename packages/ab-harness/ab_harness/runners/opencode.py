@@ -53,6 +53,7 @@ from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
+from ab_harness.runners.base import compose_system_prompt as _compose_system_prompt
 from ab_harness.runners.claude_code import _scrub_turn
 
 if TYPE_CHECKING:
@@ -152,12 +153,14 @@ class OpencodeRunner(BaseRunner):
         prompt_template_hash: str | None = None,
         effort: str | None = None,
         env_overrides: dict[str, str] | None = None,
+        prompt_label: str | None = None,
     ) -> None:
         self._model = model
         self._binary = binary
         self._extra_args = list(extra_args or [])
         self._dataset_version = dataset_version
         self._prompt_template_hash = prompt_template_hash
+        self._prompt_label = prompt_label
         # ab-harness vocabulary: low|medium|high|xhigh|max. Maps to
         # opencode's --thinking via _EFFORT_TO_THINKING. We record the
         # caller's effort verbatim in trajectory.run_start.reasoning.effort
@@ -249,10 +252,22 @@ class OpencodeRunner(BaseRunner):
     def _tier_hash(self) -> str | None:
         if self._tier_manifest is None:
             return None
-        sha = getattr(self._tier_manifest, "total_sha256", None)
+        sha = getattr(self._tier_manifest, "total_sha256", None) or getattr(
+            self._tier_manifest, "tier_hash", None
+        )
         if sha is None and isinstance(self._tier_manifest, dict):
-            sha = self._tier_manifest.get("total_sha256")
+            sha = self._tier_manifest.get("total_sha256") or self._tier_manifest.get(
+                "tier_hash"
+            )
         return sha
+
+    def _claude_md_text(self) -> str | None:
+        if self._tier_manifest is None:
+            return None
+        text = getattr(self._tier_manifest, "claude_md_text", None)
+        if text is None and isinstance(self._tier_manifest, dict):
+            text = self._tier_manifest.get("claude_md_text")
+        return text
 
     def _context_window(self) -> int | None:
         # opencode addresses models as "provider/model"; strip the
@@ -295,6 +310,7 @@ class OpencodeRunner(BaseRunner):
             "tier_hash": self._tier_hash(),
             "dataset_version": self._dataset_version,
             "prompt_template_hash": self._prompt_template_hash,
+            "prompt_label": self._prompt_label,
             "started_at": started_at,
             # Sensitivity-axis fields (additive, all optional). opencode
             # CLI exposes no temperature / top-p / max-output knobs on
@@ -312,7 +328,9 @@ class OpencodeRunner(BaseRunner):
                 if self._effort
                 else None
             ),
-            "system_prompt_verbatim": _SANDBOX_SYSTEM_PROMPT,
+            "system_prompt_verbatim": _compose_system_prompt(
+                _SANDBOX_SYSTEM_PROMPT, self._claude_md_text()
+            ),
             "model_context_window_tokens": self._context_window(),
             "output_truncated": None,
             "output_tokens_used": None,

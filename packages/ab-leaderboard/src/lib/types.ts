@@ -179,6 +179,16 @@ export interface LeaderboardRow {
    * in scores[]). Length always equals PILLARS.length.
    */
   pillar_counts: number[];
+  /**
+   * SHA of the custom CLAUDE.md behavior prompt used during this run.
+   * null = vanilla baseline (no custom prompt was provided).
+   */
+  prompt_hash: string | null;
+  /**
+   * Optional human-readable label for the custom behavior prompt.
+   * null = unlabeled (either vanilla or a hash-only custom prompt).
+   */
+  prompt_label: string | null;
 }
 
 export interface RunSummary {
@@ -379,6 +389,16 @@ export interface RowTaskScorerResult {
   pass: boolean | null;
   score: number | null;
   detail: string | Record<string, unknown> | null;
+}
+
+/**
+ * Response from `GET /leaderboard/prompt/{prompt_hash}`.
+ * text = full CLAUDE.md content used during the run.
+ * 404 from server → resolved to null at the hook layer (vanilla / no custom prompt).
+ */
+export interface PromptReveal {
+  label: string | null;
+  text: string;
 }
 
 /**

@@ -35,6 +35,7 @@ from sqlalchemy import case, func, or_
 from sqlmodel import Session, select
 
 from ab_server.models.alert import AlertRule
+from ab_server.models.prompt_blob import PromptBlob
 from ab_server.models.repo import RegisteredRepo
 from ab_server.models.run import Run
 from ab_server.models.submission import Submission
@@ -58,6 +59,7 @@ from .schemas import (
     ParetoHistorySeriesItem,
     ParetoPoint,
     ParetoSeries,
+    PromptReveal,
     RegressionItem,
     RegressionsPanel,
     RowTaskItem,
@@ -1232,6 +1234,8 @@ def compute_leaderboard_response(
             User.handle,
             TaskResult.harness,
             TaskResult.effort,
+            TaskResult.tier_hash,
+            TaskResult.prompt_label,
         )
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
@@ -1275,11 +1279,16 @@ def compute_leaderboard_response(
         exc = frozenset(exclude_task_tags) if exclude_task_tags else None
         raw = [row for row in raw if task_matches_filters(row[3], include=inc, exclude=exc)]
 
-    # Bucket = (model, operator, tier, harness, effort): each distinct config
-    # is its own leaderboard row. tier/harness/effort are part of the key so
-    # aggregates never conflate runs with different configs.
-    Bucket = tuple[str, str, str, str | None, str | None]
+    # Bucket = (model, operator, tier, prompt_hash, harness, effort): each
+    # distinct config is its own leaderboard row. prompt_hash (= tier_hash,
+    # which content-addresses the CLAUDE.md) sits alongside tier so two custom
+    # prompts at the same preset tier no longer collapse into one row — the
+    # prompt-as-row-identity headline. prompt_hash does NOT subsume tier.
+    Bucket = tuple[str, str, str, str | None, str | None, str | None]
     pillar_keys = ("correctness", "context_eff", "tool_skill", "memory", "latency")
+    # First non-null prompt_label seen per bucket (raw tier_hash is shown when
+    # absent — the FE falls back to a short hash).
+    label_by_key: dict[Bucket, str | None] = {}
     scores: dict[Bucket, list[float]] = {}
     pillars_by_key: dict[Bucket, dict[str, list[float]]] = {}
     costs: dict[Bucket, list[float]] = {}
@@ -1322,10 +1331,23 @@ def compute_leaderboard_response(
             handle,
             harness,
             effort,
+            tier_hash,
+            prompt_label,
         ) = row
 
         operator = handle or "self"
-        key: Bucket = (model, operator, tier, harness, effort)
+        # prompt_hash = tier_hash. Normalize empty/None to None so legacy rows
+        # without a hash share one bucket per (model, operator, tier, …).
+        # When the ingest didn't materialize a per-prompt tier_hash but DID
+        # record a prompt_label (--claude-md custom prompt), derive a stable
+        # short hash from the label so prompt-distinct rows stay distinct.
+        prompt_hash = tier_hash or None
+        if not prompt_hash and prompt_label:
+            import hashlib as _hl
+            prompt_hash = _hl.sha256(prompt_label.encode("utf-8")).hexdigest()[:16]
+        key: Bucket = (model, operator, tier, prompt_hash, harness, effort)
+        if prompt_label and label_by_key.get(key) is None:
+            label_by_key[key] = prompt_label
         scores.setdefault(key, []).append(float(score_total or 0.0))
         bucket_pillars = pillars_by_key.setdefault(
             key, {k: [] for k in pillar_keys}
@@ -1387,6 +1409,7 @@ def compute_leaderboard_response(
             TaskResult.tier,
             TaskResult.harness,
             TaskResult.effort,
+            TaskResult.tier_hash,
         )
         .select_from(TaskResult)
         .join(Submission, Submission.id == TaskResult.submission_id, isouter=True)
@@ -1406,8 +1429,13 @@ def compute_leaderboard_response(
         prev_stmt = prev_stmt.where(User.handle.in_(list(operators)))
     prev_pillars: dict[Bucket, dict[str, list[float]]] = {}
     for prow in session.exec(prev_stmt).all():
-        model_p, c_p, ctx_p, tool_p, mem_p, lat_p, handle_p, tier_p, harness_p, effort_p = prow
-        kp: Bucket = (model_p, handle_p or "self", tier_p, harness_p, effort_p)
+        (
+            model_p, c_p, ctx_p, tool_p, mem_p, lat_p,
+            handle_p, tier_p, harness_p, effort_p, tier_hash_p,
+        ) = prow
+        kp: Bucket = (
+            model_p, handle_p or "self", tier_p, tier_hash_p or None, harness_p, effort_p
+        )
         bp = prev_pillars.setdefault(kp, {k: [] for k in pillar_keys})
         # Same non-None rule as the current window so prev-window pillar means
         # (used for deltas) count genuine 0.0s and ignore unmeasured pillars.
@@ -1423,7 +1451,7 @@ def compute_leaderboard_response(
 
     out_rows: list[LeaderboardRow] = []
     for key, score_list in scores.items():
-        model, operator, row_tier, row_harness, row_effort = key
+        model, operator, row_tier, row_prompt_hash, row_harness, row_effort = key
         bucket_pillars = pillars_by_key.get(key, {k: [] for k in pillar_keys})
         # Null (not 0) when a pillar had no measured contribution, so the FE can
         # skip it in the overall mean instead of averaging in a phantom zero.
@@ -1489,6 +1517,8 @@ def compute_leaderboard_response(
                 pillar_counts=counts_arr,
                 harness=row_harness,
                 effort=row_effort,
+                prompt_hash=row_prompt_hash,
+                prompt_label=label_by_key.get(key),
             )
         )
 
@@ -1751,3 +1781,93 @@ def compute_row_tasks(
             )
         )
     return out
+
+
+# ── Prompt reveal ─────────────────────────────────────────────────────────────
+
+# Lazy cache: built-in tier preset hashes computed once per process from the
+# fixtures/config_tiers/ manifests. Keys are total_sha256 values; values are
+# (label, text) pairs. None means "not yet loaded".
+_PRESET_CACHE: dict[str, tuple[str, str]] | None = None
+
+
+def _load_preset_cache() -> dict[str, tuple[str, str]]:
+    """Compute (hash → (label, text)) for the 4 built-in tier presets.
+
+    Reads the tier manifests from packages/ab-datasets/fixtures/config_tiers/
+    and runs compute_total_sha256 on each. Silently skips any tier that has no
+    CLAUDE.md (T0 vanilla) or whose manifest/CLAUDE.md is unreadable.
+    """
+    from pathlib import Path
+
+    cache: dict[str, tuple[str, str]] = {}
+    try:
+        from ab_datasets.schemas import TierManifest  # noqa: F401 (import guard)
+        from ab_harness.sandbox.manifest import compute_total_sha256, load_manifest
+    except ImportError:
+        return cache  # ab-harness not installed — skip preset fallback
+
+    # Walk up from this file to find the repo root, then locate fixtures.
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "packages" / "ab-datasets" / "fixtures" / "config_tiers"
+        if candidate.exists():
+            fixtures_root = candidate
+            break
+    else:
+        return cache
+
+    tier_slugs = {
+        "T0_vanilla": "T0 vanilla",
+        "T1_minimal": "T1 minimal",
+        "T2_personal": "T2 personal",
+        "T3_full": "T3 full",
+    }
+    for dir_name, label in tier_slugs.items():
+        manifest_path = fixtures_root / dir_name / "manifest.yaml"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = load_manifest(manifest_path)
+        except Exception:
+            continue
+        if manifest.claude_md is None:
+            # T0 vanilla has no CLAUDE.md — skip; prompt text not applicable.
+            continue
+        claude_md_path = manifest_path.parent / manifest.claude_md["path"]
+        if not claude_md_path.exists():
+            continue
+        try:
+            tier_hash = compute_total_sha256(manifest, manifest_path.parent)
+            text = claude_md_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        cache[tier_hash] = (label, text)
+    return cache
+
+
+def get_prompt_reveal(session: Session, prompt_hash: str) -> PromptReveal | None:
+    """Look up prompt text + label for a given hash.
+
+    Resolution order:
+    1. prompt_blobs table (custom prompts ingested via BT4).
+    2. Built-in tier preset fixtures (T1/T2/T3 CLAUDE.md files) — computed once
+       and cached in _PRESET_CACHE for the process lifetime.
+    3. Neither → returns None (caller raises 404).
+    """
+    global _PRESET_CACHE
+
+    # 1. Custom blobs (written by ingest).
+    blob = session.get(PromptBlob, prompt_hash)
+    if blob is not None:
+        return PromptReveal(label=blob.label, text=blob.text)
+
+    # 2. Built-in tier presets.
+    if _PRESET_CACHE is None:
+        _PRESET_CACHE = _load_preset_cache()
+    preset = _PRESET_CACHE.get(prompt_hash)
+    if preset is not None:
+        label, text = preset
+        return PromptReveal(label=label, text=text)
+
+    return None

@@ -14,6 +14,7 @@ from .queries import (
     compute_row_tasks,
     compute_trends,
     compute_trends_series,
+    get_prompt_reveal,
 )
 from .schemas import (
     CIGateStatus,
@@ -34,6 +35,7 @@ from .schemas import (
     ParetoHistorySeriesItem,
     ParetoPoint,
     ParetoSeries,
+    PromptReveal,
     RegistryRepoOut,
     RegressionItem,
     RegressionsPanel,
@@ -66,6 +68,7 @@ __all__ = [
     "ParetoHistorySeriesItem",
     "ParetoPoint",
     "ParetoSeries",
+    "PromptReveal",
     "RegistryRepoOut",
     "RegressionItem",
     "RegressionsPanel",
@@ -88,4 +91,5 @@ __all__ = [
     "compute_row_tasks",
     "compute_trends",
     "compute_trends_series",
+    "get_prompt_reveal",
 ]

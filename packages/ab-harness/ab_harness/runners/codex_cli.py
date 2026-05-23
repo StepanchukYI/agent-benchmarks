@@ -48,6 +48,7 @@ from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
+from ab_harness.runners.base import compose_system_prompt as _compose_system_prompt
 
 if TYPE_CHECKING:
     from ab_harness.trajectory.writer import TrajectoryWriter
@@ -163,6 +164,7 @@ class CodexCLIRunner(BaseRunner):
         extra_args: list[str] | None = None,
         dataset_version: str = _DEFAULT_DATASET_VERSION,
         prompt_template_hash: str | None = None,
+        prompt_label: str | None = None,
     ) -> None:
         self._model = model
         self._binary = binary
@@ -170,6 +172,7 @@ class CodexCLIRunner(BaseRunner):
         self._extra_args = list(extra_args or [])
         self._dataset_version = dataset_version
         self._prompt_template_hash = prompt_template_hash
+        self._prompt_label = prompt_label
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
@@ -249,10 +252,22 @@ class CodexCLIRunner(BaseRunner):
     def _tier_hash(self) -> str | None:
         if self._tier_manifest is None:
             return None
-        sha = getattr(self._tier_manifest, "total_sha256", None)
+        sha = getattr(self._tier_manifest, "total_sha256", None) or getattr(
+            self._tier_manifest, "tier_hash", None
+        )
         if sha is None and isinstance(self._tier_manifest, dict):
-            sha = self._tier_manifest.get("total_sha256")
+            sha = self._tier_manifest.get("total_sha256") or self._tier_manifest.get(
+                "tier_hash"
+            )
         return sha
+
+    def _claude_md_text(self) -> str | None:
+        if self._tier_manifest is None:
+            return None
+        text = getattr(self._tier_manifest, "claude_md_text", None)
+        if text is None and isinstance(self._tier_manifest, dict):
+            text = self._tier_manifest.get("claude_md_text")
+        return text
 
     def _context_window(self) -> int | None:
         info = get_model_info(self._model)
@@ -292,8 +307,11 @@ class CodexCLIRunner(BaseRunner):
             "tier_hash": self._tier_hash(),
             "dataset_version": self._dataset_version,
             "prompt_template_hash": self._prompt_template_hash,
+            "prompt_label": self._prompt_label,
             "started_at": started_at,
-            "system_prompt_verbatim": _SANDBOX_SYSTEM_PROMPT,
+            "system_prompt_verbatim": _compose_system_prompt(
+                _SANDBOX_SYSTEM_PROMPT, self._claude_md_text()
+            ),
         }
         if self._reasoning_effort:
             run_start_payload["reasoning"] = {"effort": self._reasoning_effort}

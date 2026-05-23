@@ -269,9 +269,13 @@ def _tier_value(tier_manifest: Any) -> str:
 def _tier_hash(tier_manifest: Any) -> str | None:
     if tier_manifest is None:
         return None
-    sha = getattr(tier_manifest, "total_sha256", None)
+    # MaterializedTier exposes .tier_hash; a raw manifest exposes
+    # .total_sha256. Check both so run_start.tier_hash is populated.
+    sha = getattr(tier_manifest, "total_sha256", None) or getattr(
+        tier_manifest, "tier_hash", None
+    )
     if sha is None and isinstance(tier_manifest, dict):
-        sha = tier_manifest.get("total_sha256")
+        sha = tier_manifest.get("total_sha256") or tier_manifest.get("tier_hash")
     return sha
 
 

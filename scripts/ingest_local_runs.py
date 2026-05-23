@@ -54,9 +54,11 @@ from ab_server.db import get_engine  # noqa: E402
 from ab_server.fetcher.ingest import (  # noqa: E402
     _compute_passed,
     _config_from_trajectory,
+    _extract_custom_prompt,
     _pillar_score,
     _suite_from_task,
     _token_turn_counts,
+    _upsert_prompt_blob,
 )
 from ab_server.models import (  # noqa: E402
     RegisteredRepo,
@@ -239,7 +241,21 @@ def _ingest_one(
     tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
         run_dir / "trajectory.jsonl"
     )
-    harness, effort = _config_from_trajectory(run_dir / "trajectory.jsonl")
+    harness, effort, prompt_label, system_prompt_verbatim = _config_from_trajectory(
+        run_dir / "trajectory.jsonl"
+    )
+
+    # Upsert prompt blob only when a custom CLAUDE.md was active.
+    # _extract_custom_prompt returns None for vanilla runs (no marker) so
+    # the sandbox-guardrail-only text never lands in prompt_blobs.
+    custom_text = _extract_custom_prompt(system_prompt_verbatim)
+    if custom_text and tier_hash:
+        _upsert_prompt_blob(
+            session,
+            prompt_hash=tier_hash,
+            text=custom_text,
+            label=prompt_label,
+        )
 
     result = TaskResult(
         run_id=None,
@@ -260,6 +276,7 @@ def _ingest_one(
         passed=passed,
         harness=harness,
         effort=effort,
+        prompt_label=prompt_label,
         **_pillar_scores(scores),
     )
     session.add(result)

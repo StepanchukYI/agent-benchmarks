@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
+from ab_harness.runners.base import compose_system_prompt as _compose_system_prompt
+
+_SANDBOX_SYSTEM_PROMPT = (
+    "You are an isolated benchmark agent. The only valid scope of your work "
+    "is the current working directory."
+)
 
 if TYPE_CHECKING:
     from ab_harness.trajectory.writer import TrajectoryWriter
@@ -36,10 +42,12 @@ class MockRunner(BaseRunner):
         model: str = "mock-model",
         dataset_version: str = _DEFAULT_DATASET_VERSION,
         seed_fn: Any | None = None,
+        prompt_label: str | None = None,
     ) -> None:
         self._model = model
         self._dataset_version = dataset_version
         self._seed_fn = seed_fn
+        self._prompt_label = prompt_label
         self._tier_manifest: Any | None = None
 
     def name(self) -> str:
@@ -64,6 +72,14 @@ class MockRunner(BaseRunner):
         return getattr(self._tier_manifest, "tier_hash", None) or getattr(
             self._tier_manifest, "total_sha256", None
         )
+
+    def _claude_md_text(self) -> str | None:
+        if self._tier_manifest is None:
+            return None
+        text = getattr(self._tier_manifest, "claude_md_text", None)
+        if text is None and isinstance(self._tier_manifest, dict):
+            text = self._tier_manifest.get("claude_md_text")
+        return text
 
     def run_task(
         self,
@@ -92,7 +108,11 @@ class MockRunner(BaseRunner):
                 "tier_hash": self._tier_hash(),
                 "dataset_version": self._dataset_version,
                 "prompt_template_hash": None,
+                "prompt_label": self._prompt_label,
                 "started_at": started_at,
+                "system_prompt_verbatim": _compose_system_prompt(
+                    _SANDBOX_SYSTEM_PROMPT, self._claude_md_text()
+                ),
             }
         )
 

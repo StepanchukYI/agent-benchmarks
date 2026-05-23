@@ -12,7 +12,7 @@ import { TrustDot } from "../domain/TrustDot";
 import { StatusPill } from "../ui/StatusPill";
 import { EmptyState } from "../ui/EmptyState";
 import { PILLARS } from "../../lib/mock-data";
-import { useLeaderboard, useModels, useRowTaskDrill, useTrendsSeries } from "../../api/hooks";
+import { useLeaderboard, useModels, useRowPrompt, useRowTaskDrill, useTrendsSeries } from "../../api/hooks";
 import { fmtMoney, fmtScore } from "../../lib/format";
 import { toState } from "../../lib/ui-state";
 import { cn } from "../../lib/utils";
@@ -47,9 +47,9 @@ function fmtTokens(n: number | null | undefined): string {
   return `${n.toLocaleString("en-US")} tok`;
 }
 
-/** Stable row key for expand state — includes harness+effort so per-config rows stay distinct. */
+/** Stable row key for expand state — includes harness+effort+prompt_hash so per-config and per-prompt rows stay distinct. */
 function rowKey(r: LeaderboardRow): string {
-  return `${r.model}/${r.operator}/${r.tier}/${r.harness ?? ""}/${r.effort ?? ""}`;
+  return `${r.model}/${r.operator}/${r.tier}/${r.harness ?? ""}/${r.effort ?? ""}/${r.prompt_hash ?? ""}`;
 }
 
 /**
@@ -62,6 +62,17 @@ function buildConfigChip(r: LeaderboardRow): string {
   if (r.effort != null) parts.push(r.effort);
   parts.push(r.tier);
   return parts.join(" · ");
+}
+
+/**
+ * Label for the custom behavior-prompt chip.
+ * Returns prompt_label when set, the first 8 chars of prompt_hash when hash-only,
+ * or null for vanilla rows (no chip should render).
+ */
+function promptChipLabel(r: LeaderboardRow): string | null {
+  if (r.prompt_label != null && r.prompt_label !== "") return r.prompt_label;
+  if (r.prompt_hash != null) return r.prompt_hash.slice(0, 8);
+  return null;
 }
 
 export function LeaderboardMatrix(): JSX.Element {
@@ -221,6 +232,13 @@ export function LeaderboardMatrix(): JSX.Element {
                         <ModelCell model={m} configChip={buildConfigChip(r)} />
                         <span className="flex gap-1">
                           <Tag>{m.capabilities[0]}</Tag>
+                          {promptChipLabel(r) != null && (
+                            <Tag
+                              title={`Custom behavior prompt${r.prompt_hash != null ? `: ${r.prompt_hash}` : ""}`}
+                            >
+                              {promptChipLabel(r)}
+                            </Tag>
+                          )}
                         </span>
                       </div>
                     </Td>
@@ -269,7 +287,7 @@ export function LeaderboardMatrix(): JSX.Element {
                   {isExpanded && (
                     <tr key={`${key}__drill`}>
                       <td colSpan={colSpan} className="bg-panel-2/40 border-b border-border-soft px-5 py-3">
-                        <RowDrillPanel model={r.model} operator={r.operator} tier={r.tier} harness={r.harness} effort={r.effort} />
+                        <RowDrillPanel model={r.model} operator={r.operator} tier={r.tier} harness={r.harness} effort={r.effort} promptHash={r.prompt_hash} />
                       </td>
                     </tr>
                   )}
@@ -293,6 +311,8 @@ interface RowDrillPanelProps {
   harness: string | null;
   /** Null-safe — omitted from query when null (backend behavior TBD). */
   effort: string | null;
+  /** SHA of the custom CLAUDE.md prompt. Null = vanilla row (no reveal fetch). */
+  promptHash: string | null;
 }
 
 /**
@@ -302,25 +322,72 @@ interface RowDrillPanelProps {
  * are omitted (withQuery skips null values). null-verdict rows render neutral
  * "not measured", never "fail".
  */
-function RowDrillPanel({ model, operator, tier, harness, effort }: RowDrillPanelProps): JSX.Element {
+function RowDrillPanel({ model, operator, tier, harness, effort, promptHash }: RowDrillPanelProps): JSX.Element {
   const drillKey = { model, operator, tier, harness, effort };
   const drillQuery = useRowTaskDrill(drillKey);
   const state = toState(drillQuery);
+  const promptQuery = useRowPrompt(promptHash);
 
-  if (state.kind === "loading") {
-    return <span className="text-[11px] text-muted-foreground">Loading…</span>;
-  }
-  if (state.kind === "error") {
-    return <span className="text-[11px] text-fail">{state.message}</span>;
-  }
-  if (state.kind === "empty") {
-    return <EmptyState title="No task results for this row." />;
+  // Prompt reveal section — always rendered regardless of task-drill state.
+  // Vanilla row (promptHash null) → nothing. Otherwise shows loading/error/text.
+  function PromptSection(): JSX.Element | null {
+    if (promptHash === null) return null;
+    if (promptQuery.isLoading) {
+      return (
+        <div className="rounded-md border border-border bg-panel px-3 py-2">
+          <span className="text-[11px] text-muted-foreground font-medium">Prompt</span>
+          <span className="block text-[11px] text-muted-foreground mt-1">Loading…</span>
+        </div>
+      );
+    }
+    if (promptQuery.isError) {
+      return (
+        <div className="rounded-md border border-border bg-panel px-3 py-2">
+          <span className="text-[11px] text-muted-foreground font-medium">Prompt</span>
+          <span className="block text-[11px] text-fail mt-1">Failed to load prompt.</span>
+        </div>
+      );
+    }
+    const reveal = promptQuery.data ?? null;
+    // 404 or no data → muted notice.
+    if (reveal === null) {
+      return (
+        <div className="rounded-md border border-border bg-panel px-3 py-2">
+          <span className="text-[11px] text-muted-foreground font-medium">Prompt</span>
+          <span className="block text-[11px] text-muted-foreground/60 mt-1">vanilla (no custom prompt)</span>
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-md border border-border bg-panel px-3 py-2">
+        <div className="flex items-baseline gap-2 mb-1.5">
+          <span className="text-[11px] text-muted-foreground font-medium">Prompt</span>
+          {reveal.label != null && (
+            <span className="text-[11px] font-mono">{reveal.label}</span>
+          )}
+        </div>
+        <pre className="font-mono text-[11px] max-h-64 overflow-auto rounded-md border border-border bg-panel p-2 whitespace-pre-wrap break-all">
+          {reveal.text}
+        </pre>
+      </div>
+    );
   }
 
-  const items = state.value;
+  // Task-drill block — conditional on drill state, but always co-renders with PromptSection.
+  const items = state.kind === "ok" ? state.value : null;
+
   return (
     <div className="flex flex-col gap-2">
-      {items.map((item) => (
+      {state.kind === "loading" && (
+        <span className="text-[11px] text-muted-foreground">Loading…</span>
+      )}
+      {state.kind === "error" && (
+        <span className="text-[11px] text-fail">{state.message}</span>
+      )}
+      {state.kind === "empty" && (
+        <EmptyState title="No task results for this row." />
+      )}
+      {items != null && items.map((item) => (
         <div key={item.task_id} className="rounded-md border border-border bg-panel px-3 py-2">
           <div className="flex items-center gap-2 mb-1.5">
             <StatusPill kind={item.passed == null ? "idle" : item.passed ? "pass" : "fail"} size="sm">
@@ -358,6 +425,7 @@ function RowDrillPanel({ model, operator, tier, harness, effort }: RowDrillPanel
           ) : null}
         </div>
       ))}
+      <PromptSection />
     </div>
   );
 }

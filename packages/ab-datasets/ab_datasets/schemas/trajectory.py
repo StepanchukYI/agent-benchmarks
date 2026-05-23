@@ -88,6 +88,30 @@ class ReasoningConfig(BaseModel):
     budget_tokens: int | None = None
 
 
+class IsolationInfo(BaseModel):
+    """Record of how the runner isolated the operator's HOME from the benchmark agent.
+
+    Emitted on run_start so the leaderboard can show isolation provenance
+    alongside scores. Other runners emit isolation=None until they adopt
+    clean-HOME isolation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str
+    """Isolation strategy used. ``"clean_home"`` = fresh temp HOME, real
+    ~/.claude is physically invisible. Other modes possible in future."""
+
+    home: str
+    """Absolute path to the ephemeral HOME the subprocess saw."""
+
+    real_home_untouched: bool
+    """True when the runner never wrote to the operator's real HOME."""
+
+    bare: bool
+    """True when the claude CLI was launched with ``--bare`` (no keychain auth)."""
+
+
 class Trajectory(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
@@ -99,6 +123,10 @@ class Trajectory(BaseModel):
     tier_hash: str | None = None
     dataset_version: str
     prompt_template_hash: str | None = None
+    # Operator-supplied human-readable name for the custom CLAUDE.md prompt
+    # (via `ab run --prompt-label`). The leaderboard shows this instead of the
+    # raw tier_hash. None for the 4 built-in tier presets / no custom prompt.
+    prompt_label: str | None = None
     started_at: datetime
     finished_at: datetime | None = None
     status: RunStatus | None = None
@@ -124,3 +152,7 @@ class Trajectory(BaseModel):
     # Per-task max-turn budget (declared by task YAML scorer or by the
     # runner's hard cap). Axis #12.
     turn_cap: int | None = None
+    # Subprocess isolation record — how the runner isolated the operator's
+    # environment from the benchmark agent. Emitted by runners that support
+    # clean-HOME isolation; None for runners that don't record isolation yet.
+    isolation: IsolationInfo | None = None

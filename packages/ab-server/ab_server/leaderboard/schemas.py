@@ -73,6 +73,12 @@ class LeaderboardRow(BaseModel):
     # harness/effort from the run_start trajectory event; null for pre-B1 rows.
     harness: str | None = None
     effort: str | None = None
+    # prompt_hash = tier_hash (content-addresses the custom CLAUDE.md). Drives
+    # the row split + the reveal lookup. prompt_label is the operator's
+    # --prompt-label; null → FE shows a short prompt_hash. Both null for rows
+    # with no custom prompt / pre-prompt-identity rows.
+    prompt_hash: str | None = None
+    prompt_label: str | None = None
 
 
 class LeaderboardSummary(BaseModel):
@@ -274,3 +280,10 @@ class RowTaskItem(BaseModel):
     suite: str
     passed: bool | None = None
     scorers: list[RowTaskScorerItem] = Field(default_factory=list)
+
+
+class PromptReveal(BaseModel):
+    """Response body for GET /leaderboard/prompt/{prompt_hash}."""
+
+    label: str | None
+    text: str

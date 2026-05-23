@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
+import platform
 import subprocess
 import threading
 import time
@@ -18,6 +18,7 @@ from ab_harness.runners._isolation import IsolatedEnv
 from ab_harness.runners._prompt import build_prompt
 from ab_harness.runners._vault_diff import diff, snapshot
 from ab_harness.runners.base import BaseRunner
+from ab_harness.runners.base import compose_system_prompt as _compose_system_prompt
 
 if TYPE_CHECKING:
     from ab_harness.trajectory.writer import TrajectoryWriter
@@ -25,92 +26,14 @@ if TYPE_CHECKING:
 
 _DEFAULT_DATASET_VERSION = "ab-datasets==0.0.1"
 
-# Hidden suffix used while a benchmark is running. Original files are renamed
-# to <path><suffix> for the duration of subprocess.Popen and restored on
-# cleanup (or on atexit if the process crashes mid-run).
-_HIDE_SUFFIX = ".ab-benchmark-hidden"
 
-# Files + dirs in ~/.claude/ that contaminate T0 if the claude CLI loads
-# them (verified leak: model knew about user's private "memory-session"
-# skill via ~/.claude/CLAUDE.md line 16 even with --system-prompt set).
-# Renamed at run_task() start, restored in cleanup().
-_HIDE_TARGETS_RELATIVE: tuple[str, ...] = (
-    "CLAUDE.md",
-    "CLAUDE.local.md",
-    "AGENTS.md",
-    "skills",
-    "agents",
-    "plugins",
-    "memory",
-    "commands",
-    "hooks",
-)
+class IsolationError(RuntimeError):
+    """Raised when clean-HOME isolation cannot be established before Popen.
 
-
-def _hide_user_config_files() -> list[tuple[Path, Path]]:
-    """Rename ~/.claude/{CLAUDE.md, skills/, ...} → <path>.ab-benchmark-hidden.
-
-    Returns list of (renamed_path, hidden_path) tuples for restoration.
-    Safe to call concurrently across runs because each rename uses the
-    same fixed suffix (claude CLI doesn't see *.ab-benchmark-hidden as a
-    valid memory file). If the destination already exists from a stale
-    crash, leave the user file alone and skip — the operator can restore
-    manually.
+    Examples: ANTHROPIC_API_KEY absent on the isolated path (no keychain in a
+    clean HOME), or an env misconfiguration that would produce a contaminated
+    run. Callers must not swallow this — a contaminated run is worse than no run.
     """
-    home = Path.home()
-    hidden: list[tuple[Path, Path]] = []
-    for rel in _HIDE_TARGETS_RELATIVE:
-        src = home / ".claude" / rel
-        if not src.exists() and not src.is_symlink():
-            continue
-        dst = src.with_name(src.name + _HIDE_SUFFIX)
-        if dst.exists() or dst.is_symlink():
-            # Stale hidden from previous crash. Skip this entry — operator
-            # restores manually. Don't double-rename and lose data.
-            continue
-        try:
-            src.rename(dst)
-            hidden.append((src, dst))
-        except OSError:
-            # Permission / cross-device / busy. Skip silently — bench
-            # still runs, just with contamination from this entry.
-            pass
-    return hidden
-
-
-def _restore_user_config_files(hidden: list[tuple[Path, Path]]) -> None:
-    """Rename hidden files back. Idempotent on missing originals."""
-    for src, dst in hidden:
-        if not dst.exists() and not dst.is_symlink():
-            continue
-        if src.exists() or src.is_symlink():
-            # Race: another process restored already, or operator created
-            # a fresh file in between. Leave the hidden in place — better
-            # to keep a backup than overwrite operator's new state.
-            continue
-        with contextlib.suppress(OSError):
-            dst.rename(src)
-
-
-# Process-wide atexit guard: if a runner crashes mid-Popen, restore any
-# hidden files we know about. Registered lazily so import-time side effects
-# stay zero.
-_ATEXIT_REGISTRY: list[tuple[Path, Path]] = []
-_ATEXIT_HOOKED = False
-
-
-def _ensure_atexit_hook() -> None:
-    global _ATEXIT_HOOKED
-    if _ATEXIT_HOOKED:
-        return
-    import atexit
-
-    def _restore_all() -> None:
-        _restore_user_config_files(list(_ATEXIT_REGISTRY))
-        _ATEXIT_REGISTRY.clear()
-
-    atexit.register(_restore_all)
-    _ATEXIT_HOOKED = True
 
 
 _SANDBOX_SYSTEM_PROMPT = (
@@ -215,12 +138,15 @@ class ClaudeCodeRunner(BaseRunner):
         prompt_template_hash: str | None = None,
         effort: str | None = None,
         env_overrides: dict[str, str] | None = None,
+        prompt_label: str | None = None,
     ) -> None:
         self._model = model
         self._binary = binary
         self._extra_args = list(extra_args or [])
         self._dataset_version = dataset_version
         self._prompt_template_hash = prompt_template_hash
+        # Operator-supplied label for a custom CLAUDE.md (--prompt-label).
+        self._prompt_label = prompt_label
         # Maps to claude CLI's --effort. Recorded in trajectory.reasoning.
         # Valid values per `claude --help`: low|medium|high|xhigh|max.
         self._effort = effort
@@ -240,15 +166,11 @@ class ClaudeCodeRunner(BaseRunner):
         self._tier_manifest: Any | None = None
         self._proc: subprocess.Popen | None = None
         self._cached_version: str | None = None
-        # IsolatedEnv created per run_task and released in cleanup() — keeps
-        # the operator's ~/.claude/* (CLAUDE.md, skills, agents,
-        # settings.json) and secrets in operator env vars (workplace SaaS
-        # tokens, OBSIDIAN_*, etc) from leaking into the benchmark agent's
-        # subprocess.
+        # IsolatedEnv created per run_task and released in cleanup(). With
+        # use_fake_home=True (clean-HOME path) the operator's real ~/.claude is
+        # physically invisible to the subprocess — HOME points at a fresh
+        # tempdir for the duration of the run.
         self._isolated_env: Any = None
-        # Tracks (src, hidden) pairs of user-config files renamed during
-        # run_task() to block contamination. Restored in cleanup() + atexit.
-        self._hidden_user_config: list[tuple[Path, Path]] = []
 
     def name(self) -> str:
         return "claude-code-cli"
@@ -273,32 +195,24 @@ class ClaudeCodeRunner(BaseRunner):
                     with contextlib.suppress(OSError):
                         stream.close()
         self._proc = None
-        # Release the fake HOME from IsolatedEnv. Idempotent.
+        # Release the ephemeral HOME tempdir from IsolatedEnv. Idempotent.
         if self._isolated_env is not None:
             with contextlib.suppress(OSError):
                 self._isolated_env.cleanup()
             self._isolated_env = None
-        # Restore ~/.claude/{CLAUDE.md, ...} that were temp-hidden for the
-        # benchmark run. atexit registry is the safety net for crashes.
-        if self._hidden_user_config:
-            _restore_user_config_files(self._hidden_user_config)
-            # Drop entries we just restored from the global atexit registry
-            # so a fresh run can re-claim them without confusion.
-            for pair in list(self._hidden_user_config):
-                with contextlib.suppress(ValueError):
-                    _ATEXIT_REGISTRY.remove(pair)
-            self._hidden_user_config = []
 
-    def _build_argv(self, *, empty_mcp_config_path: str | None = None) -> list[str]:
-        # Isolation strategy (verified against `claude --help` 2.1.139):
+    def _build_argv(
+        self,
+        *,
+        empty_mcp_config_path: str | None = None,
+        bare: bool = True,
+    ) -> list[str]:
+        # --bare bypasses the macOS keychain and forces API-key auth.
+        # It is passed on the API-key path (has_key=True) and omitted on the
+        # macOS subscription path so keychain auth can proceed (keychain is
+        # keyed by $USER, not HOME, so clean-HOME isolation doesn't hide it).
         #
-        # We CANNOT use --bare with Claude Max — --bare disables keychain
-        # reads and rejects OAuth tokens (sk-ant-oat01-* from `claude
-        # setup-token` returns "Invalid API key" via the api.anthropic.com
-        # endpoint). Real HOME + keychain access is required for the Max
-        # subscription's claude.ai auth path.
-        #
-        # Instead we suppress per-user config surface with explicit flags:
+        # Per-user config surface is further suppressed by:
         #   --system-prompt          REPLACES the default — skips ~/.claude/
         #                            CLAUDE.md memory merge.
         #   --disable-slash-commands "Disable all skills" per --help. Blocks
@@ -308,13 +222,6 @@ class ClaudeCodeRunner(BaseRunner):
         #                            ~/.claude/settings.json mcp entries.
         #   --agents '{}'            Empty agent definitions; overrides
         #                            ~/.claude/agents/.
-        #   --exclude-dynamic-system-prompt-sections — moves cwd/env/git
-        #                            sections into the first user message
-        #                            (we still see them, but they aren't
-        #                            mixed into the default prompt the model
-        #                            sees as system).
-        # Setting AB_CLAUDE_BARE=1 OPTS IN to --bare for ops with a real
-        # console.anthropic.com API key (pure pay-per-token billing).
         argv = [
             self._binary,
             "--print",
@@ -336,7 +243,7 @@ class ClaudeCodeRunner(BaseRunner):
                 "--mcp-config",
                 empty_mcp_config_path,
             ])
-        if os.environ.get("AB_CLAUDE_BARE") == "1":
+        if bare:
             argv.insert(5, "--bare")
         if self._effort:
             argv.extend(["--effort", self._effort])
@@ -354,10 +261,26 @@ class ClaudeCodeRunner(BaseRunner):
     def _tier_hash(self) -> str | None:
         if self._tier_manifest is None:
             return None
-        sha = getattr(self._tier_manifest, "total_sha256", None)
+        # prepare() is handed a MaterializedTier (attr .tier_hash); some call
+        # sites pass a raw manifest (.total_sha256) or a dict. Check all three
+        # so run_start.tier_hash is populated regardless of the source shape.
+        sha = getattr(self._tier_manifest, "total_sha256", None) or getattr(
+            self._tier_manifest, "tier_hash", None
+        )
         if sha is None and isinstance(self._tier_manifest, dict):
-            sha = self._tier_manifest.get("total_sha256")
+            sha = self._tier_manifest.get("total_sha256") or self._tier_manifest.get(
+                "tier_hash"
+            )
         return sha
+
+    def _claude_md_text(self) -> str | None:
+        """Verbatim project CLAUDE.md the agent saw, from the MaterializedTier."""
+        if self._tier_manifest is None:
+            return None
+        text = getattr(self._tier_manifest, "claude_md_text", None)
+        if text is None and isinstance(self._tier_manifest, dict):
+            text = self._tier_manifest.get("claude_md_text")
+        return text
 
     def run_task(
         self,
@@ -388,6 +311,68 @@ class ClaudeCodeRunner(BaseRunner):
         except Exception:
             _ctx_window = None
 
+        # Build the isolated subprocess env BEFORE write_run_start so the
+        # isolation record (fake_home path) is available to include in run_start.
+        # Clean-HOME isolation: HOME points at a fresh ephemeral tempdir so
+        # the operator's real ~/.claude is physically invisible to the subprocess.
+        # Auth: ANTHROPIC_API_KEY → --bare (API-key path); no key on macOS →
+        # drop --bare (keychain is $USER-keyed, survives HOME redirect); no key
+        # on Linux → IsolationError before Popen.
+        #
+        # Also block git from reading operator's ~/.gitconfig — otherwise
+        # `git config user.email` inside the agent's Bash leaks the operator's
+        # git email (per Git 2.32+ semantics, GIT_CONFIG_GLOBAL = /dev/null
+        # fully replaces the user config).
+        #
+        # Honeypot: EMAIL is set to a unique sentinel so any future isolation
+        # regression that leaks EMAIL into the trajectory will be caught by
+        # the privacy-patterns scanner (id: isolation-honeypot-email, HIGH).
+        git_isolation = {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "EMAIL": "AB_LEAK_DETECTOR_DO_NOT_USE@ab-isolation.invalid",
+        }
+        env_with_git_iso: dict[str, str] = {**git_isolation, **self._env_overrides}
+        self._isolated_env = IsolatedEnv.build(
+            env_overrides=env_with_git_iso,
+            use_fake_home=True,
+        )
+        # Auth mode decision: determines whether --bare is passed to claude.
+        #
+        # --bare forces API-key auth and bypasses the macOS keychain. On the
+        # subscription paths (OAuth token or macOS keychain) we drop --bare so
+        # the CLI can authenticate via those channels instead.
+        #
+        # Priority order:
+        #   1. ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN → bare=True (pay-per-token)
+        #   2. CLAUDE_CODE_OAUTH_TOKEN → bare=False (subscription, env-resident token)
+        #   3. macOS keychain (Darwin, no token) → bare=False (keychain keyed by $USER,
+        #      NOT by HOME, so clean-HOME isolation leaves it accessible)
+        #   4. non-Darwin, no token → IsolationError (no auth channel available)
+        _env = self._isolated_env.env
+        has_api_key = bool(
+            _env.get("ANTHROPIC_API_KEY") or _env.get("ANTHROPIC_AUTH_TOKEN")
+        )
+        has_oauth = bool(_env.get("CLAUDE_CODE_OAUTH_TOKEN"))
+        if has_api_key:
+            # API-key path: --bare bypasses keychain, uses env key directly.
+            bare = True
+        elif has_oauth:
+            # Subscription OAuth token path: token is env-resident and works
+            # without keychain. Drop --bare so the CLI reads the token.
+            bare = False
+        elif platform.system() == "Darwin":
+            # macOS keychain path: token in keychain, keyed by $USER, not HOME.
+            # Clean-HOME isolation does not hide it. Drop --bare.
+            bare = False
+        else:
+            raise IsolationError(
+                "isolated claude-code: no API key and no macOS keychain — "
+                "cannot authenticate (set ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, "
+                "or run on macOS with a logged-in Claude subscription)"
+            )
+
         started_at = _utc_now_iso()
         trajectory_writer.write_run_start(
             {
@@ -399,6 +384,7 @@ class ClaudeCodeRunner(BaseRunner):
                 "tier_hash": self._tier_hash(),
                 "dataset_version": self._dataset_version,
                 "prompt_template_hash": self._prompt_template_hash,
+                "prompt_label": self._prompt_label,
                 "started_at": started_at,
                 # Sensitivity-axis fields (additive, all optional). See
                 # docs/result-sensitivity-axes.md for what each captures.
@@ -408,70 +394,29 @@ class ClaudeCodeRunner(BaseRunner):
                     if self._effort
                     else None
                 ),
-                "system_prompt_verbatim": _SANDBOX_SYSTEM_PROMPT,
+                # Everything the model saw as standing context: the sandbox
+                # guardrail plus the materialized project CLAUDE.md (axis #11,
+                # and the source the leaderboard reveals). Privacy gate scans
+                # this line, so a leaked secret in a custom prompt is caught.
+                "system_prompt_verbatim": _compose_system_prompt(
+                    _SANDBOX_SYSTEM_PROMPT, self._claude_md_text()
+                ),
                 "model_context_window_tokens": _ctx_window,
                 "output_truncated": None,
                 "output_tokens_used": None,
                 "turn_cap": None,
+                # Isolation provenance: how the runner sandboxed the subprocess.
+                "isolation": {
+                    "mode": "clean_home",
+                    "home": str(self._isolated_env.fake_home),
+                    "real_home_untouched": True,
+                    "bare": bare,
+                },
             }
         )
 
         before_snapshot = snapshot(workdir)
 
-        # Subprocess env isolation. claude-code keeps the operator's real
-        # HOME (Max subscription auth flows through macOS keychain +
-        # ~/.claude marker files; fake HOME breaks both). Contamination of
-        # ~/.claude/{CLAUDE.md, skills/, agents/, settings.json} is blocked
-        # at the CLI-flag layer + temp-rename:
-        #
-        #   1. --system-prompt REPLACES default — blocks the system-prompt
-        #      side of CLAUDE.md merge.
-        #   2. --disable-slash-commands + --agents '{}' + --strict-mcp-config
-        #      block runtime resolution of skills/agents/MCPs.
-        #   3. ~/.claude/{CLAUDE.md, CLAUDE.local.md, AGENTS.md, skills/,
-        #      agents/, plugins/, memory/, commands/, hooks/} are temp-
-        #      renamed to <path>.ab-benchmark-hidden for the duration of
-        #      the subprocess. Restored in cleanup() + atexit guard so a
-        #      crash mid-run still puts them back.
-        #
-        # Env whitelist still strips secret env vars (operator workplace
-        # tokens, OBSIDIAN_*, etc) — those would otherwise leak into the
-        # subprocess.
-        # Temp-rename ~/.claude/{CLAUDE.md, skills/, ...} is opt-in. The
-        # operator activates via AB_CLAUDE_HIDE_USER_CONFIG=1 before running
-        # a matrix. Default OFF so a wrong path or interrupted shell never
-        # silently moves the operator's config files. See _hide_user_config_files
-        # for the suffix convention used; an atexit guard restores on crash.
-        if os.environ.get("AB_CLAUDE_HIDE_USER_CONFIG") == "1":
-            _ensure_atexit_hook()
-            self._hidden_user_config = _hide_user_config_files()
-            _ATEXIT_REGISTRY.extend(self._hidden_user_config)
-        # Also block git from reading operator's ~/.gitconfig — otherwise
-        # `git config user.email` inside the agent's Bash leaks the
-        # operator's git email (per Git 2.32+ semantics, GIT_CONFIG_GLOBAL
-        # = /dev/null fully replaces the user config). Adding regardless
-        # of hide-flag is fine: benchmark agents never need the operator's
-        # git identity.
-        #
-        # Honeypot strategy: instead of a generic placeholder address,
-        # set EMAIL to a unique sentinel string.
-        # If a future isolation bug lets the agent see EMAIL and that
-        # sentinel lands in the trajectory, the matching privacy-patterns
-        # entry (id: isolation-honeypot-email) flags it as a HIGH-severity
-        # privacy hit — turning silent isolation regressions into loud
-        # benchmark failures. The literal value below is kept in sync
-        # with docs/privacy-patterns.yaml.
-        git_isolation = {
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_CONFIG_SYSTEM": "/dev/null",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "EMAIL": "AB_LEAK_DETECTOR_DO_NOT_USE@ab-isolation.invalid",
-        }
-        env_with_git_iso: dict[str, str] = {**git_isolation, **self._env_overrides}
-        self._isolated_env = IsolatedEnv.build(
-            env_overrides=env_with_git_iso,
-            use_fake_home=False,
-        )
         # Stage an empty mcp-config alongside the IsolatedEnv tempdir so
         # --strict-mcp-config has a valid file to point at. Cleanup is
         # handled by IsolatedEnv.cleanup().
@@ -482,6 +427,7 @@ class ClaudeCodeRunner(BaseRunner):
             empty_mcp_path = None  # type: ignore[assignment]
         argv = self._build_argv(
             empty_mcp_config_path=str(empty_mcp_path) if empty_mcp_path else None,
+            bare=bare,
         )
         self._proc = subprocess.Popen(
             argv,

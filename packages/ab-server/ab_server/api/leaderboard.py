@@ -13,6 +13,7 @@ from ab_server.leaderboard import (
     LeaderboardResponse,
     ParetoHistorySeries,
     ParetoSeries,
+    PromptReveal,
     RegressionsPanel,
     RowTaskItem,
     TrendsOverview,
@@ -28,6 +29,7 @@ from ab_server.leaderboard import (
     compute_row_tasks,
     compute_trends,
     compute_trends_series,
+    get_prompt_reveal,
 )
 
 router = APIRouter(tags=["leaderboard"])
@@ -257,3 +259,22 @@ def get_row_tasks(
         session, model=model, operator=operator, tier=tier,
         harness=harness, effort=effort,
     )
+
+
+@router.get("/leaderboard/prompt/{prompt_hash}", response_model=PromptReveal)
+def get_prompt(
+    prompt_hash: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> PromptReveal:
+    """Return the prompt text and label for a given prompt_hash.
+
+    Resolution order: prompt_blobs table → built-in tier preset fixtures.
+    404 when the hash is unknown.
+
+    FE contract: GET /api/v1/leaderboard/prompt/{prompt_hash}
+    Response: {label: string|null, text: string}
+    """
+    result = get_prompt_reveal(session, prompt_hash)
+    if result is None:
+        raise HTTPException(status_code=404, detail="prompt not found")
+    return result

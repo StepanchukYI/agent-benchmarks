@@ -104,6 +104,68 @@ def test_ab_run_full_l0_smoke_mock(results_dir: Path) -> None:
     )
 
 
+def test_ab_run_claude_md_missing_file_exits_2(results_dir: Path, tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--suite", "L0_smoke",
+            "--task", "L0_001",
+            "--runner", "mock",
+            "--tier", "T0",
+            "--claude-md", str(tmp_path / "nope.md"),
+            "--results-root", str(results_dir),
+        ],
+    )
+    assert result.exit_code == 2, result.output
+
+
+def test_ab_run_custom_prompt_distinct_hash_and_label(
+    results_dir: Path, tmp_path: Path
+) -> None:
+    """--claude-md + --prompt-label: run_start carries label + verbatim text,
+    and tier_hash differs from a vanilla T0 run."""
+    custom = tmp_path / "karpathy.md"
+    custom.write_text("# Karpathy rules\nBe terse.\n", encoding="utf-8")
+
+    # Vanilla T0 baseline.
+    base_root = results_dir / "base"
+    r0 = runner.invoke(
+        app,
+        ["run", "--suite", "L0_smoke", "--task", "L0_001", "--runner", "mock",
+         "--tier", "T0", "--results-root", str(base_root)],
+    )
+    assert r0.exit_code in {0, 1}, r0.output
+
+    # Custom prompt run.
+    cust_root = results_dir / "cust"
+    r1 = runner.invoke(
+        app,
+        ["run", "--suite", "L0_smoke", "--task", "L0_001", "--runner", "mock",
+         "--tier", "T0", "--claude-md", str(custom),
+         "--prompt-label", "karpathy-rules", "--results-root", str(cust_root)],
+    )
+    assert r1.exit_code in {0, 1}, r1.output
+
+    base_rs = _read_run_start(_list_run_dirs(base_root)[0])
+    cust_rs = _read_run_start(_list_run_dirs(cust_root)[0])
+
+    # Custom prompt is a distinct identity.
+    assert cust_rs["tier_hash"] != base_rs["tier_hash"]
+    assert cust_rs["prompt_label"] == "karpathy-rules"
+    assert base_rs["prompt_label"] is None
+    # Verbatim prompt is captured for the reveal + privacy scan.
+    assert "# Karpathy rules" in cust_rs["system_prompt_verbatim"]
+    # metadata.yaml carries the label too (the ingest reads run dir).
+    with (_list_run_dirs(cust_root)[0] / "metadata.yaml").open() as fh:
+        assert yaml.safe_load(fh)["prompt_label"] == "karpathy-rules"
+
+
+def _read_run_start(run_dir: Path) -> dict:
+    line = (run_dir / "trajectory.jsonl").read_text().splitlines()[0]
+    return json.loads(line)
+
+
 def test_ab_run_unknown_task_exits_nonzero(results_dir: Path) -> None:
     result = runner.invoke(
         app,

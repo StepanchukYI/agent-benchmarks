@@ -64,6 +64,8 @@ export const endpoints = {
    */
   leaderboardRowTasks: (q: { model: string; operator: string; tier: string; harness?: string | null; effort?: string | null }) =>
     withQuery("/leaderboard/row/tasks", q),
+  /** Prompt reveal: GET /leaderboard/prompt/{prompt_hash} → { label, text }. 404 = vanilla (no custom prompt). */
+  leaderboardPrompt: (promptHash: string) => `/leaderboard/prompt/${encodeURIComponent(promptHash)}`,
   leaderboardHeatmap: (q?: { suites?: string[]; models?: string[]; tiers?: string[] }) =>
     withQuery("/leaderboard/heatmap", q),
   leaderboardParetoHistory: (q?: {

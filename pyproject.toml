@@ -54,6 +54,10 @@ ignore = ["E501"]
 testpaths = ["packages", "tests-e2e"]
 addopts = "-q --import-mode=importlib"
 asyncio_mode = "auto"
+markers = [
+    "isolation: Tier A deterministic isolation verification (no live model, mock Popen)",
+    "live_isolation: Tier B gated live-sentinel isolation harness (costs tokens, opt-in via AB_RUN_LIVE_ISOLATION=1)",
+]
 
 [tool.mypy]
 python_version = "3.11"

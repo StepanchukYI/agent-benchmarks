@@ -46,3 +46,6 @@ class TaskResult(SQLModel, table=True):
     # None when the run pre-dates this column or the trajectory lacks run_start.
     harness: str | None = Field(default=None, nullable=True)
     effort: str | None = Field(default=None, nullable=True)
+    # Human-readable label for the custom prompt variant (from --prompt-label).
+    # None when the run used a built-in tier preset with no custom CLAUDE.md.
+    prompt_label: str | None = Field(default=None, nullable=True)

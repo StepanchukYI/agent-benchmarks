@@ -49,6 +49,7 @@ def _make_runner(
     system_prompt: str | None = None,
     effort: str | None = None,
     env_overrides: dict[str, str] | None = None,
+    prompt_label: str | None = None,
 ) -> Any:
     """Map a CLI `--runner` string + `--model` to a BaseRunner.
 
@@ -59,22 +60,29 @@ def _make_runner(
     nanobot/cursor).
     """
     if runner_name == "mock":
-        return MockRunner(model=model)
+        return MockRunner(model=model, prompt_label=prompt_label)
     if runner_name in {"claude-code", "claude-code-cli", "claude"}:
         return ClaudeCodeRunner(
-            model=model, effort=effort, env_overrides=env_overrides
+            model=model, effort=effort, env_overrides=env_overrides,
+            prompt_label=prompt_label,
         )
     if runner_name in {"codex-cli", "codex"}:
-        return CodexCLIRunner(model=model, reasoning_effort=effort)
+        return CodexCLIRunner(
+            model=model, reasoning_effort=effort, prompt_label=prompt_label
+        )
     if runner_name in {"gemini-cli", "gemini"}:
-        return GeminiCLIRunner(model=model, reasoning_effort=effort)
+        return GeminiCLIRunner(
+            model=model, reasoning_effort=effort, prompt_label=prompt_label
+        )
     if runner_name in {"pi-agent", "pi"}:
         return PiAgentRunner(
-            model=model, effort=effort, env_overrides=env_overrides
+            model=model, effort=effort, env_overrides=env_overrides,
+            prompt_label=prompt_label,
         )
     if runner_name in {"opencode", "oc"}:
         return OpencodeRunner(
-            model=model, effort=effort, env_overrides=env_overrides
+            model=model, effort=effort, env_overrides=env_overrides,
+            prompt_label=prompt_label,
         )
     return make_runner(
         runner=runner_name,
@@ -147,6 +155,20 @@ def run(
             "their own reasoning controls in a future commit."
         ),
     ),
+    claude_md: Path | None = typer.Option(
+        None,
+        "--claude-md",
+        help=(
+            "Path to a custom CLAUDE.md to materialize as the project prompt. "
+            "Its content makes a distinct leaderboard row (prompt_hash) and is "
+            "revealable in the drill. The file must exist."
+        ),
+    ),
+    prompt_label: str | None = typer.Option(
+        None,
+        "--prompt-label",
+        help="Human-readable name for the --claude-md prompt (e.g. 'karpathy-rules').",
+    ),
     env: list[str] | None = typer.Option(
         None,
         "--env",
@@ -187,6 +209,12 @@ def run(
         console.print(f"[red]unknown tier {tier!r}[/red]")
         raise typer.Exit(2) from exc
 
+    if claude_md is not None:
+        claude_md = Path(claude_md)
+        if not claude_md.is_file():
+            console.print(f"[red]--claude-md file not found: {claude_md}[/red]")
+            raise typer.Exit(2)
+
     try:
         tasks = discover_tasks(suite, single_task=task)
     except (FileNotFoundError, ValueError) as exc:
@@ -206,7 +234,9 @@ def run(
         workdir.mkdir(parents=True, exist_ok=True)
 
         started_at = datetime.now(UTC).isoformat()
-        materialized = materialize(_tier_root_default(), tier_enum, t, workdir)
+        materialized = materialize(
+            _tier_root_default(), tier_enum, t, workdir, claude_md_override=claude_md
+        )
         seed_workdir_from_fixture(t, workdir)
 
         # Build env_overrides from --env KEY=VAL pairs + --vendor shortcut.
@@ -233,6 +263,7 @@ def run(
             system_prompt=system_prompt,
             effort=effort,
             env_overrides=env_overrides or None,
+            prompt_label=prompt_label,
         )
         runner_obj.prepare(materialized)
 
@@ -274,6 +305,7 @@ def run(
             "finished_at": finished_at,
             "status": "completed",
             "prompt_template_hash": None,
+            "prompt_label": prompt_label,
         }
         write_metadata(run_dir / "metadata.yaml", metadata)
 

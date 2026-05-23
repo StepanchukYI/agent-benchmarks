@@ -1,5 +1,35 @@
 {
   "$defs": {
+    "IsolationInfo": {
+      "additionalProperties": false,
+      "description": "Record of how the runner isolated the operator's HOME from the benchmark agent.\n\nEmitted on run_start so the leaderboard can show isolation provenance\nalongside scores. Other runners emit isolation=None until they adopt\nclean-HOME isolation.",
+      "properties": {
+        "bare": {
+          "title": "Bare",
+          "type": "boolean"
+        },
+        "home": {
+          "title": "Home",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "real_home_untouched": {
+          "title": "Real Home Untouched",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "home",
+        "real_home_untouched",
+        "bare"
+      ],
+      "title": "IsolationInfo",
+      "type": "object"
+    },
     "ReasoningConfig": {
       "additionalProperties": false,
       "description": "Reasoning / thinking budget the model was instructed to use.\n\nSee `docs/result-sensitivity-axes.md` axis #1 \u2014 same model with\n`thinking=off` vs `thinking=high` differs 20-40% on reasoning-\nsensitive tasks. Both fields optional; runners that don't expose\nreasoning controls leave both None.",
@@ -336,6 +366,17 @@
       "title": "Harness",
       "type": "string"
     },
+    "isolation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IsolationInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "model": {
       "title": "Model",
       "type": "string"
@@ -375,6 +416,18 @@
       ],
       "default": null,
       "title": "Output Truncated"
+    },
+    "prompt_label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prompt Label"
     },
     "prompt_template_hash": {
       "anyOf": [

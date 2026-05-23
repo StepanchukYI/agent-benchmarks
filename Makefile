@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PY_PACKAGES := ab-datasets ab-harness ab-server ab-sdk ab-cli
 JS_PACKAGE  := ab-leaderboard
 
-.PHONY: help install install-py install-js dev-up dev-down test test-py test-js lint lint-py lint-js typecheck typecheck-py typecheck-js schema-export privacy-scan clean demo-mock demo-claude-code
+.PHONY: help install install-py install-js dev-up dev-down test test-py test-js lint lint-py lint-js typecheck typecheck-py typecheck-js schema-export privacy-scan clean demo-mock demo-claude-code verify-isolation
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  lint               ruff + eslint + prettier"
 	@echo "  typecheck          mypy + tsc"
 	@echo "  schema-export      regenerate docs/schemas/ from Pydantic"
+	@echo "  verify-isolation   run Tier A isolation verification suite (marker: isolation)"
 	@echo "  privacy-scan       run privacy patterns scanner"
 	@echo "  clean              remove build artifacts"
 
@@ -64,6 +65,9 @@ typecheck-js:
 
 schema-export:
 	uv run python -m ab_datasets.schemas.export --out docs/schemas
+
+verify-isolation:
+	uv run pytest -m isolation -q
 
 privacy-scan:
 	uv run python scripts/privacy_scan.py

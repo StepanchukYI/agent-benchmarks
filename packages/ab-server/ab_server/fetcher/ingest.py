@@ -7,7 +7,30 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ab_server.fetcher.parser import ParsedRun
-from ab_server.models import RegisteredRepo, Submission, TaskResult
+from ab_server.models import PromptBlob, RegisteredRepo, Submission, TaskResult
+from ab_server.models.prompt_blob import _truncate
+
+# Separator injected by ab_harness.runners.base.compose_system_prompt between
+# the sandbox guardrail and the operator's custom CLAUDE.md text.
+_CLAUDE_MD_MARKER = "\n\n--- project CLAUDE.md ---\n"
+
+
+def _extract_custom_prompt(system_prompt_verbatim: str | None) -> str | None:
+    """Return the clean operator CLAUDE.md text from a composed system prompt.
+
+    Returns None when:
+    - system_prompt_verbatim is absent (vanilla run, no custom prompt), or
+    - the marker is not present (plain sandbox guardrail only — not a custom run).
+
+    This keeps vanilla runs out of prompt_blobs and ensures the stored text is
+    only the operator-authored content, not the harness preamble.
+    """
+    if not system_prompt_verbatim:
+        return None
+    idx = system_prompt_verbatim.find(_CLAUDE_MD_MARKER)
+    if idx == -1:
+        return None  # no custom CLAUDE.md — not a custom-prompt run
+    return system_prompt_verbatim[idx + len(_CLAUDE_MD_MARKER):]
 
 
 def _token_turn_counts(traj_path: Path) -> tuple[int, int, int, int]:
@@ -72,16 +95,21 @@ def _token_turn_counts(traj_path: Path) -> tuple[int, int, int, int]:
     return t_in + t_out, t_in, t_out, assistant_turns
 
 
-def _config_from_trajectory(traj_path: Path) -> tuple[str | None, str | None]:
-    """Extract (harness, effort) from the run_start event in trajectory.jsonl.
+def _config_from_trajectory(
+    traj_path: Path,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Extract (harness, effort, prompt_label, system_prompt_verbatim) from run_start.
 
-    harness is a top-level key on run_start; effort is nested at
-    reasoning.effort (reasoning may be null/absent). Missing/unreadable file
-    or no run_start event returns (None, None) — same defensive handling as
-    _token_turn_counts.
+    harness and prompt_label are top-level keys on run_start; effort is nested
+    at reasoning.effort (reasoning may be null/absent);
+    system_prompt_verbatim is the verbatim CLAUDE.md / operator prompt text
+    (populated by BT3 when a custom prompt was active).
+
+    Missing/unreadable file or no run_start event returns (None, None, None, None)
+    — same defensive handling as _token_turn_counts.
     """
     if not traj_path.exists():
-        return None, None
+        return None, None, None, None
     try:
         with traj_path.open("r", encoding="utf-8") as fh:
             for line in fh:
@@ -96,10 +124,36 @@ def _config_from_trajectory(traj_path: Path) -> tuple[str | None, str | None]:
                     harness = ev.get("harness") or None
                     reasoning = ev.get("reasoning")
                     effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
-                    return harness, effort or None
+                    prompt_label = ev.get("prompt_label") or None
+                    system_prompt_verbatim = ev.get("system_prompt_verbatim") or None
+                    return harness, effort or None, prompt_label, system_prompt_verbatim
     except OSError:
-        return None, None
-    return None, None
+        return None, None, None, None
+    return None, None, None, None
+
+
+def _upsert_prompt_blob(
+    session: Session,
+    *,
+    prompt_hash: str,
+    text: str,
+    label: str | None,
+) -> None:
+    """Insert a PromptBlob row if the hash is not already present.
+
+    Idempotent: a second call with the same prompt_hash is a no-op. The stored
+    text is capped at 64 KB via _truncate (defined in models.prompt_blob).
+    """
+    existing = session.get(PromptBlob, prompt_hash)
+    if existing is not None:
+        return
+    blob = PromptBlob(
+        prompt_hash=prompt_hash,
+        text=_truncate(text),
+        label=label,
+    )
+    session.add(blob)
+    session.commit()
 
 
 def ingest_runs(
@@ -165,7 +219,22 @@ def ingest_runs(
         tokens_total, tokens_in, tokens_out, turns_total = _token_turn_counts(
             run.path / "trajectory.jsonl"
         )
-        harness, effort = _config_from_trajectory(run.path / "trajectory.jsonl")
+        harness, effort, prompt_label, system_prompt_verbatim = _config_from_trajectory(
+            run.path / "trajectory.jsonl"
+        )
+
+        tier_hash_val = str(run.metadata.get("tier_hash") or "")
+        # Upsert prompt blob only when a custom CLAUDE.md was active.
+        # _extract_custom_prompt returns None for vanilla runs (no marker) so
+        # the sandbox-guardrail-only text never lands in prompt_blobs.
+        custom_text = _extract_custom_prompt(system_prompt_verbatim)
+        if custom_text and tier_hash_val:
+            _upsert_prompt_blob(
+                session,
+                prompt_hash=tier_hash_val,
+                text=custom_text,
+                label=prompt_label,
+            )
 
         task_result = TaskResult(
             submission_id=submission.id,
@@ -173,7 +242,7 @@ def ingest_runs(
             suite=suite,
             model=run.model,
             tier=run.tier,
-            tier_hash=str(run.metadata.get("tier_hash") or ""),
+            tier_hash=tier_hash_val,
             status=status_value,
             score_total=score_total,
             score_correctness=_pillar_score(per_pillar, "correctness"),
@@ -191,6 +260,7 @@ def ingest_runs(
             passed=passed,
             harness=harness,
             effort=effort,
+            prompt_label=prompt_label,
         )
         session.add(task_result)
         session.commit()

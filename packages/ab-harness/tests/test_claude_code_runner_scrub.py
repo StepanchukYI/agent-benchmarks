@@ -155,6 +155,7 @@ def test_runner_writes_relative_paths_for_workdir_absolute_paths(
             return _FakeProc("1.2.3\n", args=argv)
         return _FakeProc(canned, args=argv)
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
     traj_path = tmp_path / "trajectory.jsonl"

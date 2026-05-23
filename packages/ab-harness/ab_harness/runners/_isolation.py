@@ -136,6 +136,11 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
         "CLAUDE_CODE_NO_AUTOMATIC_UPDATES",
         "CLAUDE_BINARY",
+        # Claude subscription OAuth token (long-lived, issued by `claude setup-token`).
+        # Passes the subscription auth credential through the isolation barrier so the
+        # CLI can authenticate without a keychain or API key. The token is never logged
+        # or written to trajectory; it lives only in env.
+        "CLAUDE_CODE_OAUTH_TOKEN",
         # OpenAI native + Codex CLI auth
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
@@ -246,6 +251,10 @@ class IsolatedEnv:
             env["XDG_CONFIG_HOME"] = str(fake_home / ".config")
             env["XDG_CACHE_HOME"] = str(fake_home / ".cache")
             env["XDG_STATE_HOME"] = str(fake_home / ".local" / "state")
+            # Belt-and-suspenders: explicitly point CLAUDE_CONFIG_DIR at the
+            # temp .claude dir so even if the whitelist were ever widened to
+            # include it, it can't redirect to the operator's real ~/.claude.
+            env["CLAUDE_CONFIG_DIR"] = str(fake_home / ".claude")
         # else: real HOME preserved (already in `env` via whitelist).
         # Runner is responsible for blocking ~/.claude config via CLI flags.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import platform
 import subprocess
 from pathlib import Path
 from typing import Any, ClassVar
@@ -86,6 +87,7 @@ def test_runner_emits_expected_events(tmp_path: Path, monkeypatch: pytest.Monkey
     def on_run(argv, kwargs):
         seen["argv"] = argv
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     _patch_popen(monkeypatch, canned_stream, on_run=on_run)
 
     runner = ClaudeCodeRunner(model="claude-sonnet-4-5")
@@ -148,6 +150,7 @@ def test_runner_records_vault_diff_when_files_change(
         cwd = Path(kwargs["cwd"])
         (cwd / "hello.txt").write_text("hello world\n", encoding="utf-8")
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     _patch_popen(monkeypatch, canned_stream, on_run=on_run)
 
     runner = ClaudeCodeRunner()
@@ -172,20 +175,93 @@ def test_runner_version_falls_back_to_unknown(monkeypatch: pytest.MonkeyPatch) -
     assert runner.version() == "claude-code-cli@unknown"
 
 
-def test_runner_does_not_require_anthropic_api_key(
+def test_runner_requires_api_key_on_clean_home_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, canned_stream: str
 ) -> None:
+    """No API key on Linux → IsolationError before Popen (no keychain fallback)."""
+    from ab_harness.runners.claude_code import IsolationError
+
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    # Force Linux so the macOS keychain branch is not taken.
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
 
     workdir = tmp_path / "v"
     workdir.mkdir()
     traj_path = tmp_path / "t.jsonl"
 
+    popen_called = []
+
     def on_run(argv, kwargs):
-        assert "ANTHROPIC_API_KEY" not in kwargs.get("env", {})
+        popen_called.append(True)
 
     _patch_popen(monkeypatch, canned_stream, on_run=on_run)
     runner = ClaudeCodeRunner()
     runner.prepare(None)
+    with TrajectoryWriter(traj_path) as writer, pytest.raises(IsolationError, match="ANTHROPIC_API_KEY"):
+        runner.run_task(_make_task(), writer, workdir=workdir)
+    assert not popen_called, "Popen must NOT be called when API key is absent"
+
+
+def test_run_start_carries_prompt_identity_from_materialized_tier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, canned_stream: str
+) -> None:
+    """run_start records tier_hash (wrinkle fix), prompt_label, and the
+    verbatim custom CLAUDE.md text — the prompt-as-row-identity contract."""
+    from ab_datasets.schemas import Tier
+    from ab_harness.sandbox.docker import MaterializedTier
+
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    traj_path = tmp_path / "t.jsonl"
+
+    materialized = MaterializedTier(
+        tier=Tier.T0,
+        tier_hash="a" * 64,
+        workdir=workdir,
+        manifest_path=tmp_path / "manifest.yaml",
+        claude_md_text="# Karpathy rules\nBe terse.\n",
+    )
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    _patch_popen(monkeypatch, canned_stream)
+    runner = ClaudeCodeRunner(prompt_label="karpathy-rules")
+    runner.prepare(materialized)
     with TrajectoryWriter(traj_path) as writer:
         runner.run_task(_make_task(), writer, workdir=workdir)
+    runner.cleanup()
+
+    events = [json.loads(ln) for ln in traj_path.read_text().splitlines() if ln.strip()]
+    run_start = events[0]
+    # Wrinkle fix: tier_hash is read off MaterializedTier.tier_hash, not the
+    # absent .total_sha256 — so it is non-None at runtime now.
+    assert run_start["tier_hash"] == "a" * 64
+    assert run_start["prompt_label"] == "karpathy-rules"
+    # Verbatim prompt is embedded in system_prompt_verbatim (privacy gate
+    # scans this trajectory line; reveal endpoint reads it).
+    assert "# Karpathy rules" in run_start["system_prompt_verbatim"]
+    assert "Be terse." in run_start["system_prompt_verbatim"]
+    assert validate(traj_path) == []
+
+
+def test_run_start_tier_hash_none_without_tier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, canned_stream: str
+) -> None:
+    """No tier prepared → tier_hash None, system_prompt_verbatim unchanged."""
+    workdir = tmp_path / "wd2"
+    workdir.mkdir()
+    traj_path = tmp_path / "t2.jsonl"
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    _patch_popen(monkeypatch, canned_stream)
+    runner = ClaudeCodeRunner()
+    runner.prepare(None)
+    with TrajectoryWriter(traj_path) as writer:
+        runner.run_task(_make_task(), writer, workdir=workdir)
+    runner.cleanup()
+
+    events = [json.loads(ln) for ln in traj_path.read_text().splitlines() if ln.strip()]
+    run_start = events[0]
+    assert run_start["tier_hash"] is None
+    assert run_start["prompt_label"] is None
+    assert "--- project CLAUDE.md ---" not in run_start["system_prompt_verbatim"]

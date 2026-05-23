@@ -36,6 +36,11 @@ class MaterializedTier(BaseModel):
     tier_hash: str
     workdir: Path
     manifest_path: Path
+    # Verbatim text of the project CLAUDE.md the agent will see, when one was
+    # materialized (custom --claude-md or a tier preset that ships one). None
+    # for tiers without a CLAUDE.md (e.g. T0). The runner emits this on
+    # run_start so the leaderboard can reveal the operator's prompt.
+    claude_md_text: str | None = None
 
 
 def _resolve(root: Path, ref: str) -> Path:
@@ -53,6 +58,8 @@ def materialize(
     tier: Tier,
     task: Any,
     workdir: Path,
+    *,
+    claude_md_override: Path | None = None,
 ) -> MaterializedTier:
     tier_fixtures_root = Path(tier_fixtures_root)
     workdir = Path(workdir)
@@ -60,13 +67,24 @@ def materialize(
     manifest_path = manifest_dir / "manifest.yaml"
     manifest = load_manifest(manifest_path)
 
+    # A custom --claude-md replaces the tier's CLAUDE.md. Point the manifest at
+    # the operator's file (absolute path; _resolve passes it through unchanged)
+    # so both the copy below and compute_total_sha256 use it — the operator's
+    # prompt content thus flows into tier_hash, making it a distinct row.
+    if claude_md_override is not None:
+        override_path = Path(claude_md_override).resolve()
+        manifest = manifest.model_copy(update={"claude_md": {"path": str(override_path)}})
+
     workdir.mkdir(parents=True, exist_ok=True)
     claude_dir = workdir / ".claude"
     claude_dir.mkdir(parents=True, exist_ok=True)
 
+    claude_md_text: str | None = None
     if manifest.claude_md:
         src = _resolve(manifest_dir, manifest.claude_md["path"])
-        shutil.copyfile(src, workdir / "CLAUDE.md")
+        dst = workdir / "CLAUDE.md"
+        shutil.copyfile(src, dst)
+        claude_md_text = dst.read_text(encoding="utf-8")
 
     if manifest.claude_local_md:
         src = _resolve(manifest_dir, manifest.claude_local_md["path"])
@@ -103,4 +121,5 @@ def materialize(
         tier_hash=tier_hash,
         workdir=workdir,
         manifest_path=manifest_path,
+        claude_md_text=claude_md_text,
     )
