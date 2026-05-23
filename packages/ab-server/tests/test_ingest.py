@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from ab_server.fetcher.ingest import _config_from_trajectory, ingest_runs
+from ab_server.fetcher.ingest import _compute_passed, _config_from_trajectory, ingest_runs
 from ab_server.fetcher.parser import iter_parsed_runs
 from ab_server.leaderboard.queries import compute_leaderboard_response
 from ab_server.models import PromptBlob, RegisteredRepo, Submission, TaskResult, User
@@ -208,22 +208,30 @@ def _write_run_with_verdicts(
     run_id: str,
     task_id: str,
     verdicts: list[dict],
+    *,
+    total_score: float | None = 0.5,
+    per_pillar: dict | None = None,
 ) -> None:
-    """Write a run dir whose scores.json["verdicts"] is the supplied list."""
+    """Write a run dir whose scores.json["verdicts"] is the supplied list.
+
+    Pass ``total_score=None`` and ``per_pillar=None`` to exercise the strict-AND
+    fallback path (no aggregate available — back-compat behaviour).
+    """
     run_dir.mkdir(parents=True)
     (run_dir / "metadata.yaml").write_text(
         f"run_id: {run_id}\ntask_id: {task_id}\nmodel: claude-sonnet\ntier: T0\nsuite: file-ops\ndataset_version: 0.0.1\nharness: test\nstarted_at: 2026-05-21T00:00:00Z\nfinished_at: 2026-05-21T00:00:01Z\n"
     )
-    (run_dir / "scores.json").write_text(
-        json.dumps({
-            "run_id": run_id,
-            "task_id": task_id,
-            "total_score": 0.5,
-            "pass": all(v.get("pass", False) for v in verdicts) if verdicts else False,
-            "per_pillar": {"correctness": 0.5},
-            "verdicts": verdicts,
-        }) + "\n"
-    )
+    scores: dict = {
+        "run_id": run_id,
+        "task_id": task_id,
+        "pass": all(v.get("pass", False) for v in verdicts) if verdicts else False,
+        "verdicts": verdicts,
+    }
+    if total_score is not None:
+        scores["total_score"] = total_score
+    if per_pillar is not None:
+        scores["per_pillar"] = per_pillar
+    (run_dir / "scores.json").write_text(json.dumps(scores) + "\n")
     (run_dir / "trajectory.jsonl").write_text("{}\n")
 
 
@@ -252,7 +260,11 @@ def test_ingest_passed_all_pass(
 def test_ingest_passed_one_fail(
     tmp_path: Path, session: Session, repo: RegisteredRepo
 ) -> None:
-    """passed=False when at least one decided scorer fails."""
+    """passed=False when at least one decided scorer fails and no aggregate is present.
+
+    Without total_score or per_pillar the helper falls back to strict-AND, so
+    a single failing verdict makes the whole task fail.
+    """
     clone = tmp_path / "clone"
     (clone / "results").mkdir(parents=True)
     verdicts = [
@@ -260,7 +272,8 @@ def test_ingest_passed_one_fail(
         {"scorer_name": "file_diff", "kind": "deterministic", "pass": False, "score": 0.0, "detail": {}},
     ]
     _write_run_with_verdicts(
-        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", verdicts
+        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", verdicts,
+        total_score=None, per_pillar=None,
     )
 
     parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
@@ -274,11 +287,12 @@ def test_ingest_passed_one_fail(
 def test_ingest_passed_no_decided_verdicts(
     tmp_path: Path, session: Session, repo: RegisteredRepo
 ) -> None:
-    """passed=None when verdicts list is empty (zero decided scorers)."""
+    """passed=None when verdicts list is empty and no aggregate is present."""
     clone = tmp_path / "clone"
     (clone / "results").mkdir(parents=True)
     _write_run_with_verdicts(
-        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", []
+        clone / "results" / "20260521T000000Z-run-1", "run-1", "L0_001", [],
+        total_score=None, per_pillar=None,
     )
 
     parsed = list(iter_parsed_runs(clone, source_commit_sha="sha1"))
@@ -377,6 +391,65 @@ def test_ingest_persists_harness_and_effort(
     assert tr is not None
     assert tr.harness == "claude-code"
     assert tr.effort == "medium"
+
+
+# ── _compute_passed aggregate semantics (B2) ────────────────────────────────
+
+def test_compute_passed_total_score_high_overrides_failing_verdict() -> None:
+    """Case 1: total_score=0.98 with one failing verdict → passed=True.
+
+    Before B2 the strict-AND rule made this task fail because one scorer
+    returned pass=False. The new aggregate rule respects the 0.98 total_score
+    and correctly reports passed=True.
+    """
+    verdicts = [
+        {"scorer_name": "correctness", "pass": True, "score": 1.0},
+        {"scorer_name": "latency_cost", "pass": False, "score": 0.1},  # marginal fail
+    ]
+    result = _compute_passed(verdicts, total_score=0.98)
+    assert result is True, (
+        f"expected True (total_score=0.98 >= 0.5) but got {result!r}"
+    )
+
+
+def test_compute_passed_total_score_low_overrides_all_passing_verdicts() -> None:
+    """Case 2: total_score=0.3 with all verdicts passing → passed=False.
+
+    A low aggregate score correctly marks the task as failed even if every
+    individual scorer happened to pass (e.g. all pass thresholds are very low).
+    """
+    verdicts = [
+        {"scorer_name": "correctness", "pass": True, "score": 0.3},
+        {"scorer_name": "context_efficiency", "pass": True, "score": 0.3},
+    ]
+    result = _compute_passed(verdicts, total_score=0.3)
+    assert result is False, (
+        f"expected False (total_score=0.3 < 0.5) but got {result!r}"
+    )
+
+
+def test_compute_passed_no_aggregate_falls_back_to_strict_and() -> None:
+    """Case 3: no aggregate, all decided verdicts pass → True (back-compat).
+
+    When neither total_score nor per_pillar are supplied (old scores.json), the
+    helper falls back to the original strict-AND logic.
+    """
+    verdicts = [
+        {"scorer_name": "schema", "pass": True, "score": 1.0},
+        {"scorer_name": "file_diff", "pass": True, "score": 1.0},
+    ]
+    result = _compute_passed(verdicts)
+    assert result is True, (
+        f"expected True (strict-AND fallback, all verdicts pass) but got {result!r}"
+    )
+
+
+def test_compute_passed_zero_verdicts_no_aggregate_returns_none() -> None:
+    """Case 4: zero verdicts and no aggregate → None ("not measured")."""
+    result = _compute_passed([], total_score=None, per_pillar=None)
+    assert result is None, (
+        f"expected None (no data to decide on) but got {result!r}"
+    )
 
 
 def test_two_configs_produce_two_leaderboard_rows(

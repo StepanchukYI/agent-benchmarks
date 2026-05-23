@@ -1,0 +1,11 @@
+{
+  "incidents": [
+    { "id": "INC-001", "severity": "low",      "status": "resolved", "minutes_open": 12 },
+    { "id": "INC-002", "severity": "high",     "status": "open",     "minutes_open": 47 },
+    { "id": "INC-003", "severity": "critical", "status": "open",     "minutes_open": 138 },
+    { "id": "INC-004", "severity": "medium",   "status": "resolved", "minutes_open": 22 },
+    { "id": "INC-005", "severity": "high",     "status": "open",     "minutes_open": 91 },
+    { "id": "INC-006", "severity": "low",      "status": "open",     "minutes_open": 8 },
+    { "id": "INC-007", "severity": "critical", "status": "resolved", "minutes_open": 240 }
+  ]
+}

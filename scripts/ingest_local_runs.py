@@ -202,7 +202,11 @@ def _ingest_one(
     suite = str(scores.get("suite") or _suite_from_task(task_id))
     tier_hash = scores.get("tier_hash") or ""
 
-    passed = _compute_passed(scores.get("verdicts") or [])
+    passed = _compute_passed(
+        scores.get("verdicts") or [],
+        total_score=scores.get("total_score"),
+        per_pillar=scores.get("per_pillar"),
+    )
     # status mirrors fetcher: "passed"/"failed" based on verdicts.
     # datasets.py pass_rate_30d reads the authoritative `passed` flag (B8), not
     # status — so this is purely informational / run-lifecycle context.

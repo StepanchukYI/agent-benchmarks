@@ -1,29 +1,43 @@
 id: L0_313
 layer: L0
 suite: tool-use
-title: "Choose the right tool from 10 confusingly similar tools"
+title: "Choose the right command among many superficially similar ones"
 description: |
-  The fixture exposes 10 filesystem-shaped tools whose NAMES are
-  intentionally similar: `list_files`, `list_files_recursive`,
-  `list_directories`, `list_hidden`, `find_files`, `stat_path`,
-  `read_file`, `tree`, `disk_usage`, `count_files`.
+  You have access to a bash shell. The fixture seeds a directory
+  `reports/` containing seven regular files (`a.txt` … `g.txt`) plus
+  one hidden dotfile (`.hidden`).
 
   The user asks:
 
-    "Show me how many regular files (excluding hidden dotfiles)
-     are in the `./reports` directory — count only, no listing,
-     no recursion."
+      "Tell me how many REGULAR files (excluding hidden dotfiles)
+       are in the `./reports` directory — count only, no listing,
+       no recursion. Use the minimal command that produces just a
+       count, and write the integer to `out/count.txt` with NO
+       trailing newline."
 
-  The right tool is `count_files(path="./reports")`. Wrong but
-  plausible picks:
-    - `list_files` — returns names, not a count,
-    - `list_files_recursive` — wrong scope (recursion),
-    - `list_hidden` — wrong sign,
-    - `find_files` — wrong abstraction,
-    - `tree` — wrong format.
+  The correct count is `7`. The right shell idiom is:
 
-  The agent MUST issue exactly one call to `count_files` with
-  `path="./reports"`.
+      mkdir -p out
+      printf '%s' "$(find ./reports -mindepth 1 -maxdepth 1 -type f \
+          ! -name '.*' | wc -l | tr -d ' ')" > out/count.txt
+
+  Wrong-but-plausible alternatives include `ls reports/`, `du -h`,
+  `find ./reports -type f` (recursive), `ls -aR`, etc. — these
+  either produce extra output, include the hidden dotfile, or
+  recurse where the user said not to.
+
+  The file `out/count.txt` must contain exactly the single byte `7`
+  (no whitespace, no trailing newline).
+
+  Skill measured: pick the minimal correct invocation that satisfies
+  ALL of the user's constraints (count-only, no listing, no recursion,
+  exclude hidden), rather than the first command that comes to mind.
+
+  Failure modes:
+    - `out/count.txt` containing `8` (counted the hidden dotfile),
+    - `out/count.txt` containing `7\n` (trailing newline),
+    - `out/count.txt` containing a listing instead of a number,
+    - file missing entirely.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_313/"
 
@@ -37,32 +51,10 @@ scorer_chain:
   - name: right_tool_picked
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
       assertions:
-        - kind: tool_call_count
-          tool: "count_files"
-          expected: 1
-        - kind: tool_args_equal
-          tool: "count_files"
-          expected: { path: "./reports" }
-        - kind: tool_call_count
-          tool: "list_files"
-          expected: 0
-        - kind: tool_call_count
-          tool: "list_files_recursive"
-          expected: 0
-        - kind: tool_call_count
-          tool: "list_hidden"
-          expected: 0
-        - kind: tool_call_count
-          tool: "find_files"
-          expected: 0
-        - kind: tool_call_count
-          tool: "tree"
-          expected: 0
-        - kind: tool_call_count
-          tool: "disk_usage"
-          expected: 0
+        - kind: workdir_file_content_equals
+          path: "out/count.txt"
+          content: "7"
 
   - name: privacy_check
     kind: privacy_check
@@ -70,19 +62,19 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+    config: { max_tool_calls: 6, pass_threshold: 0.5 }
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 10000, pass_threshold: 0.4 }
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
 
   - name: latency_cost
     kind: deterministic
     config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
 
 acceptance_criteria:
-  - "Exactly one call to `count_files` with `path=./reports`."
-  - "Zero calls to any of the nine confusable alternatives."
+  - "File `out/count.txt` exists with the single byte `7` (no trailing newline)."
+  - "Hidden dotfiles excluded, no recursion, no listing — just the count."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -99,8 +91,10 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - tool-disambiguation
   - frontier
   - deterministic
   - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

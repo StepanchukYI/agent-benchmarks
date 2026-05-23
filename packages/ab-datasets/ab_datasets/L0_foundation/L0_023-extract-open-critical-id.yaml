@@ -1,0 +1,90 @@
+id: L0_023
+layer: L0
+suite: extract
+title: "Extract the id of the single OPEN CRITICAL incident from a JSON list"
+description: |
+  The fixture provides `incidents.json` with a top-level `incidents`
+  array of 7 incident objects, each shaped:
+
+      { id, severity, status, minutes_open }
+
+  Where `severity ∈ {low, medium, high, critical}` and
+  `status ∈ {open, resolved}`.
+
+  The user asks:
+
+      "Read incidents.json. Among incidents whose status is `open`
+       AND severity is `critical`, give me the id of the single
+       matching row. Output ONLY the id, no prose, no surrounding
+       quotes, no trailing newline."
+
+  By inspection there is exactly ONE row with both `status=open` and
+  `severity=critical`: `INC-003`.
+
+  Output ONLY the literal `INC-003` as the final assistant message.
+
+  Failure modes:
+    - returning `INC-007` (critical but RESOLVED),
+    - returning `INC-002` or `INC-005` (open but only HIGH),
+    - returning multiple ids,
+    - emitting a list / JSON / prose around the value.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_023/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "incidents.json"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "INC-003"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Final assistant message equals `INC-003` exactly."
+  - "Filtered correctly on BOTH `status=open` and `severity=critical`."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - extract
+  - filter
+  - json
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive
+  - reasoning-sensitive

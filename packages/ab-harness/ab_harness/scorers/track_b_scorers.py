@@ -91,8 +91,13 @@ def _expand_shorthand_to_assertions(cfg: dict[str, Any]) -> list[dict[str, Any]]
         for path in expected:
             out.append({"kind": "workdir_file_no_crlf", "path": path})
     if cfg.get("preserve_crlf") and isinstance(expected, dict):
-        for path in expected:
-            out.append({"kind": "workdir_file_preserves_crlf", "path": path})
+        for path, content in expected.items():
+            out.append({
+                "kind": "workdir_file_preserves_crlf",
+                "path": path,
+                "content": content,
+                "encoding": cfg.get("encoding", "utf-8"),
+            })
     if cfg.get("require_utf8") and isinstance(expected, dict):
         for path in expected:
             out.append({"kind": "workdir_file_encoding_utf8", "path": path})

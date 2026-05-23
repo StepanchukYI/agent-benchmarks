@@ -1,0 +1,95 @@
+id: L0_020
+layer: L0
+suite: exec
+title: "Count distinct words in passage.txt using shell, write the count to a file"
+description: |
+  The fixture provides `passage.txt` containing three short sentences.
+  Using a bash command, count the number of DISTINCT lowercased words
+  in the file (treat punctuation as separators; words are letters
+  only) and write the integer count to `out/distinct_words.txt` with
+  NO trailing newline.
+
+  Canonical pipeline:
+
+      mkdir -p out
+      printf '%s' "$(tr -cs '[:alpha:]' '\n' < passage.txt \
+          | tr '[:upper:]' '[:lower:]' \
+          | grep -v '^$' \
+          | sort -u | wc -l | tr -d ' ')" > out/distinct_words.txt
+
+  The three sentences contain the words (case-insensitive, after
+  splitting on non-letters):
+
+      the quick brown fox jumps over the lazy dog
+      a stitch in time saves nine
+      brevity is the soul of wit
+
+  Distinct: a, brevity, brown, dog, fox, in, is, jumps, lazy,
+  nine, of, over, quick, saves, soul, stitch, the, time, wit
+  → 19 distinct words.
+
+  The file `out/distinct_words.txt` MUST contain exactly the two
+  bytes `19` (no whitespace, no trailing newline).
+
+  Failure modes:
+    - counted total words (21) instead of distinct (19),
+    - case-sensitive counting (`The` and `the` as distinct → 20),
+    - included punctuation as part of a word,
+    - trailing newline in the output file.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_020/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/distinct_words.txt: "19"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "File `out/distinct_words.txt` contains exactly the two bytes `19`."
+  - "Counting is case-insensitive and treats punctuation as separators."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - exec
+  - bash
+  - text-processing
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive
+  - reasoning-sensitive

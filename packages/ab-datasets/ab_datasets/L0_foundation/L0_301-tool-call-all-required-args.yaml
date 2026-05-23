@@ -1,20 +1,30 @@
 id: L0_301
 layer: L0
 suite: tool-use
-title: "Tool call with all required args present and correctly typed"
+title: "Write user record file with all required fields, correctly typed"
 description: |
-  The fixture exposes a single tool `create_user` whose required arguments
-  are `email` (string, email format), `username` (non-empty string), and
-  `age` (non-negative integer).
+  You have access to a bash shell. Create a single file at the relative
+  path `out/user.json` whose contents are exactly the following bytes,
+  byte-for-byte (no leading/trailing whitespace, no trailing newline,
+  keys in the order shown):
 
-  The user prompt is:
+      {"email":"alice@example.com","username":"alice","age":30}
 
-    "Create a user with email alice@example.com, username alice, age 30."
+  Use a shell command such as:
 
-  The agent MUST issue exactly one tool call to `create_user` with all
-  three required arguments present and correctly typed (no extras, no
-  string-vs-number swaps). Any tool call missing a required arg, or that
-  uses a wrong type, or that fires extra calls, fails the task.
+      mkdir -p out && printf '%s' '{"email":"alice@example.com","username":"alice","age":30}' > out/user.json
+
+  The skill being measured is the same one BFCL probes with `create_user`:
+  given a user prompt with three named fields, produce a record with
+  exactly those three fields, no extras, with `age` as an integer (not
+  a string), `email` as the verbatim address, and `username` as the
+  verbatim handle.
+
+  Failure modes:
+    - the file is missing,
+    - extra fields beyond the three required,
+    - `age` rendered as the string `"30"` instead of the number `30`,
+    - the addressing fields are paraphrased instead of verbatim.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_301/"
 
@@ -29,22 +39,11 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: tool_call_validator
+  - name: file_diff
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
-      assertions:
-        - kind: tool_call_count
-          tool: "create_user"
-          expected: 1
-        - kind: tool_args_match_schema
-          tool: "create_user"
-        - kind: tool_args_equal
-          tool: "create_user"
-          expected:
-            email: "alice@example.com"
-            username: "alice"
-            age: 30
+      expected:
+        out/user.json: '{"email":"alice@example.com","username":"alice","age":30}'
 
   - name: privacy_check
     kind: privacy_check
@@ -54,13 +53,13 @@ scorer_chain:
   - name: tool_skill
     kind: deterministic
     config:
-      max_tool_calls: 5
+      max_tool_calls: 10
       pass_threshold: 0.5
 
   - name: context_efficiency
     kind: deterministic
     config:
-      target_tokens: 1000
+      target_tokens: 1500
       max_tokens: 8000
       pass_threshold: 0.4
 
@@ -72,9 +71,8 @@ scorer_chain:
       pass_threshold: 0.4
 
 acceptance_criteria:
-  - "Exactly one call to `create_user` is issued."
-  - "Arguments match the tool schema (email/username/age, no extras)."
-  - "Argument values equal alice@example.com / alice / 30 (integer)."
+  - "File `out/user.json` exists at the sandbox workdir after the run."
+  - "Bytes equal exactly the three-field record shown (no extras, `age` is numeric)."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -91,6 +89,8 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - deterministic
   - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

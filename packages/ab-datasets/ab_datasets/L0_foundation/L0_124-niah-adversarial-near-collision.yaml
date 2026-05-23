@@ -1,0 +1,100 @@
+id: L0_124
+layer: L0
+suite: long-context-niah
+title: "Adversarial NIAH: needle next to near-collision distractors"
+description: |
+  The fixture provides `haystack.txt` (~23 KB, 50 paragraphs) with
+  the true planted fact:
+
+      "The Tornmoor signal frequency is 88.7 MHz."
+
+  Several decoys lurk in the haystack that match part of the
+  surface form (`Tornmoor signal *`) but are NOT the frequency:
+
+      "The Tornmoor signal cable runs 4 kilometres long."
+      "The Tornmoor signal tower was rebuilt in 2019."
+      "The Tornmoor signal flag carries a single carmine band."
+
+  Additionally, frequency-shaped decoys exist for OTHER places:
+
+      "The Larchway   signal frequency is 91.3  MHz."
+      "The Willowfall signal frequency is 102.5 MHz."
+
+  The user asks:
+
+      "From the haystack: what is the SIGNAL FREQUENCY for Tornmoor
+       specifically? Output ONLY the frequency, exactly as written in
+       the haystack (number + space + unit), no prose."
+
+  Expected final assistant message (exact):
+
+      88.7 MHz
+
+  Failure modes:
+    - returning Tornmoor's cable length / rebuild year / flag colour,
+    - returning Larchway's or Willowfall's frequency,
+    - omitting the unit,
+    - emitting `88.7MHz` (no space) or `88.7 mhz` (wrong case).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_124/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "88.7 MHz"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 8000, max_tokens: 32000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 35000, max_ms: 200000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message equals `88.7 MHz` exactly (with space, capital MHz)."
+  - "Decoys (cable / tower / flag, or other places' frequencies) are NOT returned."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - adversarial
+  - near-collision
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

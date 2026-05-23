@@ -1,23 +1,35 @@
 id: L0_303
 layer: L0
 suite: tool-use
-title: "Multi-tool call in correct order (create_order then send_confirmation_email)"
+title: "Two-step pipeline: create order, then reference its id in confirmation"
 description: |
-  The fixture exposes two tools: `create_order(customer_id, items) -> order_id`
-  and `send_confirmation_email(order_id)`. The second tool's `order_id`
-  must be the value returned by the first.
+  You have access to a bash shell. The fixture seeds a file
+  `seed/last_order_id.txt` whose contents are exactly the bytes
+  `ORD-1042` (no trailing newline). Treat that file as the value a
+  backend would have RETURNED in a real pipeline — it stands in for
+  `create_order(...) -> order_id`.
 
-  The user prompt is:
+  Workflow:
 
-    "Place an order for customer C-42 containing items SKU-1 and SKU-2,
-     and send the confirmation email."
+    1. Create `out/order.json` containing exactly the bytes:
 
-  The agent MUST issue exactly two tool calls, in this order:
-    1. `create_order(customer_id="C-42", items=["SKU-1", "SKU-2"])`
-    2. `send_confirmation_email(order_id=<returned order_id>)`
-  passing the returned order_id verbatim. Reversed order, missing the
-  second call, or fabricating an order_id (not from the tool return)
-  fails the task.
+         {"customer_id":"C-42","items":["SKU-1","SKU-2"]}
+
+    2. Read the seeded id and use it verbatim as the `order_id` in the
+       confirmation. Create `out/email.json` containing exactly:
+
+         {"order_id":"ORD-1042","subject":"Order confirmation"}
+
+  Both files must end up on disk. Reading the order id from the seeded
+  file (rather than fabricating one) is the skill BFCL probes with the
+  `tool_arg_from_prior_return` shape: the downstream step's argument
+  MUST be the value the upstream step produced, verbatim.
+
+  Failure modes:
+    - missing either file,
+    - fabricating an order_id different from `ORD-1042`,
+    - paraphrasing the customer id or item SKUs,
+    - wrong byte sequence (extra whitespace, key reorder, etc.).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_303/"
 
@@ -32,31 +44,12 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: tool_call_validator
+  - name: file_diff
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
-      assertions:
-        - kind: tool_call_count
-          tool: "create_order"
-          expected: 1
-        - kind: tool_call_count
-          tool: "send_confirmation_email"
-          expected: 1
-        - kind: tool_call_order
-          order:
-            - "create_order"
-            - "send_confirmation_email"
-        - kind: tool_args_equal
-          tool: "create_order"
-          expected:
-            customer_id: "C-42"
-            items: ["SKU-1", "SKU-2"]
-        - kind: tool_arg_from_prior_return
-          tool: "send_confirmation_email"
-          arg: "order_id"
-          source_tool: "create_order"
-          source_field: "order_id"
+      expected:
+        out/order.json: '{"customer_id":"C-42","items":["SKU-1","SKU-2"]}'
+        out/email.json: '{"order_id":"ORD-1042","subject":"Order confirmation"}'
 
   - name: privacy_check
     kind: privacy_check
@@ -66,13 +59,13 @@ scorer_chain:
   - name: tool_skill
     kind: deterministic
     config:
-      max_tool_calls: 6
+      max_tool_calls: 12
       pass_threshold: 0.5
 
   - name: context_efficiency
     kind: deterministic
     config:
-      target_tokens: 1500
+      target_tokens: 2000
       max_tokens: 10000
       pass_threshold: 0.4
 
@@ -84,9 +77,8 @@ scorer_chain:
       pass_threshold: 0.4
 
 acceptance_criteria:
-  - "Exactly two tool calls: create_order, then send_confirmation_email."
-  - "`create_order` args equal customer_id=C-42 and items=[SKU-1, SKU-2]."
-  - "`send_confirmation_email.order_id` equals the order_id returned by the prior create_order call."
+  - "File `out/order.json` exists with the exact two-field record shown."
+  - "File `out/email.json` exists with `order_id` equal to the seeded `ORD-1042`."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -103,9 +95,11 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
-  - multi-tool
+  - bash-friendly
+  - multi-step
   - ordering
   - deterministic
   - smoke-test
   - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,0 +1,113 @@
+id: L0_019
+layer: L0
+suite: schema-fill
+title: "Fill a schema with a conditional payload shape (event_type drives required fields)"
+description: |
+  The fixture provides `event.json` (an empty `{}`) and `schema.json`.
+  The schema is a discriminated union via `allOf` + `if`/`then`:
+
+    - top level requires `event_type` and `payload`,
+    - if `event_type == "user_signup"`, payload requires
+      `{email, country}` (ISO alpha-2),
+    - if `event_type == "user_deletion"`, payload requires
+      `{user_id, reason}` (user_id matches `^u-[0-9]+$`).
+    - `additionalProperties: false` at every level.
+
+  The user info:
+
+      "Record a user_signup event for alice@example.com from country
+       Germany (use ISO alpha-2). Patch event.json so it passes
+       schema.json."
+
+  The agent must pick the `user_signup` branch and fill the payload
+  with the right pair of fields. `country` MUST be `DE` (ISO alpha-2,
+  not `Germany`).
+
+  Failure modes:
+    - picking `user_deletion` branch (wrong event_type),
+    - filling both branches' fields,
+    - `country: "Germany"` instead of `DE`,
+    - extra keys in payload (e.g. `name`, `phone`).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_019/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: schema_validator
+    kind: schema
+    config:
+      target: "event.json"
+      schema_path: "schema.json"
+
+  - name: event_value_equals
+    kind: schema
+    config:
+      target: "event.json"
+      mode: json_value_equals
+      additional_properties_forbidden: true
+      expected:
+        event_type: "user_signup"
+        payload:
+          email: "alice@example.com"
+          country: "DE"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 15
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2500
+      max_tokens: 14000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "`event.json` validates against `schema.json`."
+  - "`event_type` is `user_signup` (the user_deletion branch is NOT filled)."
+  - "`payload` has exactly `email` and `country` (country = `DE`)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - schema-fill
+  - json-schema
+  - conditional
+  - discriminated-union
+  - frontier
+  - deterministic
+  - reasoning-sensitive

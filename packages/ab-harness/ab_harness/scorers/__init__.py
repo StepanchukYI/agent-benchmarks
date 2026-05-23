@@ -36,6 +36,14 @@ SCORER_REGISTRY: dict[str, ScorerCallable] = {
     "exec": exec_scorer,
     "schema": schema_scorer,
     "schema_validator": schema_scorer,
+    # L0_016..L0_019 schema-fill backlog: each task pins a value-equality
+    # check on its filled JSON file. Same underlying impl (schema_scorer in
+    # `mode: json_value_equals`), distinct names so the per-scorer verdict
+    # in the trajectory is human-meaningful.
+    "profile_value_equals": schema_scorer,
+    "manifest_value_equals": schema_scorer,
+    "task_value_equals": schema_scorer,
+    "event_value_equals": schema_scorer,
     "state_diff": state_diff_scorer,
     "privacy_check": privacy_check_scorer,
     "llm_judge": llm_judge_scorer,
@@ -70,6 +78,10 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "file_diff": "correctness",
     "schema": "correctness",
     "schema_validator": "correctness",
+    "profile_value_equals": "correctness",
+    "manifest_value_equals": "correctness",
+    "task_value_equals": "correctness",
+    "event_value_equals": "correctness",
     "exec": "correctness",
     "readme_exact": "correctness",
     "test_file_unchanged": "correctness",

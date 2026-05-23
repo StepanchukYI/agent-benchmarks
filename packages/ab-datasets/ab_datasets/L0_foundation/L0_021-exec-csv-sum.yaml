@@ -1,0 +1,82 @@
+id: L0_021
+layer: L0
+suite: exec
+title: "Sum a CSV column with bash + awk, write result to a file"
+description: |
+  The fixture provides `values.csv` with two columns: `id,amount`,
+  and 8 data rows. Some `amount` values are negative.
+
+  Using a bash command (awk is fine), compute the integer SUM of
+  the `amount` column across all 8 rows, and write the result to
+  `out/sum.txt` with NO trailing newline.
+
+  Canonical pipeline:
+
+      mkdir -p out
+      printf '%s' "$(awk -F, 'NR>1 {s+=$2} END {print s}' values.csv)" \
+          > out/sum.txt
+
+  The correct sum is `109` (12 + 7 + 33 − 5 + 28 + 11 + 4 + 19).
+
+  Failure modes:
+    - including the header row in the sum,
+    - skipping negative values (ignoring the sign),
+    - emitting `109.0` (float) instead of integer,
+    - trailing newline.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_021/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/sum.txt: "109"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 8, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "File `out/sum.txt` contains exactly the bytes `109`."
+  - "Header row not counted; negative values honoured."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - exec
+  - bash
+  - awk
+  - csv
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive

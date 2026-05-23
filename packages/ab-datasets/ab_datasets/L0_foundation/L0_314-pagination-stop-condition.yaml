@@ -1,30 +1,33 @@
 id: L0_314
 layer: L0
 suite: tool-use
-title: "Pagination stop-condition: stop when has_more=false"
+title: "Paginate across local pages, sum item counts, stop when has_more is false"
 description: |
-  The fixture's `fetch_page(cursor)` tool returns paginated data:
-    - page 1: items=[A,B], has_more=true,  cursor="p2"
-    - page 2: items=[C,D], has_more=true,  cursor="p3"
-    - page 3: items=[E],   has_more=false, cursor=null
+  You have access to a bash shell. The fixture seeds three local
+  "pages" under `pages/` that emulate a paginated API:
 
-  The user asks:
+      pages/p1.json -> {"items":["A","B"],"has_more":true,"cursor":"p2"}
+      pages/p2.json -> {"items":["C","D"],"has_more":true,"cursor":"p3"}
+      pages/p3.json -> {"items":["E"],"has_more":false,"cursor":null}
 
-    "Fetch ALL pages of results and tell me the total count of
-     items. Stop when has_more is false. Output ONLY the total
-     integer count as your final message, no prose."
+  Walk the pages starting from `pages/p1.json`, then follow the
+  `cursor` value to load the next page (`pages/p2.json`, then
+  `pages/p3.json`). STOP when you see `"has_more":false`. Count the
+  total items across all visited pages.
 
-  The agent MUST issue exactly 3 calls to `fetch_page`:
-    1. `fetch_page()` or `fetch_page(cursor=null)` → page 1
-    2. `fetch_page(cursor="p2")` → page 2
-    3. `fetch_page(cursor="p3")` → page 3, has_more=false → STOP.
+  Write the total integer count to `out/total.txt` with NO trailing
+  newline. The correct value is `5` (2 + 2 + 1).
 
-  Final assistant message MUST equal `5` exactly (2 + 2 + 1).
+  Skill measured: follow a pagination stop condition (`has_more=false`),
+  do not over-fetch (no `p4.json`), do not under-fetch (must visit all
+  three pages), and emit ONLY the integer count — no listing, no prose,
+  no trailing newline.
 
   Failure modes:
-    - infinite loop (≥4 calls),
-    - early stop (≤2 calls — missing items),
-    - reporting items found (`A,B,C,D,E`) instead of count.
+    - `out/total.txt` missing,
+    - value `2` or `4` (stopped early),
+    - value listing `A,B,C,D,E` (didn't count, dumped items),
+    - trailing newline.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_314/"
 
@@ -38,14 +41,10 @@ scorer_chain:
   - name: pagination_validator
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
       assertions:
-        - kind: tool_call_count
-          tool: "fetch_page"
-          expected: 3
-        - kind: final_assistant_message_equals
-          expected: "5"
-          trim_whitespace: true
+        - kind: workdir_file_content_equals
+          path: "out/total.txt"
+          content: "5"
 
   - name: privacy_check
     kind: privacy_check
@@ -53,19 +52,19 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+    config: { max_tool_calls: 10, pass_threshold: 0.5 }
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 2000, max_tokens: 12000, pass_threshold: 0.4 }
+    config: { target_tokens: 2500, max_tokens: 12000, pass_threshold: 0.4 }
 
   - name: latency_cost
     kind: deterministic
     config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
 
 acceptance_criteria:
-  - "Exactly three `fetch_page` calls."
-  - "Final assistant message equals `5`."
+  - "File `out/total.txt` exists with the single byte `5` (no trailing newline)."
+  - "All three pages visited; no fourth page assumed."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -82,7 +81,7 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - pagination
   - stop-condition
   - deterministic

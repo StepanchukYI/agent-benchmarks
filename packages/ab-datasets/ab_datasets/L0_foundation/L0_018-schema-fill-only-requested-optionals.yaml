@@ -1,0 +1,119 @@
+id: L0_018
+layer: L0
+suite: schema-fill
+title: "Add ONLY the optional fields the user mentioned (not the others)"
+description: |
+  The fixture provides `task.json` and `schema.json`. The schema has
+  two REQUIRED fields:
+
+      title    (string)
+      priority (enum: low / medium / high / critical)
+
+  and three OPTIONAL fields:
+
+      due_date (YYYY-MM-DD)
+      tags     (array of strings)
+      assignee (string)
+
+  `additionalProperties: false` — no fields outside the schema.
+
+  The user says:
+
+      "This is a HIGH priority task. Add a due date of 2026-06-30.
+       Don't bother with tags or assignee for now. Patch task.json."
+
+  Add ONLY:
+    - `priority: "high"` (mandatory missing field),
+    - `due_date: "2026-06-30"` (user requested).
+
+  Do NOT add `tags` or `assignee` — the user explicitly skipped them.
+  Adding optional fields the user did not request is the failure mode.
+
+  Failure modes:
+    - including `tags` and/or `assignee` (over-filling),
+    - omitting `priority` (under-filling — schema rejects),
+    - omitting `due_date`,
+    - using a `priority` other than `high`,
+    - extra fields outside the schema,
+    - mutating `title`.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_018/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: schema_validator
+    kind: schema
+    config:
+      target: "task.json"
+      schema_path: "schema.json"
+
+  - name: task_value_equals
+    kind: schema
+    config:
+      target: "task.json"
+      mode: json_value_equals
+      additional_properties_forbidden: true
+      expected:
+        title: "Migrate catalog to new schema"
+        priority: "high"
+        due_date: "2026-06-30"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 15
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 12000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 25000
+      max_ms: 150000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "`task.json` validates against `schema.json`."
+  - "Exactly three keys present: `title`, `priority`, `due_date`."
+  - "No `tags`, no `assignee` (user did not request them)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - schema-fill
+  - json-schema
+  - optional-fields
+  - minimal-edit
+  - deterministic
+  - reasoning-sensitive

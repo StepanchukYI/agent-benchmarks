@@ -6,6 +6,7 @@ import contextlib
 import json
 import platform
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -124,6 +125,26 @@ def _resolve_claude_version() -> str:
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
     return "claude-code-cli@unknown"
+
+
+def _build_stub_mcp_config(tools_json_path: str) -> str:
+    """Return an mcp_config JSON string that launches the stub MCP server for tools_json_path.
+
+    The stub server is the _stub_mcp module run via the same Python interpreter
+    that is running the harness. This ensures it's always available without any
+    extra install step.
+    """
+    stub_module = str(Path(__file__).parent / "_stub_mcp.py")
+    config = {
+        "mcpServers": {
+            "ab-stub": {
+                "command": sys.executable,
+                "args": [stub_module, tools_json_path],
+                "env": {},
+            }
+        }
+    }
+    return json.dumps(config)
 
 
 class ClaudeCodeRunner(BaseRunner):
@@ -417,16 +438,28 @@ class ClaudeCodeRunner(BaseRunner):
 
         before_snapshot = snapshot(workdir)
 
-        # Stage an empty mcp-config alongside the IsolatedEnv tempdir so
+        # Stage an MCP config alongside the IsolatedEnv tempdir so
         # --strict-mcp-config has a valid file to point at. Cleanup is
         # handled by IsolatedEnv.cleanup().
-        empty_mcp_path = self._isolated_env.fake_home / "mcp-empty.json"
+        #
+        # If the task's workdir contains a tools.json, register the stub MCP
+        # server so the agent can call those tools and the calls land in the
+        # trajectory for tool_call_validator scoring. Otherwise, fall back to
+        # an empty config (no tools exposed).
+        mcp_config_path = self._isolated_env.fake_home / "mcp-config.json"
         try:
-            empty_mcp_path.write_text('{"mcpServers": {}}', encoding="utf-8")
+            tools_json = workdir / "tools.json"
+            if tools_json.is_file():
+                mcp_config_path.write_text(
+                    _build_stub_mcp_config(str(tools_json.resolve())),
+                    encoding="utf-8",
+                )
+            else:
+                mcp_config_path.write_text('{"mcpServers": {}}', encoding="utf-8")
         except OSError:
-            empty_mcp_path = None  # type: ignore[assignment]
+            mcp_config_path = None  # type: ignore[assignment]
         argv = self._build_argv(
-            empty_mcp_config_path=str(empty_mcp_path) if empty_mcp_path else None,
+            empty_mcp_config_path=str(mcp_config_path) if mcp_config_path else None,
             bare=bare,
         )
         self._proc = subprocess.Popen(

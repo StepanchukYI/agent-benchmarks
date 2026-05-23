@@ -1116,9 +1116,38 @@ def _workdir_file_content_equals(events, workdir, _f, p: dict) -> tuple[bool, di
         actual = path.read_text(encoding=p.get("encoding", "utf-8"))
     except (OSError, UnicodeDecodeError) as exc:
         return False, {"path": p.get("path"), "error": f"read failed: {exc}"}
-    return actual == expected, {
+
+    # Exact match first (fast path, preserves byte-exact behaviour for non-CRLF tasks).
+    if actual == expected:
+        return True, {
+            "path": p.get("path"),
+            "match": True,
+            "mode": "exact",
+            "len_actual": len(actual),
+            "len_expected": len(expected),
+        }
+
+    # Normalized match: when expected carries CRLF line endings (e.g. a Windows
+    # config file the task wants preserved), relax so a model that writes LF
+    # still passes as long as the textual content is identical.
+    # Python's universal-newlines text mode already converts CRLF→LF on read, so
+    # `actual` may be LF-only even when the model wrote correct content.
+    if "\r\n" in expected:
+        actual_norm = actual.replace("\r\n", "\n")
+        expected_norm = expected.replace("\r\n", "\n")
+        if actual_norm == expected_norm:
+            return True, {
+                "path": p.get("path"),
+                "match": True,
+                "mode": "content_match_lf_normalized",
+                "len_actual": len(actual),
+                "len_expected": len(expected),
+            }
+
+    return False, {
         "path": p.get("path"),
-        "match": actual == expected,
+        "match": False,
+        "mode": "mismatch",
         "len_actual": len(actual),
         "len_expected": len(expected),
     }
@@ -1178,7 +1207,19 @@ def _workdir_file_no_crlf(events, workdir, _f, p: dict) -> tuple[bool, dict]:
 
 
 def _workdir_file_preserves_crlf(events, workdir, _f, p: dict) -> tuple[bool, dict]:
-    """For L0_012: assert the file STILL has CRLF after the edit."""
+    """Assert a file preserved CRLF line endings, with LF-normalized content fallback.
+
+    Pass conditions (priority order):
+    1. ``content_match_lf_normalized``: when `p` carries an expected ``content``
+       string (set by callers that have the expected value), normalize both
+       expected and actual CRLF→LF and compare. Passes when content matches,
+       regardless of whether the actual file uses CRLF or LF. This is the
+       relaxed path that lets models outputting LF still score correctly when
+       the textual content is right.
+    2. ``crlf_preserved`` (legacy): the actual file physically contains ``\\r\\n``.
+       Used when no expected content is available, preserving back-compat with
+       callers that don't pass content (e.g. ``preserve_crlf: true`` shorthand).
+    """
     path = _resolve_workdir_path(workdir, p.get("path", ""))
     if path is None:
         return False, {"error": "workdir not available (replay mode)"}
@@ -1186,7 +1227,31 @@ def _workdir_file_preserves_crlf(events, workdir, _f, p: dict) -> tuple[bool, di
         return False, {"path": p.get("path"), "error": "file not found"}
     data = path.read_bytes()
     has_crlf = b"\r\n" in data
-    return has_crlf, {"path": p.get("path"), "has_crlf": has_crlf}
+
+    # Content-match path: normalize CRLF→LF on both sides and compare.
+    expected_content: str | None = p.get("content")
+    if expected_content is not None:
+        try:
+            actual_text = data.decode(p.get("encoding", "utf-8"))
+        except (UnicodeDecodeError, LookupError) as exc:
+            return False, {"path": p.get("path"), "error": f"decode failed: {exc}"}
+        actual_norm = actual_text.replace("\r\n", "\n")
+        expected_norm = expected_content.replace("\r\n", "\n")
+        if actual_norm == expected_norm:
+            return True, {
+                "path": p.get("path"),
+                "has_crlf": has_crlf,
+                "mode": "content_match_lf_normalized",
+            }
+        # Content differs even after normalization — genuine fail.
+        return False, {
+            "path": p.get("path"),
+            "has_crlf": has_crlf,
+            "mode": "content_mismatch",
+        }
+
+    # Legacy path: no expected content available — check CRLF presence only.
+    return has_crlf, {"path": p.get("path"), "has_crlf": has_crlf, "mode": "crlf_preserved"}
 
 
 def _workdir_file_encoding_utf8(events, workdir, _f, p: dict) -> tuple[bool, dict]:

@@ -190,17 +190,20 @@ def ingest_runs(
 
         suite = str(run.metadata.get("suite") or run.scores.get("suite") or _suite_from_task(run.task_id))
         score_total = float(run.scores.get("total_score") or 0.0)
-        passed = _compute_passed(run.scores.get("verdicts") or [])
-        # Legacy status: derive from the top-level scores["pass"] bool exactly as
-        # pre-B1 did — decoupled from the new tri-state `passed` (None = not measured).
-        status_value = "passed" if bool(run.scores.get("pass")) else "failed"
-
         # Per-pillar scores live in scores.json["per_pillar"] (written by the
         # local runner; key names match SCORER_PILLAR_MAP values). A key is
         # ABSENT when the task carried no scorer for that pillar — we store
         # None (not 0.0) so the leaderboard can tell "not measured" apart from
         # a genuine measured 0.0. A present value (including 0.0) is kept as-is.
         per_pillar = run.scores.get("per_pillar") or {}
+        passed = _compute_passed(
+            run.scores.get("verdicts") or [],
+            total_score=run.scores.get("total_score"),
+            per_pillar=per_pillar,
+        )
+        # Legacy status: derive from the top-level scores["pass"] bool exactly as
+        # pre-B1 did — decoupled from the new tri-state `passed` (None = not measured).
+        status_value = "passed" if bool(run.scores.get("pass")) else "failed"
         # Cost + latency come from the trajectory's run_end / cost_usd
         # aggregate — older ingest code read from metadata.yaml where they
         # weren't present. Fall back to scores.json fields too.
@@ -269,18 +272,41 @@ def ingest_runs(
     return inserted, skipped
 
 
-def _compute_passed(verdicts: list) -> bool | None:
-    """Derive per-task pass flag from individual scorer verdicts.
+def _compute_passed(
+    verdicts: list,
+    total_score: float | None = None,
+    per_pillar: dict | None = None,
+) -> bool | None:
+    """Derive per-task pass flag from aggregate score or individual scorer verdicts.
 
-    Returns:
-      True  — every verdict with a decided pass value (not None) passed.
-      False — at least one verdict has pass=False.
-      None  — zero decided verdicts (no scorers ran or all returned None).
+    Semantics (priority order):
+    1. ``total_score`` present → passed = total_score >= 0.5.
+       This relaxes the old strict-AND logic: a task that scores 0.98 overall
+       but has one marginal scorer with pass=False now correctly reports passed.
+    2. ``per_pillar["correctness"]`` present (no total_score) →
+       passed = per_pillar["correctness"] >= 0.5.
+    3. Neither aggregate available → fall back to strict-AND across decided
+       verdicts (back-compat for old scores.json that predate total_score).
+    4. Zero decided verdicts and no aggregate → return None ("not measured").
+
+    Individual scorer pass/fail values are intentionally left unchanged so the
+    drill view can still show which specific scorer failed.
 
     The verdict wire format uses "pass" as the key (Python reserved word;
     Pydantic aliases pass_ ↔ "pass"). We read it defensively from the raw
     dict so this helper works on parsed dicts from scores.json.
     """
+    # Priority 1: use total_score if available.
+    if total_score is not None:
+        return float(total_score) >= 0.5
+
+    # Priority 2: use per_pillar["correctness"] as a proxy when total_score is absent.
+    if per_pillar is not None:
+        correctness = per_pillar.get("correctness")
+        if correctness is not None:
+            return float(correctness) >= 0.5
+
+    # Priority 3 / 4: strict-AND fallback across decided verdicts.
     decided: list[bool] = []
     for v in verdicts:
         if not isinstance(v, dict):

@@ -39,11 +39,18 @@ EXPECT_REASONING_SENSITIVE: frozenset[str] = frozenset({
     "L0_104", "L0_105", "L0_106", "L0_107", "L0_108",
     # multi-hop, aggregation
     "L0_109", "L0_110", "L0_201", "L0_202",
+    # NIAH backlog: multi-needle / deep-tail / multi-value / adversarial
+    "L0_120", "L0_121", "L0_122", "L0_123", "L0_124",
     # tool-use judgement / mapping / multi-turn / retry / disambiguation
+    # (rewritten to bash-tool-friendly form — see L0_301..L0_314 in ab-fixq)
     "L0_303", "L0_304", "L0_305", "L0_306", "L0_307", "L0_308",
     "L0_309", "L0_310", "L0_311", "L0_312", "L0_313", "L0_314", "L0_315",
     # instruction following: nested IF, exact count, multi-constraint
     "L0_401", "L0_402", "L0_404", "L0_405", "L0_406", "L0_407",
+    # schema-fill that requires reasoning (nested / array / optional / conditional)
+    "L0_016", "L0_017", "L0_018", "L0_019",
+    # exec / extract that requires reasoning
+    "L0_020", "L0_023", "L0_024", "L0_025",
     # extract & file-ops with reasoning
     "L0_005", "L0_011", "L0_012", "L0_013", "L0_014", "L0_015",
     # faithfulness: abstain, contradictions, attribution, draft-audit
@@ -54,16 +61,23 @@ EXPECT_REASONING_SENSITIVE: frozenset[str] = frozenset({
     # reasoning-trap suite (all are reasoning-sensitive by construction)
     "L0_701", "L0_702", "L0_703", "L0_704", "L0_705",
     "L0_706", "L0_707", "L0_708", "L0_709", "L0_710",
+    "L0_711", "L0_712", "L0_713", "L0_714", "L0_715",
 })
 
 EXPECT_BYTE_EXACT: frozenset[str] = frozenset({
     "L0_001", "L0_002", "L0_005",
     "L0_006", "L0_007", "L0_010",
     "L0_011", "L0_012", "L0_013", "L0_014", "L0_015",
+    # new exec / extract producing byte-exact outputs
+    "L0_020", "L0_021", "L0_022", "L0_023", "L0_024", "L0_025",
     "L0_101", "L0_102", "L0_103",
     "L0_104", "L0_105", "L0_106", "L0_107", "L0_108", "L0_109", "L0_110",
+    # NIAH backlog expansion (multi-needle / deep-tail / multi-value / adversarial)
+    "L0_120", "L0_121", "L0_122", "L0_123", "L0_124",
     "L0_201", "L0_202",
-    "L0_314",
+    # tool-use rewrites (now byte-exact via workdir file checks)
+    "L0_301", "L0_302", "L0_303", "L0_305", "L0_307", "L0_308",
+    "L0_309", "L0_310", "L0_311", "L0_312", "L0_313", "L0_314",
     "L0_401", "L0_402", "L0_403", "L0_404", "L0_405", "L0_406",
     "L0_502", "L0_505",
     "L0_506", "L0_507", "L0_508", "L0_509", "L0_510",
@@ -71,6 +85,7 @@ EXPECT_BYTE_EXACT: frozenset[str] = frozenset({
     "L0_609", "L0_615",
     "L0_701", "L0_702", "L0_703", "L0_704", "L0_705",
     "L0_706", "L0_707", "L0_708", "L0_709", "L0_710",
+    "L0_711", "L0_712", "L0_713", "L0_714", "L0_715",
 })
 
 EXPECT_OUTPUT_NORM: frozenset[str] = EXPECT_BYTE_EXACT  # always co-occur
@@ -78,6 +93,8 @@ EXPECT_OUTPUT_NORM: frozenset[str] = EXPECT_BYTE_EXACT  # always co-occur
 EXPECT_CONTEXT_WINDOW_SENSITIVE: frozenset[str] = frozenset({
     "L0_101", "L0_102", "L0_103",
     "L0_104", "L0_105", "L0_106", "L0_107", "L0_108", "L0_109", "L0_110",
+    # NIAH backlog expansion
+    "L0_120", "L0_121", "L0_122", "L0_123", "L0_124",
     "L0_201", "L0_202",
 })
 

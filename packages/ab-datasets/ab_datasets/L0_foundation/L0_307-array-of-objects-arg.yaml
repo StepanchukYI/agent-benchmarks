@@ -1,26 +1,38 @@
 id: L0_307
 layer: L0
 suite: tool-use
-title: "Tool call with array-of-objects argument: structured payload"
+title: "Emit array-of-objects form payload with structured fields"
 description: |
-  The fixture exposes `submit_form(form_id, fields)` where `fields`
-  is an array of `{name, value}` objects. The user prompt:
+  You have access to a bash shell. The form-submission record has the
+  shape `{form_id: string, fields: [{name, value}, ...]}` where every
+  `value` MUST be a STRING (even when the user-facing value looks
+  numeric).
 
-    "Submit form `signup-2026` with fields:
-       email = alice@example.com
-       full_name = Alice Example
-       age = 30"
+  The user request:
 
-  The agent MUST issue exactly one call to `submit_form` with
-  `form_id="signup-2026"` and a `fields` array of EXACTLY three
-  objects, in any order, with `value` as STRINGS (note: `age`
-  becomes the string `"30"`, not integer 30, per the schema).
+      Submit form `signup-2026` with fields:
+        email     = alice@example.com
+        full_name = Alice Example
+        age       = 30
+
+  Create the file `out/form.json` whose contents are exactly the
+  following bytes, byte-for-byte (no whitespace, no trailing newline,
+  keys and items in the order shown):
+
+      {"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}' > out/form.json
+
+  The skill being measured: respect the array-of-objects schema and
+  send `age.value` as the STRING `"30"` (not the integer `30`).
 
   Failure modes:
-    - sending `fields` as a flat object (`{email:..., full_name:...}`),
+    - flattening `fields` to a flat object,
     - missing any of the three fields,
-    - sending `age: 30` as a number instead of `"30"`,
-    - extra fields not in the user prompt.
+    - sending `age.value` as the number 30 instead of the string `"30"`,
+    - extra fields, key reordering, or whitespace.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_307/"
 
@@ -35,27 +47,11 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: tool_call_validator
+  - name: file_diff
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
-      assertions:
-        - kind: tool_call_count
-          tool: "submit_form"
-          expected: 1
-        - kind: tool_args_match_schema
-          tool: "submit_form"
-        - kind: tool_arg_equal
-          tool: "submit_form"
-          arg: "form_id"
-          expected: "signup-2026"
-        - kind: tool_arg_array_set_equal
-          tool: "submit_form"
-          arg: "fields"
-          expected:
-            - { name: "email",     value: "alice@example.com" }
-            - { name: "full_name", value: "Alice Example" }
-            - { name: "age",       value: "30" }
+      expected:
+        out/form.json: '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}'
 
   - name: privacy_check
     kind: privacy_check
@@ -65,13 +61,13 @@ scorer_chain:
   - name: tool_skill
     kind: deterministic
     config:
-      max_tool_calls: 3
-      pass_threshold: 0.6
+      max_tool_calls: 8
+      pass_threshold: 0.5
 
   - name: context_efficiency
     kind: deterministic
     config:
-      target_tokens: 1500
+      target_tokens: 2000
       max_tokens: 10000
       pass_threshold: 0.4
 
@@ -83,10 +79,9 @@ scorer_chain:
       pass_threshold: 0.4
 
 acceptance_criteria:
-  - "Exactly one call to `submit_form` is issued."
-  - "Argument `form_id` equals `signup-2026`."
-  - "Argument `fields` is an array of exactly three {name, value} objects."
-  - "Field `age.value` is the STRING `\"30\"` (not number)."
+  - "File `out/form.json` exists with the exact bytes shown."
+  - "`fields` is an array of three `{name,value}` objects in the order shown."
+  - "`age.value` is the STRING `\"30\"` (not number)."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -103,9 +98,11 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - structured-args
   - array-of-objects
   - deterministic
   - smoke-test
   - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

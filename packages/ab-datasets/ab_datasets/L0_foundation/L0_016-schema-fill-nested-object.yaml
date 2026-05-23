@@ -1,0 +1,107 @@
+id: L0_016
+layer: L0
+suite: schema-fill
+title: "Fill a nested-object schema: add the missing `owner` block"
+description: |
+  The fixture provides `profile.json` and `schema.json`. The schema
+  requires two top-level keys, `id` and `owner`. The `owner` is itself
+  an object with two required fields: `name` (non-empty string) and
+  `team` (enum: one of `platform`, `data`, `infra`).
+  `additionalProperties: false` at both levels — no extra keys.
+
+  The user info:
+
+      "The owner is Mira Cornwall on the platform team. Patch
+       profile.json so it passes schema.json."
+
+  Edit `profile.json` minimally to add a valid `owner` object. The
+  existing `id` field MUST be preserved unchanged. No extra fields
+  may be added at any level.
+
+  Failure modes:
+    - `owner` flattened to `owner_name` / `owner_team`,
+    - `team` not in the enum,
+    - extra fields like `email` / `role`,
+    - `id` mutated or removed.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_016/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: schema_validator
+    kind: schema
+    config:
+      target: "profile.json"
+      schema_path: "schema.json"
+
+  - name: profile_value_equals
+    kind: schema
+    config:
+      target: "profile.json"
+      mode: json_value_equals
+      additional_properties_forbidden: true
+      expected:
+        id: "repo-1042"
+        owner:
+          name: "Mira Cornwall"
+          team: "platform"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 15
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 12000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 25000
+      max_ms: 150000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "`profile.json` validates against `schema.json`."
+  - "Top-level keys are exactly `id` and `owner`; nested keys exactly `name` and `team`."
+  - "Values: id=repo-1042, owner.name=Mira Cornwall, owner.team=platform."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - schema-fill
+  - json-schema
+  - nested-object
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive

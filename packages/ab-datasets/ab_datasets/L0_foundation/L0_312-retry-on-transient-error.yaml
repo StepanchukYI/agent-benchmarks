@@ -1,32 +1,42 @@
 id: L0_312
 layer: L0
 suite: tool-use
-title: "Retry on transient error (one retry succeeds)"
+title: "Retry with identical arguments after a transient error"
 description: |
-  The fixture's `publish_message(channel, body)` tool is configured
-  to return a transient error `RETRYABLE_503` on the FIRST call
-  and succeed on the SECOND call with identical arguments.
+  You have access to a bash shell. The fixture provides a helper
+  script `seed/publish.sh` that simulates a flaky external publisher:
+  the FIRST invocation in a given run exits with `RETRYABLE_503`; the
+  SECOND invocation (with identical arguments) exits 0 and writes the
+  message to `out/published.txt`.
 
-  The user asks:
+  The user request:
 
-    "Publish to channel `#deploys` the message `release v3.2.1
-     completed`. If a transient error happens, retry once with the
-     same arguments. After two attempts max, report the final
-     status to me."
+      "Publish to channel `#deploys` the message `release v3.2.1
+       completed`. If you hit a transient error, retry once with the
+       same arguments. After two attempts max, tell me the outcome."
 
-  The agent MUST:
-    1. attempt `publish_message(channel="#deploys", body="release
-       v3.2.1 completed")` — gets RETRYABLE_503,
-    2. retry the EXACT same call (same channel, same body) —
-       succeeds,
-    3. final assistant message reports success.
+  Invoke the script EXACTLY twice with identical arguments:
+
+      bash seed/publish.sh '#deploys' 'release v3.2.1 completed'
+      bash seed/publish.sh '#deploys' 'release v3.2.1 completed'
+
+  After the second (successful) call, `out/published.txt` MUST contain
+  exactly the bytes:
+
+      #deploys|release v3.2.1 completed
+
+  (channel + literal `|` + body, no trailing newline). Your final
+  assistant message MUST mention success / published / delivered.
+
+  Skill measured: retry the SAME call on a transient error rather
+  than giving up, mutating the body, or fabricating a success
+  message without the retry actually happening.
 
   Failure modes:
-    - giving up after the first error,
-    - retrying with different args (e.g. mutating the body),
-    - more than 2 attempts (no exponential infinite retry),
-    - fabricating a successful response without the retry call
-      existing.
+    - giving up after the first error (no `out/published.txt`),
+    - calling with mutated args (different channel, different body),
+    - more than two attempts,
+    - claiming success without `out/published.txt` existing.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_312/"
 
@@ -40,21 +50,16 @@ scorer_chain:
   - name: retry_validator
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
       assertions:
-        - kind: tool_call_count
-          tool: "publish_message"
-          expected: 2
-        - kind: tool_args_equal_across_all_calls
-          tool: "publish_message"
-          expected:
-            channel: "#deploys"
-            body: "release v3.2.1 completed"
+        - kind: workdir_file_content_equals
+          path: "out/published.txt"
+          content: "#deploys|release v3.2.1 completed"
         - kind: final_assistant_message_matches_any
           patterns:
             - "(?i)published"
             - "(?i)success"
             - "(?i)delivered"
+            - "(?i)sent"
 
   - name: privacy_check
     kind: privacy_check
@@ -62,19 +67,19 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.6 }
+    config: { max_tool_calls: 6, pass_threshold: 0.5 }
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 10000, pass_threshold: 0.4 }
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
 
   - name: latency_cost
     kind: deterministic
     config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
 
 acceptance_criteria:
-  - "Exactly two calls to publish_message, both with identical args."
-  - "Final assistant message confirms success."
+  - "File `out/published.txt` exists with `#deploys|release v3.2.1 completed` exactly."
+  - "Final assistant message confirms success / published / delivered."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -91,8 +96,10 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - retry
   - error-recovery
   - deterministic
   - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

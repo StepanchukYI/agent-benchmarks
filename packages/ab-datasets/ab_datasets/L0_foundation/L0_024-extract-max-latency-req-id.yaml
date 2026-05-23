@@ -1,0 +1,88 @@
+id: L0_024
+layer: L0
+suite: extract
+title: "Extract the req_id of the slowest request from an app log"
+description: |
+  The fixture provides `app.log` with 8 structured log lines, each
+  carrying `req_id=<id>` and `latency_ms=<int>` fields among other
+  key=value pairs.
+
+  The user asks:
+
+      "Read app.log. Across ALL lines (regardless of log level or
+       status), which request had the highest `latency_ms`? Output
+       ONLY that request's `req_id` value (just the id, no prefix,
+       no trailing newline)."
+
+  Inspect the rows: the line with the highest `latency_ms` is the
+  `ERROR http req_id=r-9a5 ... latency_ms=2104` row → the answer is
+  `r-9a5`.
+
+  Output ONLY the literal `r-9a5` as the final assistant message.
+
+  Failure modes:
+    - returning `r-9a7` (second-slowest at 872 ms),
+    - emitting `req_id=r-9a5` (kept the prefix),
+    - emitting the numeric latency instead of the id,
+    - filtering to ERROR only (still happens to give r-9a5 but is
+      a different reasoning path — the spec asks across ALL lines).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_024/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "app.log"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "r-9a5"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Final assistant message equals `r-9a5` exactly (just the id, no prefix)."
+  - "Compared across all rows of the log (not filtered to ERROR)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - extract
+  - log-parsing
+  - argmax
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive
+  - reasoning-sensitive

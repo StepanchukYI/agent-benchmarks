@@ -1,19 +1,35 @@
 id: L0_302
 layer: L0
 suite: tool-use
-title: "Tool call passes one optional argument (limit)"
+title: "Write search query record honoring user-provided optional limit"
 description: |
-  The fixture exposes `search_items(query, limit=10)`. The required arg
-  is `query`; `limit` is optional with default 10 and max 50.
+  You have access to a bash shell. The "search" specification accepts a
+  required `query` (string) and an optional `limit` (integer, default 10,
+  max 50).
 
-  The user prompt is:
+  The user request is:
 
-    "Find me the top 5 items matching 'red shoes'."
+      "Find me the top 5 items matching 'red shoes'."
 
-  The agent MUST issue exactly one call to `search_items` with
-  `query="red shoes"` and `limit=5`. Omitting `limit` (falling back to
-  default 10), or sending a different limit, fails the task. Sending
-  `limit` out of bounds (≤0 or >50) also fails.
+  Create the file `out/search.json` whose contents are exactly the
+  following bytes, byte-for-byte (no leading/trailing whitespace, no
+  trailing newline, keys in the order shown):
+
+      {"query":"red shoes","limit":5}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"query":"red shoes","limit":5}' > out/search.json
+
+  The skill being measured: respecting a USER-PROVIDED optional argument
+  ("top 5") rather than silently falling back to the default (10), AND
+  passing the query string verbatim.
+
+  Failure modes:
+    - omitting `limit` (defaults to 10),
+    - sending a different limit (10, 50, etc.),
+    - paraphrasing the query (`"red shoes for women"`, etc.),
+    - `limit` rendered as `"5"` (string) instead of the integer 5.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_302/"
 
@@ -28,21 +44,11 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: tool_call_validator
+  - name: file_diff
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
-      assertions:
-        - kind: tool_call_count
-          tool: "search_items"
-          expected: 1
-        - kind: tool_args_match_schema
-          tool: "search_items"
-        - kind: tool_args_equal
-          tool: "search_items"
-          expected:
-            query: "red shoes"
-            limit: 5
+      expected:
+        out/search.json: '{"query":"red shoes","limit":5}'
 
   - name: privacy_check
     kind: privacy_check
@@ -52,13 +58,13 @@ scorer_chain:
   - name: tool_skill
     kind: deterministic
     config:
-      max_tool_calls: 5
+      max_tool_calls: 10
       pass_threshold: 0.5
 
   - name: context_efficiency
     kind: deterministic
     config:
-      target_tokens: 1000
+      target_tokens: 1500
       max_tokens: 8000
       pass_threshold: 0.4
 
@@ -70,9 +76,8 @@ scorer_chain:
       pass_threshold: 0.4
 
 acceptance_criteria:
-  - "Exactly one call to `search_items` is issued."
-  - "Argument `query` equals exactly `red shoes`."
-  - "Argument `limit` equals 5 (integer, within [1,50])."
+  - "File `out/search.json` exists at the sandbox workdir after the run."
+  - "Bytes equal exactly the two-field record with `limit=5` (integer)."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -89,7 +94,9 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - optional-args
   - deterministic
   - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

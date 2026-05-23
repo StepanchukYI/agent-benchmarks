@@ -1,42 +1,53 @@
 id: L0_315
 layer: L0
 suite: tool-use
-title: "Encode binary as base64 argument (correct charset, lowercase content_type)"
+title: "Encode binary payload as base64 in a record (correct charset, lowercase content_type)"
 description: |
-  The fixture's `upload_blob(filename, content_type, data)` requires
-  `data` to be valid base64 and `content_type` to match
-  `^[a-z0-9.+\-/]+$` (lowercase only).
+  You have access to a bash shell. The "upload blob" record has three
+  fields:
 
-  The user prompt:
+      filename     — string
+      content_type — string matching `^[a-z0-9.+\-/]+$` (lowercase only)
+      data         — standard base64 of the raw file bytes
 
-    "Upload a file named `hello.txt` of MIME type `text/plain`
-     containing the exact UTF-8 string `Hello, blob!`."
+  The user request:
 
-  Compute base64(b"Hello, blob!") = `SGVsbG8sIGJsb2IhCg==` if a
-  trailing newline is included, OR `SGVsbG8sIGJsb2Ih` (no newline,
-  12 raw bytes → 16 base64 chars + 0 pad → actually
-  `SGVsbG8sIGJsb2Ih` is 16 chars, b"Hello, blob!" is 12 bytes,
-  base64 → `SGVsbG8sIGJsb2Oh` — let me recompute).
+      "Upload a file named `hello.txt` of MIME type `text/plain`
+       containing the exact UTF-8 string `Hello, blob!` (12 bytes,
+       NO trailing newline)."
 
-  Reference: base64(b"Hello, blob!") = `SGVsbG8sIGJsb2Oh`.
+  Compute the standard base64 of the 12 raw bytes `Hello, blob!`.
+  Standard base64 of 12 bytes is 16 chars with no padding:
 
-  Actually we will pin the canonical answer: the body is exactly
-  the 12 UTF-8 bytes `Hello, blob!` (no trailing newline) and the
-  expected base64 is `SGVsbG8sIGJsb2Oh`.
+      base64(b"Hello, blob!") = "SGVsbG8sIGJsb2Ih"
 
-  The agent MUST issue exactly one call:
+  Create the file `out/upload.json` whose contents are exactly the
+  following bytes, byte-for-byte (no whitespace, no trailing newline,
+  keys in the order shown):
 
-      upload_blob(
-        filename="hello.txt",
-        content_type="text/plain",
-        data="SGVsbG8sIGJsb2Oh"
-      )
+      {"filename":"hello.txt","content_type":"text/plain","data":"SGVsbG8sIGJsb2Ih"}
+
+  A one-shot pipeline (handles macOS and GNU `base64`):
+
+      mkdir -p out
+      DATA=$(printf '%s' 'Hello, blob!' | base64 | tr -d '\n')
+      printf '{"filename":"hello.txt","content_type":"text/plain","data":"%s"}' \
+          "$DATA" > out/upload.json
+
+  macOS `base64` appends a trailing newline; `tr -d '\n'` strips it.
+  GNU `base64 -w0` is an alternative.
+
+  Skill measured: produce a record that satisfies the LOWERCASE
+  `content_type` constraint AND uses standard (not URL-safe) base64
+  WITHOUT any trailing newline inside the `data` field.
 
   Failure modes:
-    - `content_type="Text/Plain"` (case violates pattern),
-    - data is the raw string `Hello, blob!` instead of base64,
-    - extra trailing `\n` in the encoded payload,
-    - using URL-safe base64 variant.
+    - `content_type` not lowercase (e.g. `Text/Plain`),
+    - `data` is the raw string `Hello, blob!` instead of base64,
+    - URL-safe base64 variant (no `+`/`/` in this payload, so the
+      digest happens to be the same — but the spec pins standard),
+    - trailing `\n` inside the JSON `data` value,
+    - extra keys, key reorder, or any other byte drift.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_315/"
 
@@ -47,22 +58,11 @@ config:
   requires: { skills: [], mcps: [], vault_state: {} }
 
 scorer_chain:
-  - name: base64_args_validator
+  - name: file_diff
     kind: deterministic
     config:
-      tool_schema_path: "tools.json"
-      assertions:
-        - kind: tool_call_count
-          tool: "upload_blob"
-          expected: 1
-        - kind: tool_args_match_schema
-          tool: "upload_blob"
-        - kind: tool_args_equal
-          tool: "upload_blob"
-          expected:
-            filename: "hello.txt"
-            content_type: "text/plain"
-            data: "SGVsbG8sIGJsb2Oh"
+      expected:
+        out/upload.json: '{"filename":"hello.txt","content_type":"text/plain","data":"SGVsbG8sIGJsb2Ih"}'
 
   - name: privacy_check
     kind: privacy_check
@@ -70,7 +70,7 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+    config: { max_tool_calls: 8, pass_threshold: 0.5 }
 
   - name: context_efficiency
     kind: deterministic
@@ -81,9 +81,9 @@ scorer_chain:
     config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
 
 acceptance_criteria:
-  - "Exactly one call to `upload_blob`."
-  - "data equals `SGVsbG8sIGJsb2Oh` (standard base64 of b'Hello, blob!')."
-  - "content_type is lowercase `text/plain` (schema-valid)."
+  - "File `out/upload.json` exists with the exact bytes shown."
+  - "`data` equals standard base64 `SGVsbG8sIGJsb2Ih` (no trailing newline)."
+  - "`content_type` is lowercase `text/plain` (schema-valid)."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -100,9 +100,11 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - tool-use
-  - bfcl
+  - bash-friendly
   - base64
   - encoding
   - frontier
   - deterministic
   - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

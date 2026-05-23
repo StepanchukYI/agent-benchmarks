@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "owner"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^repo-[0-9]+$" },
+    "owner": {
+      "type": "object",
+      "required": ["name", "team"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "team": { "type": "string", "enum": ["platform", "data", "infra"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
