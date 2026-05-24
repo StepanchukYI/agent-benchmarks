@@ -32,6 +32,9 @@ def db_engine(tmp_path: Path) -> Iterator[object]:
         app.dependency_overrides.pop(get_session, None)
 
 
+_PR_COUNTER: dict[str, int] = {}
+
+
 def _make_tr(
     session: Session,
     *,
@@ -39,10 +42,20 @@ def _make_tr(
     suite: str,
     passed: bool | None,
     score_correctness: float = 0.8,
+    task_id: str | None = None,
 ) -> None:
-    """Insert a minimal TaskResult without a Submission (local-run path)."""
+    """Insert a minimal TaskResult without a Submission (local-run path).
+
+    Each call uses a unique ``task_id`` by default. The leaderboard query
+    dedups (bucket, task_id), so N contributions to one bucket need N distinct
+    task_ids (otherwise dedup collapses them to 1).
+    """
+    if task_id is None:
+        n = _PR_COUNTER.get(model, 0) + 1
+        _PR_COUNTER[model] = n
+        task_id = f"L0_{n:03d}"
     tr = TaskResult(
-        task_id="L0_001",
+        task_id=task_id,
         suite=suite,
         model=model,
         tier="T0",
@@ -127,10 +140,15 @@ def _make_tr_with_sub(
     *,
     sub: Submission,
     passed: bool | None,
+    task_id: str | None = None,
 ) -> None:
+    if task_id is None:
+        n = _PR_COUNTER.get("__sub__", 0) + 1
+        _PR_COUNTER["__sub__"] = n
+        task_id = f"L0_{n:03d}"
     tr = TaskResult(
         submission_id=sub.id,
-        task_id="L0_001",
+        task_id=task_id,
         suite="L0_smoke",
         model="m1",
         tier="T0",

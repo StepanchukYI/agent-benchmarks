@@ -37,6 +37,9 @@ def db_engine(tmp_path: Path) -> Iterator[object]:
         app.dependency_overrides.pop(get_session, None)
 
 
+_TR_COUNTER: dict[str, int] = {}
+
+
 def _make_tr(
     session: Session,
     *,
@@ -46,10 +49,21 @@ def _make_tr(
     score_tool_skill: float | None = None,
     score_memory: float | None = None,
     score_latency: float | None = None,
+    task_id: str | None = None,
 ) -> None:
-    """Insert a TaskResult with fine-grained per-pillar control."""
+    """Insert a TaskResult with fine-grained per-pillar control.
+
+    Each call gets a unique ``task_id`` by default. The leaderboard query now
+    dedups (bucket, task_id) keeping latest, so tests that want N distinct
+    contributions in one bucket need N distinct task_ids — otherwise dedup
+    collapses them to 1.
+    """
+    if task_id is None:
+        n = _TR_COUNTER.get(model, 0) + 1
+        _TR_COUNTER[model] = n
+        task_id = f"L0_{n:03d}"
     tr = TaskResult(
-        task_id="L0_001",
+        task_id=task_id,
         suite="L0_smoke",
         model=model,
         tier="T0",

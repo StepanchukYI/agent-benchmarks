@@ -393,38 +393,40 @@ def test_ingest_persists_harness_and_effort(
     assert tr.effort == "medium"
 
 
-# ── _compute_passed aggregate semantics (B2) ────────────────────────────────
+# ── _compute_passed strict-AND semantics (B2 reverted) ──────────────────────
 
-def test_compute_passed_total_score_high_overrides_failing_verdict() -> None:
-    """Case 1: total_score=0.98 with one failing verdict → passed=True.
+def test_compute_passed_total_score_does_not_override_failing_verdict() -> None:
+    """B2 revert: total_score=0.98 with one failing verdict → passed=False.
 
-    Before B2 the strict-AND rule made this task fail because one scorer
-    returned pass=False. The new aggregate rule respects the 0.98 total_score
-    and correctly reports passed=True.
+    Earlier B2 made total_score>=0.5 override the chain rule, but that inflated
+    pass-rates to ~100% (partial runs marked pass even when an objective scorer
+    failed). After revert the chain rule is the source of truth: any decided
+    pass=False verdict makes the task fail, regardless of total_score.
     """
     verdicts = [
         {"scorer_name": "correctness", "pass": True, "score": 1.0},
-        {"scorer_name": "latency_cost", "pass": False, "score": 0.1},  # marginal fail
+        {"scorer_name": "latency_cost", "pass": False, "score": 0.1},
     ]
     result = _compute_passed(verdicts, total_score=0.98)
-    assert result is True, (
-        f"expected True (total_score=0.98 >= 0.5) but got {result!r}"
+    assert result is False, (
+        f"expected False (strict-AND: one failing verdict → fail) but got {result!r}"
     )
 
 
-def test_compute_passed_total_score_low_overrides_all_passing_verdicts() -> None:
-    """Case 2: total_score=0.3 with all verdicts passing → passed=False.
+def test_compute_passed_total_score_low_does_not_override_passing_chain() -> None:
+    """B2 revert: total_score=0.3 with all verdicts passing → passed=True.
 
-    A low aggregate score correctly marks the task as failed even if every
-    individual scorer happened to pass (e.g. all pass thresholds are very low).
+    The strict-AND chain wins over any total_score signal. If every decided
+    scorer returns pass=True, the task is passed even when the weighted
+    aggregate score happens to be low — total_score is informational only.
     """
     verdicts = [
         {"scorer_name": "correctness", "pass": True, "score": 0.3},
         {"scorer_name": "context_efficiency", "pass": True, "score": 0.3},
     ]
     result = _compute_passed(verdicts, total_score=0.3)
-    assert result is False, (
-        f"expected False (total_score=0.3 < 0.5) but got {result!r}"
+    assert result is True, (
+        f"expected True (strict-AND: all decided pass) but got {result!r}"
     )
 
 

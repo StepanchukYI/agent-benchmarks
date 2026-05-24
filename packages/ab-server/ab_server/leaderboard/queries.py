@@ -1286,6 +1286,51 @@ def compute_leaderboard_response(
     # prompt-as-row-identity headline. prompt_hash does NOT subsume tier.
     Bucket = tuple[str, str, str, str | None, str | None, str | None]
     pillar_keys = ("correctness", "context_eff", "tool_skill", "memory", "latency")
+
+    # Dedup: same task re-run under the same config (e.g. a broken task fixed,
+    # re-published) should count ONCE per bucket — the most recent attempt. Two
+    # different TaskResult rows with the same (bucket, task_id) inflate sample
+    # size and pass-rate (we saw this when delta runs + old runs both for the
+    # same task_id stacked). Keep the latest per (bucket, task_id) by
+    # ingested_at (fallback: started_at). Row tuple layout (from the SELECT
+    # above, unpacked below): model[0], tier[1], suite[2], task_id[3],
+    # score_total[4], s_corr[5], s_ctx[6], s_tool[7], s_mem[8], s_lat[9],
+    # cost_usd[10], latency_ms[11], tokens_total[12], turns_total[13],
+    # passed[14], trust_tier[15], commit_sha[16], sub_dataset_version[17],
+    # ingested_at[18], run_dataset_version[19], started_at[20], handle[21],
+    # harness[22], effort[23], tier_hash[24], prompt_label[25].
+    import hashlib as _hashlib
+
+    def _bucket_for_dedup(row: Any) -> tuple:
+        model = row[0]
+        tier = row[1]
+        handle = row[21]
+        harness = row[22]
+        effort = row[23]
+        tier_hash = row[24]
+        prompt_label = row[25]
+        operator = handle or "self"
+        prompt_hash = tier_hash or None
+        if not prompt_hash and prompt_label:
+            prompt_hash = _hashlib.sha256(
+                prompt_label.encode("utf-8")
+            ).hexdigest()[:16]
+        return (model, operator, tier, prompt_hash, harness, effort)
+
+    def _row_ts(row: Any) -> datetime:
+        ts = _coalesce_dt(row[18]) or _coalesce_dt(row[20])
+        return ts or datetime.min.replace(tzinfo=UTC)
+
+    latest_by_kt: dict[tuple, tuple[datetime, Any]] = {}
+    for row in raw:
+        bk = _bucket_for_dedup(row)
+        tid = row[3]
+        ts = _row_ts(row)
+        kt_key = (bk, tid)
+        prev = latest_by_kt.get(kt_key)
+        if prev is None or ts > prev[0]:
+            latest_by_kt[kt_key] = (ts, row)
+    raw = [v[1] for v in latest_by_kt.values()]
     # First non-null prompt_label seen per bucket (raw tier_hash is shown when
     # absent — the FE falls back to a short hash).
     label_by_key: dict[Bucket, str | None] = {}

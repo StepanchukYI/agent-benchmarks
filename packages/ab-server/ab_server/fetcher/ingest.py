@@ -274,39 +274,34 @@ def ingest_runs(
 
 def _compute_passed(
     verdicts: list,
-    total_score: float | None = None,
-    per_pillar: dict | None = None,
+    total_score: float | None = None,  # accepted for ABI back-compat, not used
+    per_pillar: dict | None = None,    # accepted for ABI back-compat, not used
 ) -> bool | None:
-    """Derive per-task pass flag from aggregate score or individual scorer verdicts.
+    """Derive per-task pass flag from individual scorer verdicts (strict-AND).
 
-    Semantics (priority order):
-    1. ``total_score`` present → passed = total_score >= 0.5.
-       This relaxes the old strict-AND logic: a task that scores 0.98 overall
-       but has one marginal scorer with pass=False now correctly reports passed.
-    2. ``per_pillar["correctness"]`` present (no total_score) →
-       passed = per_pillar["correctness"] >= 0.5.
-    3. Neither aggregate available → fall back to strict-AND across decided
-       verdicts (back-compat for old scores.json that predate total_score).
-    4. Zero decided verdicts and no aggregate → return None ("not measured").
+    Semantics:
+    - ``passed = all(v["pass"] for v in decided)`` where decided = verdicts with
+      non-None ``pass``.
+    - Returns None when zero decided verdicts ("not measured").
 
-    Individual scorer pass/fail values are intentionally left unchanged so the
-    drill view can still show which specific scorer failed.
+    Earlier this helper relaxed pass to ``total_score >= 0.5`` (B2). That turned
+    out to inflate the leaderboard — partial runs with one objectively-failed
+    scorer were marked pass and bumped pass-rates near 100%. After B1 (stub-
+    tool exposure) and B3 (CRLF normalization) relaxed the sub-scorers
+    themselves, strict-AND is honest again: a fail means a scorer genuinely
+    decided this run did not meet its acceptance criterion.
+
+    ``total_score`` and ``per_pillar`` are accepted so existing call sites
+    don't have to change, but they DON'T influence the returned pass — the
+    binary chain is the source of truth.
+
+    Individual scorer pass/fail values stay untouched so the drill view still
+    shows WHICH scorer failed.
 
     The verdict wire format uses "pass" as the key (Python reserved word;
     Pydantic aliases pass_ ↔ "pass"). We read it defensively from the raw
     dict so this helper works on parsed dicts from scores.json.
     """
-    # Priority 1: use total_score if available.
-    if total_score is not None:
-        return float(total_score) >= 0.5
-
-    # Priority 2: use per_pillar["correctness"] as a proxy when total_score is absent.
-    if per_pillar is not None:
-        correctness = per_pillar.get("correctness")
-        if correctness is not None:
-            return float(correctness) >= 0.5
-
-    # Priority 3 / 4: strict-AND fallback across decided verdicts.
     decided: list[bool] = []
     for v in verdicts:
         if not isinstance(v, dict):
