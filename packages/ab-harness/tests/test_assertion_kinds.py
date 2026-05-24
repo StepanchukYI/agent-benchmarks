@@ -968,3 +968,53 @@ def test_integration_l0_604_emoji_yaml_chain() -> None:
     assert isinstance(v.detail, dict)
     flagged = [a for a in v.detail["assertions"] if a["kind"] == "final_assistant_message_no_emoji"]
     assert flagged and flagged[0]["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# MCP-prefix tolerance: _names_match + scorers consuming it
+# ---------------------------------------------------------------------------
+
+def test_names_match_helper_handles_mcp_prefix() -> None:
+    from ab_harness.scorers.assertions import _names_match
+
+    # Exact equality always wins.
+    assert _names_match("note_write", "note_write")
+    # Claude CLI surfaces MCP tools as mcp__<server>__<tool>.
+    assert _names_match("mcp__ab-stub__note_write", "note_write")
+    assert _names_match("mcp__other-server__create_user", "create_user")
+    # Plain prefix without mcp__ does not match (no false-positive on user tools).
+    assert not _names_match("my_note_write", "note_write")
+    assert not _names_match("note_write_v2", "note_write")
+    # Different tools never match.
+    assert not _names_match("mcp__ab-stub__delete_user", "note_write")
+    # Empty strings.
+    assert _names_match("", "")
+    assert not _names_match("", "note_write")
+    assert not _names_match("note_write", "")
+
+
+def test_tool_call_count_matches_mcp_prefixed_call() -> None:
+    """tool_call_count(tool=bare_name) counts mcp__-prefixed calls too."""
+    events = _events(_turn(0, calls=[
+        {"name": "mcp__ab-stub__note_write", "args": {"body": "switch to pnpm"}},
+    ]))
+    _check("tool_call_count", {"tool": "note_write", "expected": 1}, events, expect=True)
+
+
+def test_tool_arg_nonempty_matches_mcp_prefixed_call() -> None:
+    events = _events(_turn(0, calls=[
+        {"name": "mcp__ab-stub__note_write", "args": {"body": "switch to pnpm"}},
+    ]))
+    _check("tool_arg_nonempty", {"tool": "note_write", "arg": "body"}, events, expect=True)
+
+
+def test_tool_arg_contains_any_matches_mcp_prefixed_call() -> None:
+    events = _events(_turn(0, calls=[
+        {"name": "mcp__ab-stub__note_write", "args": {"body": "switch to pnpm not npm"}},
+    ]))
+    _check(
+        "tool_arg_contains_any",
+        {"tool": "note_write", "arg": "body", "terms": ["pnpm", "npm"]},
+        events,
+        expect=True,
+    )

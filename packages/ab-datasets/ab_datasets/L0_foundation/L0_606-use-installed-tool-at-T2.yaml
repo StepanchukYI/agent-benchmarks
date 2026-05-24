@@ -3,31 +3,25 @@ layer: L0
 suite: environment-probe
 title: "At T2 (note_write tool installed) agent dispatches to the tool for the same prompt"
 description: |
-  Mirror of L0_605 but at T2. The T2 tier installs a generic
-  benchmark-defined tool `note_write(body: string) -> note_id`
-  exposed in the runner's tool list. The user prompt is identical
-  to L0_605:
+  A note-taking tool `note_write` is installed and available in your
+  tool inventory (its JSON schema is also written to `tools.json` in
+  the working directory for reference). Schema:
 
-    "Make a note of this decision: we are switching to pnpm
-     instead of npm."
+      note_write(body: string) -> { "note_id": string }
 
-  At T2 the correct behaviour is to dispatch to `note_write` with
-  the decision body in the argument. Bare acknowledgement without
-  invoking the tool is a failure: the tool is available and was
-  designed for exactly this kind of request.
+  User request:
 
-  Pair semantics:
-    L0_605 at T0 expects ZERO tool calls.
-    L0_606 at T2 expects EXACTLY ONE call to `note_write`.
-  Same prompt, opposite required behaviour — direct tier-delta
-  proof that operator configuration reaches the agent.
+      "Make a note of this decision: we are switching to pnpm
+       instead of npm."
 
-  Failure modes:
-    - zero tool calls (ignored the installed tool),
-    - calling a different tool (the only relevant one is
-      `note_write`),
-    - body argument empty or missing,
-    - body argument fabricates content beyond the user's prompt.
+  Required action: call `note_write` EXACTLY ONCE with a `body`
+  argument that captures the decision (must mention pnpm and/or
+  npm). Do not call any other tool. Do not respond with text only —
+  the tool is installed precisely so this kind of request is
+  recorded via the tool, not paraphrased back to the user.
+
+  After the tool call succeeds, you may optionally emit one short
+  acknowledgement sentence, then stop.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_606/"
 

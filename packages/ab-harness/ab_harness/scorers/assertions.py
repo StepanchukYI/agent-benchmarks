@@ -91,6 +91,21 @@ def _tool_call_name(tc: dict) -> str:
     return str(tc.get("name") or "")
 
 
+def _names_match(observed: str, expected: str) -> bool:
+    """MCP-prefix-tolerant tool-name equality.
+
+    Claude CLI surfaces tools from an MCP server as ``mcp__<server>__<tool>``
+    (e.g. ``mcp__ab-stub__note_write``). YAML scorer configs use the bare
+    tool name (e.g. ``note_write``). Match either as exact equality or as the
+    trailing ``__<expected>`` suffix on a ``mcp__``-prefixed observed name.
+    """
+    if not observed or not expected:
+        return observed == expected
+    if observed == expected:
+        return True
+    return observed.startswith("mcp__") and observed.endswith(f"__{expected}")
+
+
 def _tool_call_args(tc: dict) -> dict:
     args = tc.get("args")
     if args is None:
@@ -549,7 +564,7 @@ def _tool_call_count(events: list[dict], _w, _f, p: dict) -> tuple[bool, dict]:
     expected = int(p.get("expected", 0))
     n = sum(
         1 for _, tc in _iter_tool_calls(events)
-        if name is None or _tool_call_name(tc) == name
+        if name is None or _names_match(_tool_call_name(tc), name)
     )
     return n == expected, {"tool": name, "actual": n, "expected": expected}
 
@@ -559,7 +574,7 @@ def _tool_call_count_min(events: list[dict], _w, _f, p: dict) -> tuple[bool, dic
     lo = int(p.get("min", p.get("expected", 0)))
     n = sum(
         1 for _, tc in _iter_tool_calls(events)
-        if name is None or _tool_call_name(tc) == name
+        if name is None or _names_match(_tool_call_name(tc), name)
     )
     return n >= lo, {"tool": name, "actual": n, "min": lo}
 
@@ -569,7 +584,7 @@ def _tool_call_count_max(events: list[dict], _w, _f, p: dict) -> tuple[bool, dic
     hi = int(p.get("max", p.get("expected", 0)))
     n = sum(
         1 for _, tc in _iter_tool_calls(events)
-        if name is None or _tool_call_name(tc) == name
+        if name is None or _names_match(_tool_call_name(tc), name)
     )
     return n <= hi, {"tool": name, "actual": n, "max": hi}
 
@@ -587,7 +602,7 @@ def _tool_call_order(events: list[dict], _w, _f, p: dict) -> tuple[bool, dict]:
     # stream in order, with any other names allowed in between.
     i = 0
     for name in observed:
-        if i < len(sequence) and name == sequence[i]:
+        if i < len(sequence) and _names_match(name, sequence[i]):
             i += 1
     return i == len(sequence), {"required": sequence, "observed": observed[:30]}
 
@@ -613,7 +628,7 @@ def _tool_call_name_does_not_match(events: list[dict], _w, _f, p: dict) -> tuple
 
 def _first_call_for(events: list[dict], name: str) -> dict | None:
     for _, tc in _iter_tool_calls(events):
-        if _tool_call_name(tc) == name:
+        if _names_match(_tool_call_name(tc), name):
             return tc
     return None
 
@@ -644,7 +659,7 @@ def _tool_args_equal(events: list[dict], _w, _f, p: dict) -> tuple[bool, dict]:
 def _tool_args_equal_across_all_calls(events: list[dict], _w, _f, p: dict) -> tuple[bool, dict]:
     name = str(p.get("tool") or p.get("tool_name") or "")
     expected = p.get("expected") or {}
-    calls = [_tool_call_args(tc) for _, tc in _iter_tool_calls(events) if _tool_call_name(tc) == name]
+    calls = [_tool_call_args(tc) for _, tc in _iter_tool_calls(events) if _names_match(_tool_call_name(tc), name)]
     mismatches = [args for args in calls if args != expected]
     ok = bool(calls) and not mismatches
     return ok, {"tool": name, "calls": len(calls), "mismatches": mismatches[:5], "expected": expected}
@@ -736,7 +751,7 @@ def _tool_arg_distinct_set(events: list[dict], _w, _f, p: dict) -> tuple[bool, d
     actual_values: list[Any] = []
     missing_arg = 0
     for _, tc in _iter_tool_calls(events):
-        if _tool_call_name(tc) != name:
+        if not _names_match(_tool_call_name(tc), name):
             continue
         found, actual = _dotted_get(_tool_call_args(tc), arg)
         if found:
@@ -834,7 +849,7 @@ def _tool_arg_from_prior_return(events: list[dict], _w, _f, p: dict) -> tuple[bo
     target_tc: dict | None = None
     target_turn_idx = -1
     for turn, tc in _iter_tool_calls(events):
-        if _tool_call_name(tc) == name:
+        if _names_match(_tool_call_name(tc), name):
             target_tc = tc
             target_turn_idx = int(turn.get("idx", 0))
             break
@@ -853,7 +868,7 @@ def _tool_arg_from_prior_return(events: list[dict], _w, _f, p: dict) -> tuple[bo
     for turn, tc in _iter_tool_calls(events):
         if int(turn.get("idx", 0)) >= target_turn_idx:
             continue
-        if _tool_call_name(tc) == source_tool:
+        if _names_match(_tool_call_name(tc), source_tool):
             cid = tc.get("id") or tc.get("call_id")
             if cid:
                 source_ids.add(str(cid))
