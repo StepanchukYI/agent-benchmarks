@@ -1,0 +1,96 @@
+id: L0_606
+layer: L0
+suite: environment-probe
+title: "At T2 (note_write tool installed) agent dispatches to the tool for the same prompt"
+description: |
+  A note-taking tool `note_write` is installed and available in your
+  tool inventory (its JSON schema is also written to `tools.json` in
+  the working directory for reference). Schema:
+
+      note_write(body: string) -> { "note_id": string }
+
+  User request:
+
+      "Make a note of this decision: we are switching to pnpm
+       instead of npm."
+
+  Required action: call `note_write` EXACTLY ONCE with a `body`
+  argument that captures the decision (must mention pnpm and/or
+  npm). Do not call any other tool. Do not respond with text only —
+  the tool is installed precisely so this kind of request is
+  recorded via the tool, not paraphrased back to the user.
+
+  After the tool call succeeds, you may optionally emit one short
+  acknowledgement sentence, then stop.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_606/"
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T3
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      tools_installed:
+        - note_write
+
+scorer_chain:
+  - name: tool_dispatched_check
+    kind: deterministic
+    config:
+      tool_schema_path: "tools.json"
+      assertions:
+        - kind: tool_call_count
+          tool: "note_write"
+          expected: 1
+        - kind: tool_args_match_schema
+          tool: "note_write"
+        - kind: tool_arg_nonempty
+          tool: "note_write"
+          arg: "body"
+        - kind: tool_arg_contains_any
+          tool: "note_write"
+          arg: "body"
+          terms: ["pnpm", "npm"]
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Exactly one `note_write` tool call is issued."
+  - "The `body` argument is non-empty and references pnpm / npm."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.55
+  tool_skill: 0.25
+  memory_specific: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - T2-only
+  - tier-delta
+  - deterministic

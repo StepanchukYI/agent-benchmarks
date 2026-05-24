@@ -70,15 +70,15 @@ scorer_chain:
     kind: deterministic
     config:
       target_tokens: 1200
-      max_tokens: 6000
-      pass_threshold: 0.5
+      max_tokens: 3000
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 12000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
   - "Final message references the dry spring / nectar cause."
@@ -87,11 +87,11 @@ acceptance_criteria:
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.80
+  correctness: 0.65
   tool_skill: 0.05
   context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.15
 
 difficulty: medium
 visibility: public

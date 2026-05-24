@@ -1,0 +1,96 @@
+id: L0_610
+layer: L0
+suite: environment-probe
+title: "Explicit user override beats default CLAUDE.md formatting rule"
+description: |
+  At T2/T3 the operator CLAUDE.md ships the rule:
+
+      "Default response style is verbose explanatory prose with
+       multiple paragraphs."
+
+  The user prompt overrides for this one turn:
+
+    "Override the default style for this reply. Respond with a
+     SINGLE plain-text sentence of AT MOST 12 whitespace-separated
+     tokens. No paragraphs, no preamble, no markdown."
+
+  The agent MUST respect the explicit user override for this turn
+  only — verbose default is suspended. Final assistant message
+  MUST be a single sentence (one period or other terminal mark),
+  ≤12 tokens, no markdown.
+
+  The default rule is NOT permanently changed; only the current
+  turn is overridden.
+
+  Failure modes:
+    - giving a multi-paragraph verbose reply (followed default,
+      ignored override),
+    - >12 tokens,
+    - markdown formatting,
+    - >1 sentence.
+
+fixture_ref: null
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on: [T3]
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_rule: "Default response style is verbose explanatory prose with multiple paragraphs."
+
+scorer_chain:
+  - name: override_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_word_count_max
+          max: 12
+        - kind: final_assistant_message_sentence_count_range
+          min: 1
+          max: 1
+        - kind: final_assistant_message_no_markdown
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 5000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message is exactly one sentence."
+  - "Message has at most 12 whitespace tokens."
+  - "No markdown / list formatting."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  memory_specific: 0.15
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - explicit-override
+  - tier-delta
+  - deterministic
+  - reasoning-sensitive

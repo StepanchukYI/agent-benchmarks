@@ -1,29 +1,41 @@
 id: L0_403
 layer: L0
 suite: instruction-following
-title: "Format-bound output: JSON only, no prose, no markdown fence"
+title: "JSON-only + strict key order + per-field word counts"
 description: |
   The user prompt:
 
-    "Return a JSON object describing the city Paris with keys `name`,
-     `country`, and `population` (integer, current best estimate).
-     Return ONLY the JSON object, no surrounding prose, no markdown
-     code fence, no comments."
+    "Return a JSON object describing the city of Marrakech. The object
+     MUST have EXACTLY these top-level keys, in this order:
 
-  The agent's final message MUST be a single valid JSON object — when
-  the entire message is passed to `json.loads`, the call must succeed
-  and the parsed object must have:
-    - `name` (string, equals "Paris" exactly)
-    - `country` (string, equals "France" exactly)
-    - `population` (integer, in [1_000_000, 50_000_000] sanity range)
+         name, country, founded_year, summary
+
+     - name: string, must equal 'Marrakech' exactly.
+     - country: string, must equal 'Morocco' exactly.
+     - founded_year: integer, in [800, 1200].
+     - summary: string, EXACTLY 17 words (Unicode-word count), no
+       markdown.
+
+     Output ONLY the JSON object. No surrounding prose. No markdown
+     code fence. No trailing newline beyond a single one."
+
+  This stacks three independent gates on top of the basic JSON-only
+  test (was L0_403):
+    1. all 4 required keys with correct types and value constraints,
+    2. **top-level key order** is exactly [name, country, founded_year,
+       summary] — JSON does not specify order, but the agent must emit
+       them in this order in the literal,
+    3. the `summary` field is **exactly 17 Unicode-words** (not 16 or
+       18 — common drift modes for frontier models).
 
   Failure modes:
-    - markdown code fence (```json ... ```) around the JSON,
-    - any prose before or after the JSON object,
-    - trailing comments,
-    - missing keys, extra keys, or wrong types.
+    - markdown code fence,
+    - prose before / after the JSON literal,
+    - keys present but in a different order,
+    - summary word count not exactly 17,
+    - founded_year out of [800, 1200] sanity band.
 
-fixture_ref: null
+fixture_ref:
 
 config:
   required_tier: T0
@@ -36,29 +48,44 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: json_only_check
+  - name: json_strict_order_and_word_counts
+    kind: deterministic
+    config:
+      assertions:
+        - kind: no_prose_surrounding_json
+        - kind: no_markdown_fence
+        - kind: top_level_key_order
+          expected:
+            - name
+            - country
+            - founded_year
+            - summary
+        - kind: field_word_count
+          field: summary
+          expected: 17
+
+  - name: json_schema_check
     kind: schema
     config:
       input: "final_assistant_message"
       mode: "exact_json"
       schema:
         type: object
-        required: [name, country, population]
+        required: [name, country, founded_year, summary]
         additionalProperties: false
         properties:
           name:
             type: string
-            const: "Paris"
+            const: "Marrakech"
           country:
             type: string
-            const: "France"
-          population:
+            const: "Morocco"
+          founded_year:
             type: integer
-            minimum: 1000000
-            maximum: 50000000
-      assertions:
-        - kind: no_markdown_fence
-        - kind: no_prose_surrounding_json
+            minimum: 800
+            maximum: 1200
+          summary:
+            type: string
 
   - name: privacy_check
     kind: privacy_check
@@ -75,20 +102,21 @@ scorer_chain:
     kind: deterministic
     config:
       target_tokens: 400
-      max_tokens: 3000
-      pass_threshold: 0.5
+      max_tokens: 1500
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 10000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
-  - "Final assistant message parses as a single JSON object."
-  - "JSON has exactly the keys name/country/population with correct types."
-  - "No markdown fence, no surrounding prose."
+  - "Final message is exactly a JSON object, no prose, no fence."
+  - "Top-level keys in exactly: name, country, founded_year, summary."
+  - "name='Marrakech', country='Morocco', founded_year ∈ [800,1200]."
+  - "summary contains exactly 17 Unicode-words."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -98,17 +126,19 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - instruction-following
-  - ifeval
-  - format-constraint
   - json
+  - format-constraint
+  - multi-constraint
+  - key-order
+  - word-count
   - deterministic
-  - smoke-test
+  - hard
   - byte-exact-output
   - output-normalization-sensitive

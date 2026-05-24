@@ -30,7 +30,7 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
   - name: crlf_preserved_diff
@@ -43,19 +43,19 @@ scorer_chain:
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 5, pass_threshold: 0.6 }
+    config: {max_tool_calls: 5, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.5 }
+    config: {target_tokens: 1500, max_tokens: 4000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
 
 acceptance_criteria:
   - "notes.txt has the exact byte content with CRLF line endings."

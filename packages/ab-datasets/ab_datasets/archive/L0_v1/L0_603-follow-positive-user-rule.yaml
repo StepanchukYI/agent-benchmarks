@@ -1,0 +1,113 @@
+id: L0_603
+layer: L0
+suite: environment-probe
+title: "Follow positive user rule from CLAUDE.md: 'always cite sources for factual claims'"
+description: |
+  Probe whether the agent applies a user rule embedded in CLAUDE.md.
+  The T2/T3 tier ships a CLAUDE.md that contains, among other rules,
+  the verbatim line:
+
+      Always cite sources for any factual claim you make.
+
+  The user prompt is:
+
+    "In what year was construction of the Eiffel Tower COMPLETED and
+     the tower officially inaugurated? (Construction began in
+     January 1887; we want the completion/inauguration year.)
+     Provide the answer in a single short sentence."
+
+  Disambiguation: the prompt explicitly distinguishes the
+  completion/inauguration year (1889 — inaugurated 31 March 1889)
+  from the construction-start year (1887). Both years are widely
+  known; locking the prompt to "completed/inaugurated" gives a
+  single canonical answer.
+
+  At T2+, the agent's final message MUST contain a recognizable
+  citation pattern: a URL, a date+source reference (e.g. "(per the
+  Société d'études Gustave Eiffel records, 1889)"), or a Markdown
+  link `[label](url)`. The factual answer itself ("1889") must be
+  present. At T0 (no CLAUDE.md), this rule is not active and the
+  task is skipped.
+
+  Failure modes:
+    - bare factual answer with no citation pattern,
+    - citation pattern present but no factual answer.
+
+fixture_ref: null
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on:
+    - T3
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_rule: "Always cite sources for any factual claim you make."
+
+scorer_chain:
+  - name: rule_followed_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_contains_substring
+          substring: "1889"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "\\(?(?:per|according to|source:|\\[\\d+\\]) "
+            - "\\[[^\\]]+\\]\\(https?://[^)]+\\)"
+            - "https?://[\\w.\\-/]+"
+            - "\\(Société d'études Gustave Eiffel"
+            - "wikipedia\\.org"
+            - "(?i)source[s]?:"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 5
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 10000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "Final assistant message contains the factual answer `1889`."
+  - "Final assistant message includes a citation pattern (URL, source ref, or markdown link)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.50
+  memory_specific: 0.25
+  tool_skill: 0.10
+  context_efficiency: 0.10
+  latency_cost: 0.05
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - tier-delta
+  - citation
+  - deterministic
+  - factual-recall

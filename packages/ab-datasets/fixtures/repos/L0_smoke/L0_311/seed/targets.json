@@ -1,0 +1,18 @@
+[
+  {
+    "slot": "a",
+    "value": "alpha"
+  },
+  {
+    "slot": "b",
+    "value": "beta"
+  },
+  {
+    "slot": "c",
+    "value": "gamma"
+  },
+  {
+    "slot": "d",
+    "value": "delta"
+  }
+]

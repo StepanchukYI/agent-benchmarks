@@ -1,33 +1,34 @@
 id: L0_402
 layer: L0
 suite: instruction-following
-title: "Word-bound output: answer in exactly 14 words"
+title: "Three-axis constraint: word + sentence + forbidden substrings"
 description: |
-  The user prompt asks a constrained question:
+  The user prompt:
 
-    "Describe what photosynthesis is, in EXACTLY 14 words. No more,
-     no less. Plain prose only — no lists, no headers, no quotes,
-     no parenthetical asides."
+    "Describe what makes a violin produce sound. ALL three constraints
+     hold simultaneously:
 
-  The agent's final message MUST contain exactly 14
-  whitespace-separated tokens **after** the scorer applies these
-  normalisation steps:
+       1. Exactly 28 words (Unicode-word, \\w+) — not 27, not 29.
+       2. Exactly 3 sentences (separated by . ! ?).
+       3. Must NOT contain (case-insensitive): the strings 'string',
+          'wood', 'bow', 'horsehair', 'rosin', 'vibrate', 'vibration'.
 
-    1. strip leading/trailing whitespace,
-    2. collapse runs of whitespace (including newlines) to a single
-       space,
-    3. split on whitespace and count.
+     Plain prose only — no markdown, no quotes, no lists, no
+     parenthetical asides."
 
-  Hyphenated words count as one token (e.g. `light-energy` = 1).
-  Tokens with attached punctuation count as one (e.g. `plants,` = 1).
-  An empty token from double-spaces does NOT count. Any final
-  message with a count other than 14 (per the above normalisation)
-  fails the task.
+  This is the L0_402 slot reworked as a 3-axis simultaneous constraint
+  (word count + sentence count + forbidden vocabulary). The forbidden
+  list contains the seven most natural words to use, forcing the model
+  to find alternative phrasings ('catgut filament', 'sounding box',
+  'oscillate', etc.) while preserving on-topic accuracy.
 
-  The content must be on-topic (factually describe photosynthesis) per
-  llm_judge audit, but the deterministic gate is the word count.
+  Failure modes:
+    - any forbidden substring (case-insensitive) → fail,
+    - 27 or 29 words → fail,
+    - 2 or 4 sentences → fail,
+    - markdown / quote leak → fail.
 
-fixture_ref: null
+fixture_ref:
 
 config:
   required_tier: T0
@@ -40,13 +41,24 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: word_count_check
+  - name: three_axis_constraint
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_word_count
-          expected: 14
-          tokenizer: "whitespace"
+          expected: 28
+        - kind: final_assistant_message_sentence_count_range
+          min: 3
+          max: 3
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "string"
+            - "wood"
+            - "bow"
+            - "horsehair"
+            - "rosin"
+            - "vibrate"
+            - "vibration"
         - kind: final_assistant_message_no_markdown
         - kind: final_assistant_message_no_quotes
 
@@ -65,20 +77,22 @@ scorer_chain:
     kind: deterministic
     config:
       target_tokens: 400
-      max_tokens: 3000
-      pass_threshold: 0.5
+      max_tokens: 1500
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 10000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
-  - "Final assistant message contains exactly 14 whitespace-separated tokens."
-  - "Message contains no markdown, lists, quotes, or headers."
-  - "Zero tool calls are issued."
+  - "Word count exactly 28."
+  - "Sentence count exactly 3."
+  - "No forbidden substrings (case-insensitive)."
+  - "No markdown, no quotes."
+  - "Zero tool calls."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -88,18 +102,18 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - instruction-following
-  - ifeval
-  - word-count
-  - format-constraint
+  - ifbench
+  - multi-constraint
+  - negative-constraint
   - deterministic
-  - smoke-test
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

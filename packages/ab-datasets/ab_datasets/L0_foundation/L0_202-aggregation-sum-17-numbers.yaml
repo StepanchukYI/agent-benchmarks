@@ -1,78 +1,83 @@
 id: L0_202
 layer: L0
 suite: long-context-aggregation
-title: "Aggregation: sum 17 inventory entries scattered across ~26 KB"
+title: "Aggregation: 23 entries — numerals, word-numbers, and negatives mixed"
 description: |
-  The fixture provides `haystack.txt` with ~60 short paragraphs of
-  distractor prose. Exactly 17 of those paragraphs each contain one
-  inventory log entry of the form:
+  The fixture provides `haystack.txt` (~16 KB, 65 paragraphs of
+  distractor prose). Exactly 23 paragraphs contain one inventory log
+  entry each. The entries take three forms, all matching the prefix
+  `Inventory log entry`:
 
-      "Inventory log entry <N> units shipped."
+    - 18 numerals (positive integers): values from a deterministic set
+    - 3 word-numbers: `twelve`, `thirty-four`, `eighty-one`
+    - 2 negatives: `-7` and `-15`
 
-  where <N> is an integer. The 17 entries deterministically use the
-  set {3, 7, 12, 4, 19, 25, 8, 11, 6, 2, 14, 30, 9, 5, 17, 1, 23},
-  giving a ground-truth sum of 196.
+  Total of all 23 values, with words parsed to integers and negatives
+  honoured: **401**
 
   The user asks:
 
-    "Scan the document for every paragraph of the form
-     `Inventory log entry N units shipped.` Sum the N values and
-     output ONLY the total integer, no prose, no commas."
+    "Scan haystack.txt. Every paragraph containing the prefix
+     `Inventory log entry` is an entry. Sum the numerical values
+     across all entries — including the three word-numbers `twelve`,
+     `thirty-four`, `eighty-one` and the two negative numerals. Output
+     ONLY the resulting integer. No prose, no commas, no sign on
+     positive output."
 
-  The agent's final message MUST equal `196` exactly. Decoy paragraphs
-  do NOT contain the substring `Inventory log entry`, so a substring
-  scan is unambiguous.
+  Expected exact: `401`.
+
+  Failure modes:
+    - returning the sum of numerals only (skipping word-numbers): 296,
+    - skipping negatives (treating them as 0 or positive): 423 or 445,
+    - returning `196` (old expected from the v1 fixture),
+    - emitting `401.0` (float),
+    - emitting `4,01` or `401,` (locale/format errors).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_202/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_sum_check
+  - name: total_sum_check
     kind: deterministic
     config:
       source_file: "haystack.txt"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "196"
+          expected: "401"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - ","
+            - "."
+            - "sum"
+            - "total"
+            - "answer"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 1
-      pass_threshold: 1.0
+    config: {max_tool_calls: 3, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 8000
-      max_tokens: 30000
-      pass_threshold: 0.3
+    config: {target_tokens: 6000, max_tokens: 15000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 25000
-      max_ms: 150000
-      pass_threshold: 0.3
+    config: {target_ms: 25000, max_ms: 75000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `196` exactly."
-  - "No commas, no prose, no trailing punctuation."
+  - "Final message equals `401` exactly."
+  - "Word-numbers and negatives both included in sum."
+  - "No prose, no commas."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -82,7 +87,7 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -90,10 +95,8 @@ tags:
   - L0
   - long-context
   - aggregation
-  - sum
-  - ruler
-  - deterministic
-  - smoke-test
+  - mixed-numerics
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

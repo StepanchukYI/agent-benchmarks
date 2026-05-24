@@ -1,0 +1,85 @@
+id: L0_122
+layer: L0
+suite: long-context-niah
+title: "Deep-tail NIAH: single needle in paragraph 48 of 50"
+description: |
+  The fixture provides `haystack.txt` (~21 KB, 50 paragraphs) with a
+  single planted fact at extreme depth (paragraph 48 of 50):
+
+      "The seasonal observatory at Falcrest recorded an aurora on
+       2026-01-17."
+
+  The user asks:
+
+      "On what date did the observatory at Falcrest record an aurora?
+       Output ONLY the date in ISO format `YYYY-MM-DD`. No prose."
+
+  Expected final assistant message (exact):
+
+      2026-01-17
+
+  Failure modes:
+    - missing the date (model didn't read deep enough),
+    - extracting a different date or year,
+    - format drift (`January 17 2026`, slashes, etc.),
+    - extracting a value not from the observatory line.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_122/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_date
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "2026-01-17"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 8000, max_tokens: 32000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 30000, max_ms: 180000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message equals `2026-01-17` exactly."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - deep-tail
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

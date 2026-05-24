@@ -1,0 +1,88 @@
+id: L0_025
+layer: L0
+suite: extract
+title: "Extract a deeply nested YAML field value (services.fetcher.health_check.path)"
+description: |
+  The fixture provides `services.yaml` describing three services
+  (`catalog`, `fetcher`, `leaderboard`), each with an `image`,
+  `replicas`, and a nested `health_check` block.
+
+  The user asks:
+
+      "Read services.yaml. What is the value of
+       `services.fetcher.health_check.path`? Output ONLY that string
+       value verbatim (with the leading `/`, no quotes, no prose, no
+       trailing newline)."
+
+  By inspection of the YAML the path under `fetcher.health_check` is
+  `/ready`.
+
+  Output ONLY the literal string `/ready` as the final assistant
+  message.
+
+  Failure modes:
+    - returning `/healthz` (catalog's path) — wrong service,
+    - returning `/api/health` (leaderboard's path) — wrong service,
+    - returning `30` (the interval at the same nesting level) —
+      wrong field,
+    - emitting with surrounding quotes (`"/ready"`).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_025/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "services.yaml"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "/ready"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Final assistant message equals `/ready` exactly (with leading slash, no quotes)."
+  - "Selected the right service (`fetcher`, not `catalog` / `leaderboard`)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - extract
+  - yaml
+  - nested-key-lookup
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive
+  - reasoning-sensitive

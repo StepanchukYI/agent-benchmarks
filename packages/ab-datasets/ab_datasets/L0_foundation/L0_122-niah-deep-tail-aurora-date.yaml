@@ -1,75 +1,103 @@
 id: L0_122
 layer: L0
 suite: long-context-niah
-title: "Deep-tail NIAH: single needle in paragraph 48 of 50"
+title: "NIAH hardened: 5 needles + decoys + sha1 pipeline (119K tokens)"
 description: |
-  The fixture provides `haystack.txt` (~21 KB, 50 paragraphs) with a
-  single planted fact at extreme depth (paragraph 48 of 50):
+  The haystack `haystack.txt` is 478,124 bytes
+  (~119K tokens) of dense bureaucratic filler.
 
-      "The seasonal observatory at Falcrest recorded an aurora on
-       2026-01-17."
+  STEP 1 — Extract.
+    Read haystack.txt. Find every paragraph that contains the phrase
+    "aurora observation date" used as a FACTUAL statement (look for the
+    confirmed-by-regional-verification-panel phrasing, NOT draft /
+    preliminary / superseded entries — those are decoys to exclude).
 
-  The user asks:
+    There are exactly 5 TRUE (entity, value) pairs to
+    collect. Each entity appears in exactly ONE confirmed paragraph;
+    some entities ALSO appear in a DECOY paragraph (marked "draft"
+    or "preliminary, superseded") — those must be EXCLUDED.
 
-      "On what date did the observatory at Falcrest record an aurora?
-       Output ONLY the date in ISO format `YYYY-MM-DD`. No prose."
+    Entity names you must find values for (values are NOT given —
+    discover each entity's <value> from the haystack itself):
+      Northhollow, Otherwick, Penrith, Quenwick, Riverstone
 
-  Expected final assistant message (exact):
+  STEP 2 — Sort.
+    Sort the (entity, value) pairs alphabetically by entity name.
 
-      2026-01-17
+  STEP 3 — Format.
+    Build a SINGLE string by joining the pairs as `<entity>=<value>`
+    with the literal `|` separator (NO whitespace around `|`).
+    The `<value>` is exactly as printed in the haystack INCLUDING
+    any unit suffix (e.g. `88.7 MHz`, not just `88.7`).
+
+  STEP 4 — Hash.
+    Compute the lowercase hex SHA-1 of the UTF-8 bytes of the joined
+    string (no trailing newline). Emit ONLY the 40-character hex
+    digest as the final assistant message. No prefix, no quotes, no
+    markdown, no trailing newline.
+
+    You must actually compute the hash — the digest is NOT in this
+    description. Use `Bash` (`shasum -a 1` or `sha1sum`) or Python
+    (`hashlib.sha1(s.encode()).hexdigest()`).
 
   Failure modes:
-    - missing the date (model didn't read deep enough),
-    - extracting a different date or year,
-    - format drift (`January 17 2026`, slashes, etc.),
-    - extracting a value not from the observatory line.
-
+    - including a decoy value (draft/superseded entry),
+    - missing a needle (especially the tail-depth ones),
+    - emitting the joined string instead of the sha1,
+    - wrong sort order (must be alphabetical by entity name),
+    - emitting prose surrounding the digest.
 fixture_ref: "fixtures/repos/L0_smoke/L0_122/"
 
 config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_date
+  - name: four_needles_ordered
     kind: deterministic
     config:
       source_file: "haystack.txt"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "2026-01-17"
+          expected: "975aa099b4b9e1997b9a6d08fea96c0718902e1d"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+          - "Northhollow"
+          - "aurora"
+          - "="
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 8000, max_tokens: 32000, pass_threshold: 0.3 }
+    config: {target_tokens: 60000, max_tokens: 150000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 30000, max_ms: 180000, pass_threshold: 0.3 }
+    config: {target_ms: 90000, max_ms: 240000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `2026-01-17` exactly."
-  - "Privacy scan produces zero hits."
+  - "Final message is the 40-char lowercase hex sha1 of the pipe-joined alphabetical pairs."
+  - "No decoy / draft / superseded values are included."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
-  context_efficiency: 0.05
+  correctness: 0.70
+  tool_skill: 0.10
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -77,9 +105,13 @@ tags:
   - L0
   - long-context
   - niah
-  - deep-tail
+  - multi-needle
+  - decoy
+  - hash
+  - frontier
   - deterministic
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
   - context-window-sensitive
+  - multi-step

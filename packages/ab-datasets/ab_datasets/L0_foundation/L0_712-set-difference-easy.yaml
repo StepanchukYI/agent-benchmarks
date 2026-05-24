@@ -1,55 +1,87 @@
 id: L0_712
 layer: L0
 suite: reasoning-trap
-title: "Set difference: list elements in A but not in B (easy)"
+title: "Multi-set difference: 12 vs 12 elements, duplicates count"
 description: |
-  Given two sets of integers:
+  The user prompt:
 
-      A = {2, 3, 5, 7, 11, 13, 17, 19}
-      B = {1, 3, 5, 7, 9, 11, 13}
+    "Treat the two ordered lists below as **multi-sets** (bags) — every
+     occurrence counts toward the multiplicity. Compute A − B under
+     multi-set semantics: for each value v, the multiplicity in (A − B)
+     is max(0, multiplicity_in_A(v) − multiplicity_in_B(v)).
 
-  Compute A \ B (the elements of A that are NOT in B). Output ONLY
-  the resulting elements as a comma-separated list, ascending order,
-  no spaces, no surrounding brackets, no trailing newline.
+       A = [2, 3, 5, 5, 5, 7, 7, 7, 11, 13, 17, 19]
+       B = [1, 3, 5, 7, 7, 9, 11, 13, 13, 15, 17, 17]
 
-  A \ B = {2, 17, 19} → output `2,17,19`.
+     Output ONLY the elements of (A − B) as a comma-separated string
+     in ascending order, with each element repeated according to its
+     remaining multiplicity. No spaces, no brackets, no prose, no
+     trailing newline."
 
-fixture_ref: null
+  Multiplicity walk-through:
+    - 2:  A=1, B=0 → 1
+    - 3:  A=1, B=1 → 0
+    - 5:  A=3, B=1 → 2  (two 5's remain)
+    - 7:  A=3, B=2 → 1
+    - 11: A=1, B=1 → 0
+    - 13: A=1, B=2 → 0 (clamped)
+    - 17: A=1, B=2 → 0 (clamped)
+    - 19: A=1, B=0 → 1
+
+  Expected exact: `2,5,5,7,19`.
+
+  Failure modes (this is where the multi-set trap bites):
+    - returning `2,5,7,19` (treated as set, ignoring multiplicity),
+    - returning `2,5,5,5,7,19` (forgot to subtract B's 5),
+    - returning `2,-1,-1,5,5,7,19` (failed to clamp at zero),
+    - emitting brackets `[2,5,5,7,19]`,
+    - emitting spaces after commas.
+
+fixture_ref:
 
 config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_answer_check
+  - name: exact_multiset_difference
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "2,17,19"
+          expected: "2,5,5,7,19"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "["
+            - "]"
+            - "answer"
+            - "result"
+            - "multi-set"
+            - "set"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 2, pass_threshold: 1.0 }
+    config: {max_tool_calls: 2, pass_threshold: 1.0}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 400, max_tokens: 3000, pass_threshold: 0.5 }
+    config: {target_tokens: 500, max_tokens: 2000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 8000, max_ms: 60000, pass_threshold: 0.5 }
+    config: {target_ms: 10000, max_ms: 30000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `2,17,19` exactly."
-  - "Comma-separated, no spaces, ascending order."
+  - "Final assistant message equals `2,5,5,7,19` exactly."
+  - "Multi-set semantics applied: 5 appears twice in output."
+  - "No brackets, no spaces, no prose, no markdown."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -59,7 +91,7 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -67,7 +99,9 @@ tags:
   - L0
   - reasoning-trap
   - set-theory
-  - deterministic
+  - multi-set
+  - multiplicity
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

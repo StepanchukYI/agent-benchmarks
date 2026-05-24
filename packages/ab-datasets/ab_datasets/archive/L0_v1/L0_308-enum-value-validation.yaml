@@ -1,0 +1,109 @@
+id: L0_308
+layer: L0
+suite: tool-use
+title: "Map user synonym to a closed-set enum value (never invent one)"
+description: |
+  You have access to a bash shell. The "set priority" record has two
+  fields: `issue_id` (string, opaque) and `priority` (closed enum,
+  exactly one of: `low`, `medium`, `high`, `critical`).
+
+  The user says:
+
+      "Mark issue JIRA-42 as urgent."
+
+  The word "urgent" is NOT in the enum. You must map it to the
+  closest valid value. The canonical mapping is `urgent` → `high`
+  (the next step up from `medium`; `critical` is reserved for
+  outages and not used for general "urgent" framing).
+
+  Create the file `out/priority.json` whose contents are exactly the
+  following bytes (no whitespace, no trailing newline):
+
+      {"issue_id":"JIRA-42","priority":"high"}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"issue_id":"JIRA-42","priority":"high"}' > out/priority.json
+
+  The skill being measured: pick a valid enum member rather than passing
+  the user's literal `"urgent"` (which would be schema-invalid), and do
+  it without re-asking the user (the mapping is unambiguous given the
+  pinned convention above).
+
+  Failure modes:
+    - `"priority":"urgent"` (not in the enum),
+    - `"priority":"critical"` (wrong magnitude for the pinned convention),
+    - `"priority":"medium"` / `"low"` (under-magnitude),
+    - asking the user to disambiguate.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_308/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/priority.json: '{"issue_id":"JIRA-42","priority":"high"}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 8
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 12000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "File `out/priority.json` exists with bytes `{\"issue_id\":\"JIRA-42\",\"priority\":\"high\"}` exactly."
+  - "`priority` value is `high` (the pinned mapping for `urgent`)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - enum-validation
+  - intent-mapping
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

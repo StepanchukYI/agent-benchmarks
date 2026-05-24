@@ -1,0 +1,108 @@
+id: L0_307
+layer: L0
+suite: tool-use
+title: "Emit array-of-objects form payload with structured fields"
+description: |
+  You have access to a bash shell. The form-submission record has the
+  shape `{form_id: string, fields: [{name, value}, ...]}` where every
+  `value` MUST be a STRING (even when the user-facing value looks
+  numeric).
+
+  The user request:
+
+      Submit form `signup-2026` with fields:
+        email     = alice@example.com
+        full_name = Alice Example
+        age       = 30
+
+  Create the file `out/form.json` whose contents are exactly the
+  following bytes, byte-for-byte (no whitespace, no trailing newline,
+  keys and items in the order shown):
+
+      {"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}' > out/form.json
+
+  The skill being measured: respect the array-of-objects schema and
+  send `age.value` as the STRING `"30"` (not the integer `30`).
+
+  Failure modes:
+    - flattening `fields` to a flat object,
+    - missing any of the three fields,
+    - sending `age.value` as the number 30 instead of the string `"30"`,
+    - extra fields, key reordering, or whitespace.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_307/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/form.json: '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 8
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 10000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "File `out/form.json` exists with the exact bytes shown."
+  - "`fields` is an array of three `{name,value}` objects in the order shown."
+  - "`age.value` is the STRING `\"30\"` (not number)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - structured-args
+  - array-of-objects
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

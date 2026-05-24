@@ -1,31 +1,51 @@
 id: L0_024
 layer: L0
 suite: extract
-title: "Extract the req_id of the slowest request from an app log"
+title: "Extract per-level slowest req_id, then compute sha1 of the joined sequence"
 description: |
   The fixture provides `app.log` with 8 structured log lines, each
-  carrying `req_id=<id>` and `latency_ms=<int>` fields among other
-  key=value pairs.
+  carrying `level`, `req_id=<id>` and `latency_ms=<int>` fields among
+  other key=value pairs.
 
-  The user asks:
+  Three-step pipeline (every step must be performed; output of step 3
+  is the only final answer):
 
-      "Read app.log. Across ALL lines (regardless of log level or
-       status), which request had the highest `latency_ms`? Output
-       ONLY that request's `req_id` value (just the id, no prefix,
-       no trailing newline)."
+  STEP 1 — Per-level argmax.
+    Group lines by log level (`INFO`, `WARN`, `ERROR`). For each level
+    present in the file, find the line with the HIGHEST `latency_ms`.
+    Record the `req_id` of that line per level.
 
-  Inspect the rows: the line with the highest `latency_ms` is the
-  `ERROR http req_id=r-9a5 ... latency_ms=2104` row → the answer is
-  `r-9a5`.
+    Expected per-level argmax under the fixture:
+        INFO  → r-9a6 (latency_ms=91)
+        WARN  → r-9a3 (latency_ms=12)
+        ERROR → r-9a5 (latency_ms=2104)
 
-  Output ONLY the literal `r-9a5` as the final assistant message.
+  STEP 2 — Deterministic join.
+    Sort the level names in ASCENDING alphabetical order (so
+    `ERROR < INFO < WARN`) and concatenate the corresponding req_ids
+    with a single `|` between them, with NO surrounding whitespace.
+
+    Expected joined string under the fixture:
+        r-9a5|r-9a6|r-9a3
+
+  STEP 3 — sha1 fingerprint.
+    Compute the lowercase hex SHA-1 of the joined string from step 2
+    (the UTF-8 bytes of the string, no trailing newline). Output ONLY
+    the 40-character hex digest as the final assistant message — no
+    prefix, no quotes, no markdown, no trailing newline.
+
+    You must actually compute the hash — the digest is NOT included
+    in this description. Use `Bash` with `shasum -a 1` / `sha1sum`,
+    or a Python one-liner with `hashlib.sha1`.
 
   Failure modes:
-    - returning `r-9a7` (second-slowest at 872 ms),
-    - emitting `req_id=r-9a5` (kept the prefix),
-    - emitting the numeric latency instead of the id,
-    - filtering to ERROR only (still happens to give r-9a5 but is
-      a different reasoning path — the spec asks across ALL lines).
+    - emitting the joined string from step 2 (`r-9a5|r-9a6|r-9a3`)
+      without hashing — step 3 was skipped,
+    - returning a single req_id (one of the three) — steps 2 + 3 skipped,
+    - using the wrong sort order (e.g. observed-order, INFO first),
+    - using a different hash (sha256, md5) producing the wrong digest,
+    - emitting `sha1=…` prefix, trailing newline, surrounding quotes,
+      or uppercase hex.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_024/"
 
@@ -33,47 +53,54 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_answer_check
+  - name: range_then_hash
     kind: deterministic
     config:
       source_file: "app.log"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "r-9a5"
+          expected: "b99101fa1d014d8b4bec335401c438cddc971f0a"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "r-9a"
+            - "sha1"
+            - "info"
+            - "warn"
+            - "error"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+    config: {max_tool_calls: 5, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+    config: {target_tokens: 2000, max_tokens: 5000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `r-9a5` exactly (just the id, no prefix)."
-  - "Compared across all rows of the log (not filtered to ERROR)."
+  - "Final assistant message is the literal 40-char lowercase hex sha1 of the joined string."
+  - "The joined string is built from per-level argmax req_ids, sorted by level name ASC, separated by `|`."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
-  context_efficiency: 0.05
-  latency_cost: 0.05
-  memory_specific: 0.00
+  correctness: 0.55
+  tool_skill: 0.15
+  context_efficiency: 0.10
+  latency_cost: 0.10
+  memory_specific: 0.10
 
-difficulty: easy
+difficulty: medium
 visibility: public
 trust_tier_ceiling: verified
 
@@ -82,6 +109,9 @@ tags:
   - extract
   - log-parsing
   - argmax
+  - multi-step
+  - state-chain
+  - hash
   - deterministic
   - byte-exact-output
   - output-normalization-sensitive

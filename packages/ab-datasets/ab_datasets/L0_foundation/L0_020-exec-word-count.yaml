@@ -1,41 +1,41 @@
 id: L0_020
 layer: L0
 suite: exec
-title: "Count distinct words in passage.txt using shell, write the count to a file"
+title: "3-step bash chain: filter → dedupe → count, with persistent intermediates"
 description: |
-  The fixture provides `passage.txt` containing three short sentences.
-  Using a bash command, count the number of DISTINCT lowercased words
-  in the file (treat punctuation as separators; words are letters
-  only) and write the integer count to `out/distinct_words.txt` with
-  NO trailing newline.
+  The fixture provides `raw.txt` (16 lines) — a mixture of `STATUS:`,
+  `INFO:`, `DEBUG:`, `WARN:` lines. Some `STATUS:` lines are duplicates.
 
-  Canonical pipeline:
+  The user asks (single prompt):
 
-      mkdir -p out
-      printf '%s' "$(tr -cs '[:alpha:]' '\n' < passage.txt \
-          | tr '[:upper:]' '[:lower:]' \
-          | grep -v '^$' \
-          | sort -u | wc -l | tr -d ' ')" > out/distinct_words.txt
+    "Perform a 3-step pipeline using bash, leaving every intermediate
+     file persisted on disk:
 
-  The three sentences contain the words (case-insensitive, after
-  splitting on non-letters):
+       step 1 — filter only the lines that START with the literal
+                prefix `STATUS:` and write them, in original order,
+                to `out/filtered.txt` (trailing newline at end of file).
+       step 2 — read `out/filtered.txt` and remove DUPLICATE lines,
+                preserving first-seen order (do NOT sort). Write the
+                result to `out/deduped.txt` (trailing newline).
+       step 3 — count the number of lines in `out/deduped.txt` and
+                write the integer (no trailing newline) to
+                `out/count.txt`.
 
-      the quick brown fox jumps over the lazy dog
-      a stitch in time saves nine
-      brevity is the soul of wit
+     All three files must exist at the end of the run. The agent must
+     not delete intermediates."
 
-  Distinct: a, brevity, brown, dog, fox, in, is, jumps, lazy,
-  nine, of, over, quick, saves, soul, stitch, the, time, wit
-  → 19 distinct words.
+  Expected file contents (computed from the fixture, deterministic):
 
-  The file `out/distinct_words.txt` MUST contain exactly the two
-  bytes `19` (no whitespace, no trailing newline).
+      out/filtered.txt: 11 STATUS: lines (with duplicates) + trailing \n
+      out/deduped.txt: 8 unique STATUS: lines in first-seen order
+      out/count.txt:   exactly the single byte `8` — no newline
 
   Failure modes:
-    - counted total words (21) instead of distinct (19),
-    - case-sensitive counting (`The` and `the` as distinct → 20),
-    - included punctuation as part of a word,
-    - trailing newline in the output file.
+    - using `sort -u` instead of awk-based dedupe (sorts alphabetically),
+    - including non-STATUS lines in filtered.txt,
+    - emitting trailing newline in count.txt,
+    - deleting an intermediate file at the end,
+    - writing count.txt as `8\n` (newline counted as content).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_020/"
 
@@ -43,44 +43,53 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: three_step_pipeline_check
     kind: deterministic
     config:
-      expected:
-        out/distinct_words.txt: "19"
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/filtered.txt"
+          content: "STATUS: alpha-build OK\nSTATUS: beta-build OK\nSTATUS: alpha-build OK\nSTATUS: gamma-build FAIL\nSTATUS: delta-build OK\nSTATUS: beta-build OK\nSTATUS: epsilon-build SKIP\nSTATUS: zeta-build OK\nSTATUS: alpha-build OK\nSTATUS: omicron-build OK\nSTATUS: pi-build OK\nSTATUS: epsilon-build SKIP\n"
+        - kind: workdir_file_content_equals
+          path: "out/deduped.txt"
+          content: "STATUS: alpha-build OK\nSTATUS: beta-build OK\nSTATUS: gamma-build FAIL\nSTATUS: delta-build OK\nSTATUS: epsilon-build SKIP\nSTATUS: zeta-build OK\nSTATUS: omicron-build OK\nSTATUS: pi-build OK\n"
+        - kind: workdir_file_content_equals
+          path: "out/count.txt"
+          content: "8"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+    config: {target_ms: 25000, max_ms: 75000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `out/distinct_words.txt` contains exactly the two bytes `19`."
-  - "Counting is case-insensitive and treats punctuation as separators."
+  - "All three intermediate files exist with byte-exact content."
+  - "Dedupe preserves first-seen order (no sort)."
+  - "out/count.txt has no trailing newline."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.75
+  correctness: 0.70
   tool_skill: 0.15
   context_efficiency: 0.05
-  latency_cost: 0.05
+  latency_cost: 0.10
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -88,8 +97,9 @@ tags:
   - L0
   - exec
   - bash
-  - text-processing
-  - deterministic
+  - multi-step
+  - state-chain
+  - hard
+  - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
-  - reasoning-sensitive

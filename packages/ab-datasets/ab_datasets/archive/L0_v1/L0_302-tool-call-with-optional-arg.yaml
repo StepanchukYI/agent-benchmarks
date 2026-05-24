@@ -1,0 +1,102 @@
+id: L0_302
+layer: L0
+suite: tool-use
+title: "Write search query record honoring user-provided optional limit"
+description: |
+  You have access to a bash shell. The "search" specification accepts a
+  required `query` (string) and an optional `limit` (integer, default 10,
+  max 50).
+
+  The user request is:
+
+      "Find me the top 5 items matching 'red shoes'."
+
+  Create the file `out/search.json` whose contents are exactly the
+  following bytes, byte-for-byte (no leading/trailing whitespace, no
+  trailing newline, keys in the order shown):
+
+      {"query":"red shoes","limit":5}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"query":"red shoes","limit":5}' > out/search.json
+
+  The skill being measured: respecting a USER-PROVIDED optional argument
+  ("top 5") rather than silently falling back to the default (10), AND
+  passing the query string verbatim.
+
+  Failure modes:
+    - omitting `limit` (defaults to 10),
+    - sending a different limit (10, 50, etc.),
+    - paraphrasing the query (`"red shoes for women"`, etc.),
+    - `limit` rendered as `"5"` (string) instead of the integer 5.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_302/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/search.json: '{"query":"red shoes","limit":5}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 10
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "File `out/search.json` exists at the sandbox workdir after the run."
+  - "Bytes equal exactly the two-field record with `limit=5` (integer)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - optional-args
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

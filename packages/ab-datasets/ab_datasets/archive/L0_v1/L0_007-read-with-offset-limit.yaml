@@ -1,0 +1,88 @@
+id: L0_007
+layer: L0
+suite: file-ops
+title: "Read file with offset and limit: return lines 100..109 only"
+description: |
+  The fixture provides `numbered.txt` with 200 lines of the form
+  `line 001`, `line 002`, ..., `line 200`. The user asks:
+
+    "Output exactly lines 100 through 109 of numbered.txt (one line
+     per output line, in order, no prose, no line numbers added)."
+
+  The agent MUST emit exactly those 10 lines as its final message.
+  Failure modes:
+    - off-by-one errors (lines 99..108 or 101..110),
+    - dumping the whole file,
+    - adding prose, line-number prefixes, or markdown fencing,
+    - reading the whole file when offset/limit reading is available.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_007/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_block_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "line 100\nline 101\nline 102\nline 103\nline 104\nline 105\nline 106\nline 107\nline 108\nline 109"
+          trim_trailing_newline: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 3
+      pass_threshold: 0.6
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2500
+      max_tokens: 12000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 12000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final assistant message equals exactly the ten lines `line 100`..`line 109`, one per line."
+  - "No prose, no line-number prefix, no markdown."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - offset-limit-read
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

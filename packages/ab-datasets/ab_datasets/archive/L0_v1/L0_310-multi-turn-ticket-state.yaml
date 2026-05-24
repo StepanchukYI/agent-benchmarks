@@ -1,0 +1,100 @@
+id: L0_310
+layer: L0
+suite: tool-use
+title: "Multi-step ticket lifecycle: thread the ticket id through three records"
+description: |
+  You have access to a bash shell. The fixture seeds
+  `seed/next_ticket_id.txt` with exactly the bytes `T-9981` (no trailing
+  newline). Treat this as the value an `open_ticket(subject) ->
+  ticket_id` call WOULD have returned.
+
+  Workflow:
+
+    1. Create `out/ticket.json` containing exactly:
+
+         {"ticket_id":"T-9981","subject":"cannot login"}
+
+    2. Create `out/comment.json` containing exactly:
+
+         {"ticket_id":"T-9981","body":"tried in incognito too"}
+
+    3. Create `out/close.json` containing exactly:
+
+         {"ticket_id":"T-9981","status":"closed"}
+
+  The `ticket_id` field in all three files MUST be the seeded
+  `T-9981` — read from `seed/next_ticket_id.txt`, not fabricated.
+
+  Skill being measured: thread a single id through a multi-step pipeline
+  without mutating it, fabricating it, or losing it between steps.
+
+  Failure modes:
+    - any file missing,
+    - different `ticket_id` values across the three files,
+    - inventing a new id rather than using the seeded one.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_310/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: state_tracking_validator
+    kind: deterministic
+    config:
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/ticket.json"
+          content: '{"ticket_id":"T-9981","subject":"cannot login"}'
+        - kind: workdir_file_content_equals
+          path: "out/comment.json"
+          content: '{"ticket_id":"T-9981","body":"tried in incognito too"}'
+        - kind: workdir_file_content_equals
+          path: "out/close.json"
+          content: '{"ticket_id":"T-9981","status":"closed"}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 12, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2500, max_tokens: 12000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 25000, max_ms: 150000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Three files exist (`out/ticket.json`, `out/comment.json`, `out/close.json`)."
+  - "All three `ticket_id` fields equal the seeded `T-9981`."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - multi-step-state
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

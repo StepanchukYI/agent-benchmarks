@@ -1,87 +1,101 @@
 id: L0_121
 layer: L0
 suite: long-context-niah
-title: "Seven-needle NIAH with decoy `code is` lines"
+title: "NIAH hardened: 7 needles + decoys + sha1 pipeline (119K tokens)"
 description: |
-  The fixture provides `haystack.txt` (~22 KB, 50 paragraphs) with
-  SEVEN planted "warehouse code" needles, scattered across the
-  document:
+  The haystack `haystack.txt` is 478,068 bytes
+  (~119K tokens) of dense bureaucratic filler.
 
-      "The Felden     warehouse code is W-2210."
-      "The Marrowfen  warehouse code is W-5587."
-      "The Anvilford  warehouse code is W-9046."
-      "The Storra     warehouse code is W-3318."
-      "The Vyport     warehouse code is W-6741."
-      "The Greylock   warehouse code is W-4099."
-      "The Brumcastle warehouse code is W-8253."
+  STEP 1 — Extract.
+    Read haystack.txt. Find every paragraph that contains the phrase
+    "warehouse code" used as a FACTUAL statement (look for the
+    confirmed-by-regional-verification-panel phrasing, NOT draft /
+    preliminary / superseded entries — those are decoys to exclude).
 
-  The haystack ALSO contains several decoy "code is" lines that
-  match the same pattern but are NOT warehouse codes (stables,
-  granary, foundry, mill, kiln). The agent must extract only the
-  warehouse codes, ignoring the lookalikes.
+    There are exactly 7 TRUE (entity, value) pairs to
+    collect. Each entity appears in exactly ONE confirmed paragraph;
+    some entities ALSO appear in a DECOY paragraph (marked "draft"
+    or "preliminary, superseded") — those must be EXCLUDED.
 
-  The user asks:
+    Entity names you must find values for (values are NOT given —
+    discover each entity's <value> from the haystack itself):
+      Anvilford, Brumcastle, Felden, Greylock, Marrowfen, Storra, Vyport
 
-      "From the haystack: list every WAREHOUSE code only (ignore
-       stables / granary / foundry / mill / kiln). One pair per
-       line as `<place>=<code>`, alphabetical by place. No prose."
+  STEP 2 — Sort.
+    Sort the (entity, value) pairs alphabetically by entity name.
 
-  Expected final assistant message (exact, 7 lines):
+  STEP 3 — Format.
+    Build a SINGLE string by joining the pairs as `<entity>=<value>`
+    with the literal `|` separator (NO whitespace around `|`).
+    The `<value>` is exactly as printed in the haystack INCLUDING
+    any unit suffix (e.g. `88.7 MHz`, not just `88.7`).
 
-      Anvilford=W-9046
-      Brumcastle=W-8253
-      Felden=W-2210
-      Greylock=W-4099
-      Marrowfen=W-5587
-      Storra=W-3318
-      Vyport=W-6741
+  STEP 4 — Hash.
+    Compute the lowercase hex SHA-1 of the UTF-8 bytes of the joined
+    string (no trailing newline). Emit ONLY the 40-character hex
+    digest as the final assistant message. No prefix, no quotes, no
+    markdown, no trailing newline.
 
+    You must actually compute the hash — the digest is NOT in this
+    description. Use `Bash` (`shasum -a 1` or `sha1sum`) or Python
+    (`hashlib.sha1(s.encode()).hexdigest()`).
+
+  Failure modes:
+    - including a decoy value (draft/superseded entry),
+    - missing a needle (especially the tail-depth ones),
+    - emitting the joined string instead of the sha1,
+    - wrong sort order (must be alphabetical by entity name),
+    - emitting prose surrounding the digest.
 fixture_ref: "fixtures/repos/L0_smoke/L0_121/"
 
 config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_multi_key_check
+  - name: four_needles_ordered
     kind: deterministic
     config:
       source_file: "haystack.txt"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "Anvilford=W-9046\nBrumcastle=W-8253\nFelden=W-2210\nGreylock=W-4099\nMarrowfen=W-5587\nStorra=W-3318\nVyport=W-6741"
-          trim_trailing_newline: true
+          expected: "aeb3b12e57f4c0b8c093e04f2bebc6701b70bdb7"
+          trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+          - "Anvilford"
+          - "warehouse"
+          - "="
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 10000, max_tokens: 40000, pass_threshold: 0.3 }
+    config: {target_tokens: 60000, max_tokens: 150000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 40000, max_ms: 240000, pass_threshold: 0.3 }
+    config: {target_ms: 90000, max_ms: 240000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message lists exactly seven `<place>=<code>` pairs."
-  - "All seven warehouse-code pairs present and correct."
-  - "Decoy `<place>=<code>` lines (stables/granary/etc.) are EXCLUDED."
-  - "Privacy scan produces zero hits."
+  - "Final message is the 40-char lowercase hex sha1 of the pipe-joined alphabetical pairs."
+  - "No decoy / draft / superseded values are included."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
-  context_efficiency: 0.05
+  correctness: 0.70
+  tool_skill: 0.10
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
 difficulty: hard
 visibility: public
@@ -93,9 +107,11 @@ tags:
   - niah
   - multi-needle
   - decoy
+  - hash
   - frontier
   - deterministic
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
   - context-window-sensitive
+  - multi-step

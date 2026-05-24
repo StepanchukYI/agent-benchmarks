@@ -25,7 +25,7 @@ def _datasets_root() -> Path:
 
 def _collect_yaml_paths(target: Path) -> list[Path]:
     if target.is_dir():
-        return sorted(target.rglob("*.yaml"))
+        return [p for p in sorted(target.rglob("*.yaml")) if "archive" not in p.parts]
     if target.exists():
         return [target]
     parent = target.parent if target.parent != Path("") else Path(".")
@@ -72,6 +72,8 @@ def dry_run(
     root = _datasets_root()
     matches: list[Path] = []
     for p in root.rglob("*.yaml"):
+        if "archive" in p.parts:
+            continue
         try:
             task = load_task(p)
         except Exception:
@@ -129,6 +131,8 @@ def list_tasks() -> None:
     root = _datasets_root()
     rows: list[tuple[str, str, str, str, str, str, str]] = []
     for p in sorted(root.rglob("*.yaml")):
+        if "archive" in p.parts:
+            continue
         try:
             task = load_task(p)
         except Exception as exc:

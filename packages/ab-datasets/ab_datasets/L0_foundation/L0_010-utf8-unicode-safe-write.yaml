@@ -58,21 +58,21 @@ scorer_chain:
     kind: deterministic
     config:
       max_tool_calls: 3
-      pass_threshold: 0.6
+      pass_threshold: 0.8
 
   - name: context_efficiency
     kind: deterministic
     config:
       target_tokens: 1500
-      max_tokens: 8000
-      pass_threshold: 0.5
+      max_tokens: 4000
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 12000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
   - "`notes/multilingual.txt` exists with exactly the three specified lines."

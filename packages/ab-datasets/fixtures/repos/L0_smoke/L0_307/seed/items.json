@@ -1,0 +1,41 @@
+[
+  {
+    "id": 1,
+    "amount": 12.5,
+    "currency": "USD"
+  },
+  {
+    "id": 2,
+    "amount": "abc",
+    "currency": "USD"
+  },
+  {
+    "id": 3,
+    "amount": 20.0,
+    "currency": "USD"
+  },
+  {
+    "id": 4,
+    "amount": 5.0
+  },
+  {
+    "id": 5,
+    "amount": -7.0,
+    "currency": "USD"
+  },
+  {
+    "id": 6,
+    "amount": 100.0,
+    "currency": "BTC"
+  },
+  {
+    "id": 7,
+    "amount": 33.33,
+    "currency": "USD"
+  },
+  {
+    "id": 8,
+    "amount": null,
+    "currency": "USD"
+  }
+]

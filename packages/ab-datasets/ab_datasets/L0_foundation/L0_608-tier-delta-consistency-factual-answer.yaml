@@ -21,7 +21,7 @@ description: |
   factual capability?" — if T2 differs from T0 here, something in
   the operator file is poisoning the agent's chemistry knowledge.
 
-fixture_ref: null
+fixture_ref:
 
 config:
   required_tier: T0
@@ -59,15 +59,15 @@ scorer_chain:
     kind: deterministic
     config:
       target_tokens: 500
-      max_tokens: 3000
-      pass_threshold: 0.5
+      max_tokens: 1500
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 8000
-      max_ms: 45000
-      pass_threshold: 0.5
+      max_ms: 22500
+      pass_threshold: 0.6
 
 acceptance_criteria:
   - "Final assistant message equals `Au` exactly (no quotes, no prose, no trailing newline)."
@@ -76,11 +76,11 @@ acceptance_criteria:
   - "Across all tiers in also_run_on, the answer character sequence is identical."
 
 weights:
-  correctness: 0.85
+  correctness: 0.7
   tool_skill: 0.05
   context_efficiency: 0.05
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.15
 
 difficulty: easy
 visibility: public
@@ -97,3 +97,4 @@ tags:
   - byte-exact-output
   - output-normalization-sensitive
   - factual-recall
+  - factual-recall-sensitive

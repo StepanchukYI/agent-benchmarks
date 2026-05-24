@@ -1,0 +1,3 @@
+Statement 1: Alia is older than Boris.
+Statement 2: Boris is older than Cyan.
+Statement 3: Cyan is older than Alia.

@@ -1,36 +1,41 @@
 id: L0_507
 layer: L0
 suite: faithfulness
-title: "Inferred consistency: four facts, are they mutually consistent?"
+title: "Two-step transitivity inconsistency: identify which statement breaks the chain"
 description: |
-  The fixture `source.txt` presents four labelled facts:
+  The fixture `statements.txt` contains three labelled statements:
 
-      [F1] Roen is the only child of Lyra.
-      [F2] Idris is older than Lyra.
-      [F3] Sevda is Roen's grandparent on the maternal side.
-      [F4] Sevda is younger than Idris.
+      Statement 1: Alia is older than Boris.
+      Statement 2: Boris is older than Cyan.
+      Statement 3: Cyan is older than Alia.
 
-  Step through the implications:
-    - F1 + F3 imply Sevda is Lyra's mother.
-    - Therefore Sevda > Lyra in age.
-    - F2: Idris > Lyra.
-    - F4: Sevda < Idris.
-    - Combined order: Idris > Sevda > Lyra > Roen. No contradiction.
-
-  Therefore the four facts ARE consistent. The correct answer is
-  `consistent`.
+  Statements 1 and 2 imply Alia is older than Cyan (by transitivity of
+  the strict order). Statement 3 directly contradicts this conclusion.
 
   The user asks:
 
-    "Are the four facts in source.txt mutually consistent? Output
-     ONLY one lowercase word: `consistent` or `inconsistent`. No
-     prose."
+    "Read statements.txt. The three statements are NOT mutually
+     consistent. Which single statement, if REMOVED, would leave the
+     other two perfectly consistent? Output ONLY the label exactly
+     as written (e.g. `Statement 3`), with the capital S and a single
+     space before the digit. No prose, no markdown."
+
+  Note: removing ANY of the three statements technically restores
+  consistency among the remaining two. The user's intent is the
+  statement that creates the contradiction GIVEN the other two — which
+  is Statement 3 (the cycle-closing one). Solving requires:
+    1. derive the transitivity Alia > Cyan from S1+S2,
+    2. detect that S3 contradicts this derivation,
+    3. report S3 by label.
+
+  Expected exact: `Statement 3`.
 
   Failure modes:
-    - jumping to `inconsistent` after a shallow read,
-    - returning `unknown` (no abstention permitted — full
-      determination required from the facts),
-    - returning with punctuation / capitals.
+    - emitting `S3` (wrong format),
+    - emitting `Statement 1` or `Statement 2` (didn't follow transitivity),
+    - emitting `Cyan is older than Alia.` (returned the body instead
+      of the label),
+    - prose: 'The contradiction is in Statement 3.'.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_507/"
 
@@ -38,36 +43,45 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: consistency_verdict
+  - name: transitivity_check
     kind: deterministic
     config:
-      source_file: "source.txt"
+      source_file: "statements.txt"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "consistent"
+          expected: "Statement 3"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "the contradiction"
+            - "older"
+            - "alia"
+            - "boris"
+            - "cyan"
+            - "transitivity"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+    config: {max_tool_calls: 2, pass_threshold: 1.0}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.5 }
+    config: {target_tokens: 800, max_tokens: 3000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `consistent` exactly."
+  - "Final message equals `Statement 3` exactly."
+  - "No prose, no entity names."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -84,11 +98,9 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - faithfulness
-  - inference
-  - logical-consistency
-  - truthfulqa
-  - frontier
-  - deterministic
+  - transitivity
+  - logical-deduction
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

@@ -1,0 +1,102 @@
+id: L0_011
+layer: L0
+suite: file-ops
+title: "Three-way atomic rotation: a.txt -> b.txt -> c.txt -> a.txt"
+description: |
+  The fixture contains three files: `a.txt`, `b.txt`, `c.txt`, each
+  with its own one-line content (`content of A`, `content of B`,
+  `content of C`).
+
+  The user asks:
+
+    "Rotate the contents of these three files so that, after the
+     operation:
+       - a.txt contains what was in c.txt,
+       - b.txt contains what was in a.txt,
+       - c.txt contains what was in b.txt.
+
+     All three files must remain (no extra or deleted files), and
+     no `.tmp`, `.bak`, `.swp`, or `.0` sidecar files may remain
+     on disk after the operation completes."
+
+  Expected final state:
+
+      a.txt = "content of C\n"
+      b.txt = "content of A\n"
+      c.txt = "content of B\n"
+
+  Failure modes:
+    - one file ends up duplicated (the agent overwrote without
+      saving the intermediate),
+    - leftover temp file (`a.txt.tmp`, `.0`, `.bak`),
+    - any extra or missing file at the end.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_011/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: rotated_state
+    kind: deterministic
+    config:
+      expected:
+        a.txt: "content of C\n"
+        b.txt: "content of A\n"
+        c.txt: "content of B\n"
+      must_be_absent:
+        - "a.txt.tmp"
+        - "b.txt.tmp"
+        - "c.txt.tmp"
+        - "a.txt.bak"
+        - "b.txt.bak"
+        - "c.txt.bak"
+        - "a.txt.0"
+        - "b.txt.0"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Three files exist with the rotated content shown."
+  - "No sidecar files (.tmp/.bak/.swp/.0) remain."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - multi-file
+  - atomic
+  - rotation
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

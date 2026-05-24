@@ -89,6 +89,8 @@ def discover_tasks(suite: str, *, single_task: str | None = None) -> list[Task]:
             if not layer_dir.is_dir():
                 continue
             for p in layer_dir.rglob(f"{single_task}*.yaml"):
+                if "archive" in p.parts:
+                    continue
                 candidates.append(p)
         if not candidates:
             raise FileNotFoundError(f"task not found: {single_task}")
@@ -100,12 +102,17 @@ def discover_tasks(suite: str, *, single_task: str | None = None) -> list[Task]:
         if layer_dir_name is None:
             raise ValueError(f"unknown suite prefix: {suite}")
         layer_dir = ds / layer_dir_name
-        candidates = sorted(layer_dir.rglob("*.yaml"))
+        candidates = [
+            p for p in sorted(layer_dir.rglob("*.yaml"))
+            if "archive" not in p.parts
+        ]
     else:
         for layer_dir in ds.iterdir():
             if not layer_dir.is_dir() or not layer_dir.name.startswith("L"):
                 continue
             for p in sorted(layer_dir.rglob("*.yaml")):
+                if "archive" in p.parts:
+                    continue
                 t = load_task(p)
                 if t.suite == suite:
                     candidates.append(p)

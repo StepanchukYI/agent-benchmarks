@@ -1,0 +1,84 @@
+id: L0_714
+layer: L0
+suite: reasoning-trap
+title: "Trap question with a misleading anchor (medium)"
+description: |
+  Read the problem CAREFULLY before answering.
+
+      "Alice and Bob each have a number. Bob's number is twice
+       Alice's. Their sum is 30. Alice then GIVES Bob 4 from her
+       number. What is the difference between Bob's NEW number
+       and Alice's NEW number?"
+
+  Naive trap: people anchor on the original ratio (Bob = 2 · Alice)
+  and report the original difference `10`.
+
+  Correct walkthrough:
+
+      Alice + 2·Alice = 30  →  3·Alice = 30  →  Alice = 10, Bob = 20.
+      After Alice gives 4 to Bob:
+        Alice_new = 10 − 4 = 6
+        Bob_new   = 20 + 4 = 24
+        Difference = 24 − 6 = 18.
+
+  Output ONLY the integer `18` — no prose, no units, no trailing
+  newline.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "18"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 600, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 80000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `18` exactly."
+  - "Does NOT report `10` (the anchor trap)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - misleading-anchor
+  - word-problem
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

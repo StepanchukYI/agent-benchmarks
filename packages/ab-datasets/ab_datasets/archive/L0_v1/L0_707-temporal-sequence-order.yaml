@@ -1,0 +1,95 @@
+id: L0_707
+layer: L0
+suite: reasoning-trap
+title: "Temporal sequence ordering with relative constraints (BBH-style)"
+description: |
+  Five events happened on Tuesday. The following relative-time facts
+  are all true:
+
+      - The meeting started AFTER the standup.
+      - The lunch happened AFTER the meeting.
+      - The code review happened BEFORE the standup.
+      - The deploy happened AFTER the lunch but BEFORE the
+        retrospective.
+      - The retrospective was the last event of the day.
+
+  There are exactly six events to order (code review, standup,
+  meeting, lunch, deploy, retrospective). Walk through:
+    - retrospective is LAST.
+    - code review BEFORE standup.
+    - meeting AFTER standup, BEFORE lunch.
+    - lunch BEFORE deploy, deploy BEFORE retrospective.
+    - So order is: code review, standup, meeting, lunch, deploy,
+      retrospective.
+
+  Final order: `code review, standup, meeting, lunch, deploy,
+  retrospective`.
+
+  The user prompt:
+
+    "List the six events in their chronological order, separated by
+     ` -> ` (single space, arrow, single space). Output ONLY the
+     ordered chain, no prose. Use the exact lowercase event names
+     as given."
+
+  Expected (exact):
+
+      code review -> standup -> meeting -> lunch -> deploy -> retrospective
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_chain
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "code review -> standup -> meeting -> lunch -> deploy -> retrospective"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 700, max_tokens: 5000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals the exact chain shown."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - temporal-ordering
+  - bbh
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

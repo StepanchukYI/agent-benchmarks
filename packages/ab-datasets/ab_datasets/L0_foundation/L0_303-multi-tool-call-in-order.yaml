@@ -1,84 +1,91 @@
 id: L0_303
 layer: L0
 suite: tool-use
-title: "Two-step pipeline: create order, then reference its id in confirmation"
+title: "Strict-order state transitions with plausible distractor files"
 description: |
-  You have access to a bash shell. The fixture seeds a file
-  `seed/last_order_id.txt` whose contents are exactly the bytes
-  `ORD-1042` (no trailing newline). Treat that file as the value a
-  backend would have RETURNED in a real pipeline — it stands in for
-  `create_order(...) -> order_id`.
+  You have access to a bash shell. The fixture seeds:
 
-  Workflow:
+      seed/stage.txt                 = "init\n"     (the live stage file)
+      decoy/stage_other.txt          = "untouched\n"  (distractor — DO NOT TOUCH)
+      decoy/stage.txt.bak            = "untouched\n"  (distractor — DO NOT TOUCH)
 
-    1. Create `out/order.json` containing exactly the bytes:
+  Perform the three state transitions in STRICT order, leaving every
+  intermediate persisted to a separate file:
 
-         {"customer_id":"C-42","items":["SKU-1","SKU-2"]}
+    step 1 — Read `seed/stage.txt`. Write `out/stage_1.txt` containing
+             exactly the single word `build` (no trailing newline).
+    step 2 — Read `out/stage_1.txt`. Write `out/stage_2.txt`
+             containing exactly the single word `test` (no trailing
+             newline).
+    step 3 — Read `out/stage_2.txt`. Write `out/stage_3.txt`
+             containing exactly the single word `ship` (no trailing
+             newline).
 
-    2. Read the seeded id and use it verbatim as the `order_id` in the
-       confirmation. Create `out/email.json` containing exactly:
+  Additional rules:
+    - The two decoy files in `decoy/` MUST remain byte-identical to
+      their seeded content (`untouched\n`). If the agent globs `**/*`
+      and rewrites files indiscriminately, those decoys will be hit.
 
-         {"order_id":"ORD-1042","subject":"Order confirmation"}
-
-  Both files must end up on disk. Reading the order id from the seeded
-  file (rather than fabricating one) is the skill BFCL probes with the
-  `tool_arg_from_prior_return` shape: the downstream step's argument
-  MUST be the value the upstream step produced, verbatim.
+  Expected final state:
+    out/stage_1.txt  = `build` (5 bytes, no LF)
+    out/stage_2.txt  = `test` (4 bytes, no LF)
+    out/stage_3.txt  = `ship` (4 bytes, no LF)
+    decoy/stage_other.txt  unchanged from fixture
+    decoy/stage.txt.bak    unchanged from fixture
 
   Failure modes:
-    - missing either file,
-    - fabricating an order_id different from `ORD-1042`,
-    - paraphrasing the customer id or item SKUs,
-    - wrong byte sequence (extra whitespace, key reorder, etc.).
+    - touching the decoy files (clobbered by a too-wide glob),
+    - skipping intermediates (writing only stage_3.txt),
+    - adding trailing newlines,
+    - rewriting `seed/stage.txt` in place rather than producing
+      stage_N.txt outputs.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_303/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: strict_order_with_decoys
     kind: deterministic
     config:
-      expected:
-        out/order.json: '{"customer_id":"C-42","items":["SKU-1","SKU-2"]}'
-        out/email.json: '{"order_id":"ORD-1042","subject":"Order confirmation"}'
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/stage_1.txt"
+          content: "build"
+        - kind: workdir_file_content_equals
+          path: "out/stage_2.txt"
+          content: "test"
+        - kind: workdir_file_content_equals
+          path: "out/stage_3.txt"
+          content: "ship"
+        - kind: file_unchanged
+          path: "decoy/stage_other.txt"
+        - kind: file_unchanged
+          path: "decoy/stage.txt.bak"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 12
-      pass_threshold: 0.5
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 2000
-      max_tokens: 10000
-      pass_threshold: 0.4
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 20000
-      max_ms: 120000
-      pass_threshold: 0.4
+    config: {target_ms: 25000, max_ms: 75000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `out/order.json` exists with the exact two-field record shown."
-  - "File `out/email.json` exists with `order_id` equal to the seeded `ORD-1042`."
+  - "Three stage files written byte-exact in `out/`."
+  - "Two decoy files unchanged from fixture."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -88,18 +95,16 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - tool-use
-  - bash-friendly
-  - multi-step
-  - ordering
-  - deterministic
-  - smoke-test
+  - strict-order
+  - distractor
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

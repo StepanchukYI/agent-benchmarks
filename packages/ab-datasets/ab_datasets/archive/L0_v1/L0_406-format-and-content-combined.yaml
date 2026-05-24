@@ -1,0 +1,114 @@
+id: L0_406
+layer: L0
+suite: instruction-following
+title: "Format + content combined: JSON with structured constraints"
+description: |
+  The user prompt:
+
+    "Output ONLY a JSON object with these exact requirements:
+       - top-level keys are `summary` and `keywords` (in that
+         order),
+       - `summary` is a string of EXACTLY 12 whitespace-separated
+         tokens describing the H2O molecule (water);
+       - `keywords` is an array of EXACTLY 3 strings, each a
+         single lowercase word, no duplicates;
+       - no other top-level keys, no markdown fence, no
+         surrounding prose."
+
+  Acceptable (illustrative; exact wording varies):
+
+      {"summary":"water consists of two hydrogen atoms bonded to a single oxygen atom forming a molecule","keywords":["water","hydrogen","oxygen"]}
+
+  Scorer verifies JSON parses; key order; type and shape of each
+  value; counts; constraints; no extras.
+
+  Failure modes:
+    - markdown fence around the JSON,
+    - wrong key order,
+    - wrong word count in summary,
+    - duplicate or non-lowercase keyword,
+    - extra top-level key.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: json_structure_check
+    kind: schema
+    config:
+      input: "final_assistant_message"
+      mode: "exact_json"
+      schema:
+        type: object
+        required: [summary, keywords]
+        additionalProperties: false
+        properties:
+          summary: { type: string }
+          keywords:
+            type: array
+            minItems: 3
+            maxItems: 3
+            uniqueItems: true
+            items: { type: string, pattern: "^[a-z]+$" }
+      assertions:
+        - kind: no_markdown_fence
+        - kind: no_prose_surrounding_json
+        - kind: top_level_key_order
+          expected: [summary, keywords]
+        - kind: field_word_count
+          field: "summary"
+          expected: 12
+          tokenizer: "whitespace"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 500, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message parses as JSON with exactly the two top-level keys in order."
+  - "`summary` is a 12-token string about water."
+  - "`keywords` is an array of exactly 3 distinct lowercase strings."
+  - "No markdown fence, no prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - followbench
+  - json
+  - multi-constraint
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - tokenizer-sensitive

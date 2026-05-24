@@ -1,0 +1,96 @@
+id: L0_301
+layer: L0
+suite: tool-use
+title: "Write user record file with all required fields, correctly typed"
+description: |
+  You have access to a bash shell. Create a single file at the relative
+  path `out/user.json` whose contents are exactly the following bytes,
+  byte-for-byte (no leading/trailing whitespace, no trailing newline,
+  keys in the order shown):
+
+      {"email":"alice@example.com","username":"alice","age":30}
+
+  Use a shell command such as:
+
+      mkdir -p out && printf '%s' '{"email":"alice@example.com","username":"alice","age":30}' > out/user.json
+
+  The skill being measured is the same one BFCL probes with `create_user`:
+  given a user prompt with three named fields, produce a record with
+  exactly those three fields, no extras, with `age` as an integer (not
+  a string), `email` as the verbatim address, and `username` as the
+  verbatim handle.
+
+  Failure modes:
+    - the file is missing,
+    - extra fields beyond the three required,
+    - `age` rendered as the string `"30"` instead of the number `30`,
+    - the addressing fields are paraphrased instead of verbatim.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_301/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/user.json: '{"email":"alice@example.com","username":"alice","age":30}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 10
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "File `out/user.json` exists at the sandbox workdir after the run."
+  - "Bytes equal exactly the three-field record shown (no extras, `age` is numeric)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,81 +1,95 @@
 id: L0_001
 layer: L0
 suite: file-ops
-title: "Create a file with exact specified content"
+title: "Create file with exact content AND preserve every fixture file"
 description: |
-  Create a single new file at the path `notes/greeting.txt` with the exact
-  byte-for-byte content:
+  The fixture seeds the workdir with three sentinel files:
 
-      Hello, Example.
+      .keep            1 byte:  "X"
+      README.fixture   330 bytes lorem ipsum + sentinel header
+      data/seed.bin    64 deterministic random bytes
+                       (sha256 = 84e4baa3233d2bf044b2268a72ecae6074aa7d9a7e5597849d01441083a8f4b5)
 
-  No surrounding whitespace, no trailing newlines beyond the one shown above.
-  The agent has access to a single `write_file` tool and the fixture working
-  directory is empty.
+  Create a single new file at `notes/greeting.txt` whose bytes equal
+  EXACTLY `Hello, Example.\n` (15 bytes including the trailing LF).
+
+  Every other file in the workdir MUST remain byte-identical to its
+  fixture seed. The agent must NOT create, modify, rename, or delete
+  any other file. No intermediate files (`.tmp`, `.swp`, `.bak`).
+  No directory rename.
+
+  Failure modes the scorer catches:
+    - touching .keep (a "cleanup" attempt),
+    - rewriting README.fixture (e.g. normalising whitespace),
+    - any byte change to data/seed.bin,
+    - creating extra files anywhere in the workdir.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_001/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: file_diff_and_invariants
     kind: deterministic
     config:
-      expected:
-        notes/greeting.txt: "Hello, Example.\n"
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "notes/greeting.txt"
+          content: "Hello, Example.\n"
+        - kind: file_unchanged
+          path: ".keep"
+        - kind: file_unchanged
+          path: "README.fixture"
+        - kind: file_unchanged
+          path: "data/seed.bin"
+        - kind: workdir_file_absent
+          path: "notes/greeting.txt.tmp"
+        - kind: workdir_file_absent
+          path: "notes/greeting.txt.bak"
+        - kind: workdir_file_absent
+          path: "notes/greeting.txt.swp"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 30
-      pass_threshold: 0.5
+    config: {max_tool_calls: 5, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 2000
-      max_tokens: 20000
-      pass_threshold: 0.3
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 30000
-      max_ms: 180000
-      pass_threshold: 0.3
+    config: {target_ms: 20000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `notes/greeting.txt` exists at the sandbox working directory after the run."
-  - "Bytes of the file equal exactly `Hello, Example.\\n` with no other content."
-  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+  - "notes/greeting.txt equals 'Hello, Example.\\n' byte-for-byte."
+  - "All three sentinel files unchanged from fixture."
+  - "No tmp/bak/swp files anywhere."
+  - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.80
+  correctness: 0.70
   tool_skill: 0.10
-  context_efficiency: 0.05
-  latency_cost: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.10
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: medium
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - file-ops
-  - deterministic
-  - smoke-test
+  - negative-invariant
+  - byte-exact
   - byte-exact-output
   - output-normalization-sensitive

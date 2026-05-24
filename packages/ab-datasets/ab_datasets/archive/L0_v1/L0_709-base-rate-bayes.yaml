@@ -1,0 +1,97 @@
+id: L0_709
+layer: L0
+suite: reasoning-trap
+title: "Base-rate / Bayes probability trap (false-positive)"
+description: |
+  A diagnostic test is 99% accurate (in the sense that the
+  sensitivity = 99% AND the specificity = 99%). The disease has a
+  base rate of 1 in 10,000 in the population. A randomly chosen
+  person tests POSITIVE. What is the probability they actually
+  have the disease?
+
+  Build the 2×2 table per 1,000,000 people:
+    - Diseased: 1,000,000 × 1/10,000 = 100.
+    - Not diseased: 999,900.
+    - True positives (diseased AND positive): 100 × 0.99 = 99.
+    - False positives (not-diseased AND positive): 999,900 × 0.01
+      = 9,999.
+    - Total positives: 99 + 9,999 = 10,098.
+    - P(disease | positive) = 99 / 10,098 ≈ 0.0098.
+
+  As a percentage rounded to TWO decimal places: `0.98`.
+
+  The user prompt:
+
+    "What percentage chance does this person actually have the
+     disease, given that they tested positive? Output ONLY a
+     decimal percentage rounded to TWO decimal places, no `%` sign,
+     no prose. (e.g. `42.50` for 42.5%.)"
+
+  Expected: `0.98`.
+
+  Common wrong answers:
+    - `99` (confused test accuracy with posterior),
+    - `99.00` (same trap),
+    - `0.01` (forgot to multiply by 100),
+    - `1.00` (off-by-rounding).
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_percentage
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "0.98"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `0.98` exactly."
+  - "No `%` sign, no prose."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - bayes
+  - base-rate
+  - probability
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

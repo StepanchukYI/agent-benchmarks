@@ -1,0 +1,107 @@
+id: L0_504
+layer: L0
+suite: faithfulness
+title: "Cite source by paragraph identifier when answering"
+description: |
+  The fixture provides `source.txt` with four explicitly labelled
+  paragraphs `[P1]` through `[P4]`. The user asks:
+
+    "Based on source.txt, what is the PRIMARY cause of the
+     butterfly-species decline at Marsh Reserve? After your answer,
+     in parentheses, cite the paragraph identifier (e.g. `[P2]`)
+     that supports your claim. Output ONLY a single sentence."
+
+  The agent's final message MUST:
+    1. identify "unusually dry spring" / "reduced nectar
+       availability" as the primary cause (per `[P2]`),
+    2. cite `[P2]` in parentheses after the claim,
+    3. NOT cite a different paragraph (the secondary factors live
+       in `[P3]`; the census numbers live in `[P1]`).
+
+  Failure modes:
+    - omitting the citation tag entirely,
+    - citing `[P1]`, `[P3]`, or `[P4]` (wrong paragraph),
+    - inventing a new paragraph identifier (`[P5]`).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_504/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: cite_correct_paragraph_check
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_contains_substring
+          substring: "[P2]"
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "[P1]"
+            - "[P3]"
+            - "[P4]"
+            - "[P5]"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "(?i)dry spring"
+            - "(?i)reduced nectar"
+            - "(?i)nectar availability"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 2
+      pass_threshold: 0.8
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1200
+      max_tokens: 6000
+      pass_threshold: 0.5
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 12000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "Final message references the dry spring / nectar cause."
+  - "Final message contains the paragraph tag `[P2]`."
+  - "Final message contains NO other paragraph tags ([P1], [P3], [P4], [P5])."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - citation
+  - paragraph-id
+  - truthfulqa
+  - deterministic
+  - smoke-test

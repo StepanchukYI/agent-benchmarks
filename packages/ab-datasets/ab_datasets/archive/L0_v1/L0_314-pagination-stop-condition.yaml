@@ -1,0 +1,90 @@
+id: L0_314
+layer: L0
+suite: tool-use
+title: "Paginate across local pages, sum item counts, stop when has_more is false"
+description: |
+  You have access to a bash shell. The fixture seeds three local
+  "pages" under `pages/` that emulate a paginated API:
+
+      pages/p1.json -> {"items":["A","B"],"has_more":true,"cursor":"p2"}
+      pages/p2.json -> {"items":["C","D"],"has_more":true,"cursor":"p3"}
+      pages/p3.json -> {"items":["E"],"has_more":false,"cursor":null}
+
+  Walk the pages starting from `pages/p1.json`, then follow the
+  `cursor` value to load the next page (`pages/p2.json`, then
+  `pages/p3.json`). STOP when you see `"has_more":false`. Count the
+  total items across all visited pages.
+
+  Write the total integer count to `out/total.txt` with NO trailing
+  newline. The correct value is `5` (2 + 2 + 1).
+
+  Skill measured: follow a pagination stop condition (`has_more=false`),
+  do not over-fetch (no `p4.json`), do not under-fetch (must visit all
+  three pages), and emit ONLY the integer count — no listing, no prose,
+  no trailing newline.
+
+  Failure modes:
+    - `out/total.txt` missing,
+    - value `2` or `4` (stopped early),
+    - value listing `A,B,C,D,E` (didn't count, dumped items),
+    - trailing newline.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_314/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: pagination_validator
+    kind: deterministic
+    config:
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/total.txt"
+          content: "5"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2500, max_tokens: 12000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "File `out/total.txt` exists with the single byte `5` (no trailing newline)."
+  - "All three pages visited; no fourth page assumed."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - pagination
+  - stop-condition
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,0 +1,103 @@
+id: L0_107
+layer: L0
+suite: long-context-niah
+title: "Multi-key NIAH (5 distinct keys, 5 codes) — RULER-style"
+description: |
+  The fixture (~63 KB) contains five planted facts, each pairing a
+  distinct location key with a unique code:
+
+      "The Cantillon vault key code is V-4471."
+      "The Marrowfen vault key code is V-8866."
+      "The Drystone vault key code is V-1239."
+      "The Felden vault key code is V-5530."
+      "The Westgate vault key code is V-7102."
+
+  The user asks (alphabetical order requested):
+
+    "From the haystack: list every vault key code, ordered
+     alphabetically by location name (Cantillon, Drystone, Felden,
+     Marrowfen, Westgate). Output as `<location>=<code>` per line,
+     5 lines total, no prose."
+
+  Expected final message (exact, 5 lines):
+
+      Cantillon=V-4471
+      Drystone=V-1239
+      Felden=V-5530
+      Marrowfen=V-8866
+      Westgate=V-7102
+
+  Failure modes:
+    - missing any pair,
+    - wrong order (alphabetical → reorder),
+    - wrong association (key/code mismatch),
+    - format drift.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_107/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_multi_key_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Cantillon=V-4471\nDrystone=V-1239\nFelden=V-5530\nMarrowfen=V-8866\nWestgate=V-7102"
+          trim_trailing_newline: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 1, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 16000, max_tokens: 48000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 45000, max_ms: 240000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message lists exactly five pairs."
+  - "Pairs are ordered alphabetically by location."
+  - "Every association (location-to-code) is correct."
+  - "No format drift."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - multi-key
+  - ruler
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

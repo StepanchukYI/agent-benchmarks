@@ -1,39 +1,42 @@
 id: L0_311
 layer: L0
 suite: tool-use
-title: "Three independent queries: produce one record per city, no duplicates"
+title: "Parallel writes with slot-based path collision avoidance"
 description: |
-  You have access to a bash shell. The user asks:
+  You have access to a bash shell. The fixture seeds `seed/targets.json`
+  with four target records:
 
-      "Tell me the current weather in three cities: Berlin, Tokyo,
-       and Buenos Aires. Issue all three lookups — they are
-       independent."
+      [
+        {"slot": "a", "value": "alpha"},
+        {"slot": "b", "value": "beta"},
+        {"slot": "c", "value": "gamma"},
+        {"slot": "d", "value": "delta"}
+      ]
 
-  Create exactly three files, one per city, each containing exactly
-  the bytes shown (no whitespace, no trailing newline):
+  The user asks:
 
-      out/weather_berlin.json
-        bytes: {"city":"Berlin"}
+    "For each target, write the `value` to a separate file at the path
+     `out/slot_<slot>.txt` (e.g. `out/slot_a.txt` contains `alpha`).
+     ALL four files must exist; each contains the exact `value` string
+     for its slot, with NO trailing newline.
 
-      out/weather_tokyo.json
-        bytes: {"city":"Tokyo"}
+     IMPORTANT: a naive implementation that writes all values to a
+     single `out/slot.txt` (collapsing the slot field) would only
+     leave the last write visible. Your tool calls must use the
+     `slot` value to derive a DISTINCT output path per record — no
+     output-key collision."
 
-      out/weather_buenos_aires.json
-        bytes: {"city":"Buenos Aires"}
-
-  The skill being measured: when three queries are independent, issue
-  ONE record per query without duplicates or omissions. Whether you
-  emit the three bash calls in a single message (parallel) or one at
-  a time (serial) is unobservable to the scorer — what's checked is
-  the three-file end state.
+  Expected files (4 total):
+    out/slot_a.txt  = `alpha` (5 bytes, no LF)
+    out/slot_b.txt  = `beta`  (4 bytes, no LF)
+    out/slot_c.txt  = `gamma` (5 bytes, no LF)
+    out/slot_d.txt  = `delta` (5 bytes, no LF)
 
   Failure modes:
-    - any of the three files missing,
-    - extra files like `out/weather_paris.json` (asking the user
-      first, or inventing extra cities),
-    - duplicates,
-    - wrong city name (paraphrased / translated),
-    - wrong byte sequence inside any file.
+    - writing all four values to `out/slot.txt` (final state = "delta"),
+    - writing only the first or last target,
+    - swapping slot ↔ value (writing "alpha" → out/slot_alpha.txt),
+    - emitting trailing newlines.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_311/"
 
@@ -41,36 +44,47 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: per_slot_writes
     kind: deterministic
     config:
-      expected:
-        out/weather_berlin.json: '{"city":"Berlin"}'
-        out/weather_tokyo.json: '{"city":"Tokyo"}'
-        out/weather_buenos_aires.json: '{"city":"Buenos Aires"}'
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/slot_a.txt"
+          content: "alpha"
+        - kind: workdir_file_content_equals
+          path: "out/slot_b.txt"
+          content: "beta"
+        - kind: workdir_file_content_equals
+          path: "out/slot_c.txt"
+          content: "gamma"
+        - kind: workdir_file_content_equals
+          path: "out/slot_d.txt"
+          content: "delta"
+        - kind: workdir_file_absent
+          path: "out/slot.txt"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+    config: {max_tool_calls: 10, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+    config: {target_ms: 22000, max_ms: 70000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Three files exist, one per city, with the exact bytes shown."
-  - "No extra files under `out/weather_*.json`."
+  - "All four slot files present with exact bytes."
+  - "No `out/slot.txt` collision file."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -80,16 +94,16 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - tool-use
-  - bash-friendly
-  - independent-queries
-  - deterministic
+  - parallel-writes
+  - path-collision
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

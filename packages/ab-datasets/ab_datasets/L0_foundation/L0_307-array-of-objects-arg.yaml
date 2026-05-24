@@ -1,87 +1,86 @@
 id: L0_307
 layer: L0
 suite: tool-use
-title: "Emit array-of-objects form payload with structured fields"
+title: "Array with mixed valid/invalid items — filter, count, and sum"
 description: |
-  You have access to a bash shell. The form-submission record has the
-  shape `{form_id: string, fields: [{name, value}, ...]}` where every
-  `value` MUST be a STRING (even when the user-facing value looks
-  numeric).
+  You have access to a bash shell. The fixture seeds `seed/items.json`
+  with 8 records:
 
-  The user request:
+      [
+        {"id": 1, "amount": 12.5, "currency": "USD"},
+        {"id": 2, "amount": "abc", "currency": "USD"},   // invalid: string amount
+        {"id": 3, "amount": 20.0, "currency": "USD"},
+        {"id": 4, "amount": 5.0},                          // invalid: missing currency
+        {"id": 5, "amount": -7.0, "currency": "USD"},
+        {"id": 6, "amount": 100.0, "currency": "BTC"},    // invalid: not USD
+        {"id": 7, "amount": 33.33, "currency": "USD"},
+        {"id": 8, "amount": null, "currency": "USD"}      // invalid: null amount
+      ]
 
-      Submit form `signup-2026` with fields:
-        email     = alice@example.com
-        full_name = Alice Example
-        age       = 30
+  Filter the items applying ALL of these rules simultaneously:
 
-  Create the file `out/form.json` whose contents are exactly the
-  following bytes, byte-for-byte (no whitespace, no trailing newline,
-  keys and items in the order shown):
+    1. `amount` must be a JSON number (int or float; not string, not null).
+    2. `currency` must be present and equal to the string `"USD"`.
+    3. Negative `amount` values are still VALID.
 
-      {"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}
+  After filtering, write two output files:
 
-  Use:
+    out/filtered_ids.json — a JSON array of the surviving `id` values
+                            in ASCENDING order, minified, no trailing
+                            newline. For this fixture: [1,3,5,7].
+    out/sum.txt           — the float sum of the surviving `amount`
+                            values, formatted to 2 decimal places, no
+                            trailing newline. For this fixture: 58.83.
 
-      mkdir -p out && printf '%s' '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}' > out/form.json
-
-  The skill being measured: respect the array-of-objects schema and
-  send `age.value` as the STRING `"30"` (not the integer `30`).
+  The agent must NOT hard-code these outputs; they must derive from
+  the seed file (which a future version may change).
 
   Failure modes:
-    - flattening `fields` to a flat object,
-    - missing any of the three fields,
-    - sending `age.value` as the number 30 instead of the string `"30"`,
-    - extra fields, key reordering, or whitespace.
+    - including id=2 (string amount mistaken for valid),
+    - including id=4 (missing currency overlooked),
+    - including id=6 (BTC not USD),
+    - including id=8 (null treated as 0),
+    - emitting `58.830` or `58.8` (wrong decimal format).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_307/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: filter_array_check
     kind: deterministic
     config:
-      expected:
-        out/form.json: '{"form_id":"signup-2026","fields":[{"name":"email","value":"alice@example.com"},{"name":"full_name","value":"Alice Example"},{"name":"age","value":"30"}]}'
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/filtered_ids.json"
+          content: "[1,3,5,7]"
+        - kind: workdir_file_content_equals
+          path: "out/sum.txt"
+          content: "58.83"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 8
-      pass_threshold: 0.5
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 2000
-      max_tokens: 10000
-      pass_threshold: 0.4
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 15000
-      max_ms: 90000
-      pass_threshold: 0.4
+    config: {target_ms: 22000, max_ms: 70000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `out/form.json` exists with the exact bytes shown."
-  - "`fields` is an array of three `{name,value}` objects in the order shown."
-  - "`age.value` is the STRING `\"30\"` (not number)."
+  - "out/filtered_ids.json equals `[1,3,5,7]` byte-exact."
+  - "out/sum.txt equals `58.83` byte-exact, no newline."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -91,18 +90,16 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - tool-use
-  - bash-friendly
-  - structured-args
-  - array-of-objects
-  - deterministic
-  - smoke-test
+  - array-filter
+  - adversarial-data
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

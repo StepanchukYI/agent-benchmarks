@@ -1,0 +1,85 @@
+id: L0_703
+layer: L0
+suite: reasoning-trap
+title: "Date arithmetic across year boundary (BBH-style)"
+description: |
+  Given a fixed reference date, subtract a number of days that
+  crosses the year boundary. The fixture is text-only — date is in
+  the prompt.
+
+  The user prompt:
+
+    "If today is 14 February 2027, what was the date exactly 47
+     days ago? Output ONLY the date in ISO 8601 format
+     (YYYY-MM-DD), no prose, no quotes."
+
+  Compute step-by-step:
+    - 14 days back from Feb 14 → Jan 31, 2027 (14 days subtracted)
+    - 31 more days back → Dec 31, 2026 (45 days subtracted)
+    - 2 more days → Dec 29, 2026 (47 days subtracted)
+
+  Answer: `2026-12-29`.
+
+  Failure modes:
+    - off-by-one (`2026-12-28` or `2026-12-30`),
+    - forgetting year decrement,
+    - leap-year confusion (2024 is leap; 2027 is not, but
+      computation involves 2026 → 2027 transition).
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_date
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "2026-12-29"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 500, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `2026-12-29` exactly."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - date-arithmetic
+  - bbh
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

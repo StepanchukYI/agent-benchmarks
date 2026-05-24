@@ -1,27 +1,51 @@
 id: L0_021
 layer: L0
 suite: exec
-title: "Sum a CSV column with bash + awk, write result to a file"
+title: "CSV sum with mixed valid + invalid (NaN, locale, alpha) values"
 description: |
-  The fixture provides `values.csv` with two columns: `id,amount`,
-  and 8 data rows. Some `amount` values are negative.
+  The fixture provides `values.csv` with a `name,amount` header and 12
+  data rows. The `amount` column intentionally mixes valid and invalid
+  values:
 
-  Using a bash command (awk is fine), compute the integer SUM of
-  the `amount` column across all 8 rows, and write the result to
-  `out/sum.txt` with NO trailing newline.
+      alpha,10           (valid: 10)
+      beta,NaN           (invalid: NaN)
+      gamma,25           (valid: 25)
+      delta,             (invalid: empty)
+      epsilon,-5         (valid: -5)
+      zeta,abc           (invalid: alpha string)
+      eta,3.14           (valid: 3.14)
+      theta,1_000        (valid: Python-style 1000)
+      iota,100           (valid: 100)
+      kappa,1,234        (invalid: European thousands separator — ambiguous;
+                          NOTE: this row has 3 commas, treat the value as
+                          the literal string '1,234' which is NOT a valid
+                          standard number)
+      lambda,200         (valid: 200)
+      mu,-50             (valid: -50)
 
-  Canonical pipeline:
+  The user asks:
 
-      mkdir -p out
-      printf '%s' "$(awk -F, 'NR>1 {s+=$2} END {print s}' values.csv)" \
-          > out/sum.txt
+    "Sum the `amount` column using the following EXPLICIT rules:
 
-  The correct sum is `109` (12 + 7 + 33 − 5 + 28 + 11 + 4 + 19).
+       1. Skip the header row.
+       2. A value is VALID if Python's `float()` accepts the string
+          after removing underscores ONLY (no comma removal, no
+          locale conversion). NaN is NOT valid even though
+          `float('NaN')` succeeds — exclude it explicitly.
+       3. Invalid values are SKIPPED, not zero.
+       4. Sum the valid values as a float; output to 2 decimal places.
+
+     Write the result to `out/sum.txt` with NO trailing newline."
+
+  Valid set: 10, 25, -5, 3.14, 1000, 100, 200, -50.
+  Sum = 1283.14.
+  Expected file content (exact, no newline): `1283.14`.
 
   Failure modes:
-    - including the header row in the sum,
-    - skipping negative values (ignoring the sign),
-    - emitting `109.0` (float) instead of integer,
+    - including NaN (becomes NaN — pollutes sum),
+    - including `1,234` as 1234 (locale assumption),
+    - including `abc` as 0,
+    - emitting `1283.1400` or `1.283e+03` (wrong format),
     - trailing newline.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_021/"
@@ -30,34 +54,36 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: csv_sum_strict
     kind: deterministic
     config:
-      expected:
-        out/sum.txt: "109"
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/sum.txt"
+          content: "1283.14"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 8, pass_threshold: 0.5 }
+    config: {max_tool_calls: 6, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+    config: {target_tokens: 1500, max_tokens: 5000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `out/sum.txt` contains exactly the bytes `109`."
-  - "Header row not counted; negative values honoured."
+  - "out/sum.txt contains exactly the 7 bytes `1283.14`, no newline."
+  - "NaN, empty, alpha, and European-comma values all excluded."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -67,16 +93,15 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - exec
-  - bash
-  - awk
   - csv
-  - deterministic
+  - adversarial-data
+  - hard
   - byte-exact-output
   - output-normalization-sensitive

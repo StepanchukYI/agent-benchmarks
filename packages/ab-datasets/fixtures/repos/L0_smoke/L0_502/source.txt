@@ -1,16 +1,11 @@
-The following three quotes appear in the same archive volume,
-labelled by their respective speakers. Note that the quotes are
-intentionally similar but NOT identical.
+Source paragraphs:
 
-Speaker A, the cartographer Adis: "The road north of Eldermere
-turns west at the cairn marked by three stacked stones."
+P1: The bell at Saltmoor tolls thrice at dusk; its echo is heard across the bay.
 
-Speaker B, the surveyor Roen: "The road north of Eldermere turns
-west at the cairn marked with three stacked stones."
+P2: The bell at Saltmoor tolls thrice at dusk, its echo is heard across the bay.
 
-Speaker C, the historian Lyra: "The road north of Eldermere bends
-west at the cairn marked by three stacked stones."
+P3: The bell at Saltmoor tolls thrice at dusk: its echo is heard across the bay.
 
-(Note for the reader: the prepositions and verbs differ — `marked
-by`, `marked with`, `marked by`; `turns`, `turns`, `bends`. The
-attribution distinguishes them.)
+P4: The bell at Saltmoor tolls thrice at dusk — its echo is heard across the bay.
+
+P5: The bell at Saltmoor tolls thrice at dusk. Its echo is heard across the bay.

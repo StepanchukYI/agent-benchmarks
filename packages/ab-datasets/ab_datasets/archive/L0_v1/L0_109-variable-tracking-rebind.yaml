@@ -1,0 +1,97 @@
+id: L0_109
+layer: L0
+suite: long-context-multi-hop
+title: "Variable tracking with rebinding (RULER-style multi-hop tracing)"
+description: |
+  The fixture (~34 KB) embeds a sequence of variable assignments in
+  the order they appear in the document:
+
+      1. X is set to 7.
+      2. Y is assigned the current value of X.   (Y = 7)
+      3. Z is assigned the current value of Y.   (Z = 7)
+      4. X is then updated to 99.                (X = 99; Y, Z unchanged)
+      5. W is assigned the current value of Z.   (W = 7)
+
+  The user asks:
+
+    "From the haystack: what is the final value of W? Output ONLY
+     the integer, no prose, no punctuation."
+
+  The correct answer is `7`. Failure modes:
+    - returning `99` (failed to track that Z was copied from Y
+      BEFORE X was rebound),
+    - returning the latest value of X (didn't follow assignment
+      semantics),
+    - returning a value from a decoy paragraph.
+
+  This probes whether the model can do **multi-hop variable
+  tracking** under temporal rebinding — a known weakness even at
+  short context lengths.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_109/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_answer_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "7"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 1, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 10000, max_tokens: 30000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 30000, max_ms: 180000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message equals `7` exactly."
+  - "No prose, no punctuation."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - multi-hop
+  - variable-tracking
+  - rebinding
+  - ruler
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

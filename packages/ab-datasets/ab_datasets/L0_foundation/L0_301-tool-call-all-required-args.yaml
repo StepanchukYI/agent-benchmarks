@@ -1,96 +1,110 @@
 id: L0_301
 layer: L0
 suite: tool-use
-title: "Write user record file with all required fields, correctly typed"
+title: "3-step state dialog: find max, derive hash, write summary"
 description: |
-  You have access to a bash shell. Create a single file at the relative
-  path `out/user.json` whose contents are exactly the following bytes,
-  byte-for-byte (no leading/trailing whitespace, no trailing newline,
-  keys in the order shown):
+  You have access to a bash shell. The fixture seeds `seed/users.json`
+  with three user records (indented, with a trailing newline):
 
-      {"email":"alice@example.com","username":"alice","age":30}
+      [
+        {"id": "U-001", "name": "Alia", "age": 32, "email": "alia@example.com"},
+        {"id": "U-002", "name": "Boris", "age": 47, "email": "boris@example.com"},
+        {"id": "U-003", "name": "Cyan", "age": 29, "email": "cyan@example.com"}
+      ]
 
-  Use a shell command such as:
+  Perform the THREE steps in order, leaving every intermediate file on
+  disk:
 
-      mkdir -p out && printf '%s' '{"email":"alice@example.com","username":"alice","age":30}' > out/user.json
+    step 1 — Find the record with the maximum `age` and write it to
+             `out/oldest.json` as a minified JSON object with EXACTLY
+             these three keys in this order: `id`, `name`, `age`. No
+             trailing newline. No surrounding prose.
 
-  The skill being measured is the same one BFCL probes with `create_user`:
-  given a user prompt with three named fields, produce a record with
-  exactly those three fields, no extras, with `age` as an integer (not
-  a string), `email` as the verbatim address, and `username` as the
-  verbatim handle.
+    step 2 — Compute the SHA-256 hex digest (lowercase) of the
+             oldest user's `name` value as a UTF-8 byte sequence (no
+             newline appended) and write it to `out/name_hash.txt` —
+             64 hex characters, no trailing newline.
+
+    step 3 — Write `out/summary.json` containing exactly:
+             {"oldest_id":"<id>","name_sha256":"<digest>","age":<age>}
+             with the values pulled from steps 1 and 2. Keys in this
+             order. No trailing newline.
+
+  The agent must NOT fabricate or hard-code any value — both the
+  oldest-record selection and the hash must derive from the seed file.
+
+  Expected:
+    out/oldest.json     = {"id":"U-002","name":"Boris","age":47}
+    out/name_hash.txt   = 1eda6e8b94308b6c44e758e0a31d0950597ac53e274928a446a867d9e959117c
+    out/summary.json    = {"oldest_id":"U-002","name_sha256":"1eda6e8b94308b6c44e758e0a31d0950597ac53e274928a446a867d9e959117c","age":47}
 
   Failure modes:
-    - the file is missing,
-    - extra fields beyond the three required,
-    - `age` rendered as the string `"30"` instead of the number `30`,
-    - the addressing fields are paraphrased instead of verbatim.
+    - hard-coding "Boris" without reading the seed,
+    - hashing the name + trailing newline (8 extra bytes),
+    - wrong key order in the JSON objects,
+    - missing any intermediate file.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_301/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: three_step_state_chain
     kind: deterministic
     config:
-      expected:
-        out/user.json: '{"email":"alice@example.com","username":"alice","age":30}'
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "out/oldest.json"
+          content: "{\"id\":\"U-002\",\"name\":\"Boris\",\"age\":47}"
+        - kind: workdir_file_content_equals
+          path: "out/name_hash.txt"
+          content: "1eda6e8b94308b6c44e758e0a31d0950597ac53e274928a446a867d9e959117c"
+        - kind: workdir_file_content_equals
+          path: "out/summary.json"
+          content: "{\"oldest_id\":\"U-002\",\"name_sha256\":\"1eda6e8b94308b6c44e758e0a31d0950597ac53e274928a446a867d9e959117c\",\"age\":47}"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 10
-      pass_threshold: 0.5
+    config: {max_tool_calls: 10, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 1500
-      max_tokens: 8000
-      pass_threshold: 0.4
+    config: {target_tokens: 2500, max_tokens: 8000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 15000
-      max_ms: 90000
-      pass_threshold: 0.4
+    config: {target_ms: 30000, max_ms: 90000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "File `out/user.json` exists at the sandbox workdir after the run."
-  - "Bytes equal exactly the three-field record shown (no extras, `age` is numeric)."
+  - "All three intermediate files exist byte-exact."
+  - "Hash derived from the actual seed value (no hard-coding)."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.75
-  tool_skill: 0.15
+  correctness: 0.70
+  tool_skill: 0.20
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - tool-use
-  - bash-friendly
-  - deterministic
-  - smoke-test
+  - multi-step
+  - state-chain
+  - derived-value
+  - hard
   - byte-exact-output
   - output-normalization-sensitive

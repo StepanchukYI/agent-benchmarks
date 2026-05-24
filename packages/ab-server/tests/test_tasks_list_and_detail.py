@@ -58,7 +58,9 @@ def test_get_task_detail_with_stats(client: TestClient) -> None:
     assert isinstance(body["acceptance_criteria"], list)
     assert len(body["acceptance_criteria"]) >= 1
     assert isinstance(body["scorer_chain"], list)
-    assert any(s["name"] == "file_diff" for s in body["scorer_chain"])
+    # Lever B renamed the file-ops scorer from `file_diff` to
+    # `file_diff_and_invariants` (adds fixture-file-unchanged checks).
+    assert any(s["name"] == "file_diff_and_invariants" for s in body["scorer_chain"])
     stats = body["stats"]
     assert "pass_rate_30d" in stats
     assert "median_cost_usd" in stats

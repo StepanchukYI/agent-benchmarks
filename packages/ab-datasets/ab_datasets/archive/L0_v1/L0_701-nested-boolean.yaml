@@ -1,0 +1,89 @@
+id: L0_701
+layer: L0
+suite: reasoning-trap
+title: "Nested boolean expression with NOT chains (BBH-style)"
+description: |
+  Resolve the following expression to TRUE or FALSE. Honour operator
+  precedence (NOT > AND > OR; left-to-right within same precedence):
+
+      not ( True and not ( False or not True ) ) or not ( True and False )
+
+  Step it out:
+
+      not True = False
+      ( False or False ) = False
+      not False = True
+      ( True and True ) = True
+      not True = False
+      ( True and False ) = False
+      not False = True
+      ( False or True ) = True
+
+  Answer is `True`.
+
+  The user prompt:
+
+    "Evaluate this Boolean expression. Output ONLY the single word
+     `True` or `False`, capitalised exactly as shown, no quotes,
+     no prose:
+
+       not ( True and not ( False or not True ) ) or not ( True and False )"
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_boolean
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "True"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 500, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `True` exactly."
+  - "No prose, no surrounding quotes."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - boolean
+  - bbh
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

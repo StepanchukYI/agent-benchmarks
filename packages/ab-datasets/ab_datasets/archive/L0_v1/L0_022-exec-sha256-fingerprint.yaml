@@ -1,0 +1,85 @@
+id: L0_022
+layer: L0
+suite: exec
+title: "Compute the SHA-256 hex digest of payload.bin and write it to a file"
+description: |
+  The fixture provides `payload.bin` (a small text payload). Compute
+  its SHA-256 hex digest (lowercase, 64 hex characters, no `sha256:`
+  prefix) using a shell command, and write ONLY the digest to
+  `out/digest.txt` with NO trailing newline.
+
+  Canonical pipeline (works with either `shasum -a 256` or `sha256sum`):
+
+      mkdir -p out
+      if command -v sha256sum >/dev/null 2>&1; then
+          printf '%s' "$(sha256sum payload.bin | awk '{print $1}')" > out/digest.txt
+      else
+          printf '%s' "$(shasum -a 256 payload.bin | awk '{print $1}')" > out/digest.txt
+      fi
+
+  The expected digest is:
+
+      14841d5c6d9ffe69c049ba3b4d739f194a16b808ce56c931d093039d66038f86
+
+  Failure modes:
+    - including the filename column (`<digest>  payload.bin`),
+    - uppercase hex digits,
+    - using a different hash algorithm (md5, sha1, sha512),
+    - trailing newline.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_022/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/digest.txt: "14841d5c6d9ffe69c049ba3b4d739f194a16b808ce56c931d093039d66038f86"
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 8, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 8000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "File `out/digest.txt` contains exactly the 64-char SHA-256 hex digest."
+  - "Lowercase, no `sha256:` prefix, no filename column, no trailing newline."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - exec
+  - bash
+  - hashing
+  - sha256
+  - deterministic
+  - byte-exact-output
+  - output-normalization-sensitive

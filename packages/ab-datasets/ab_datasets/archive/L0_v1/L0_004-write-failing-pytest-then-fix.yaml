@@ -1,0 +1,87 @@
+id: L0_004
+layer: L0
+suite: exec
+title: "Implement add() so the provided pytest passes"
+description: |
+  The fixture provides a `solution.py` with a stub `def add(a, b)` that raises
+  `NotImplementedError`, and a `test_solution.py` with two pytest cases:
+  `test_basic` asserts `add(2, 3) == 5`; `test_zero` asserts `add(0, 0) == 0`.
+
+  The agent must edit `solution.py` to implement `add(a, b)` so that
+  `pytest test_solution.py` exits with code 0. The test file itself must
+  not be modified.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_004/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: pytest_exec
+    kind: exec
+    config:
+      cmd: ["pytest", "-q", "test_solution.py"]
+      cwd: "."
+      expected_exit: 0
+
+  - name: test_file_unchanged
+    kind: deterministic
+    config:
+      expected:
+        test_solution.py: "from solution import add\n\n\ndef test_basic():\n    assert add(2, 3) == 5\n\n\ndef test_zero():\n    assert add(0, 0) == 0\n"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 30
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 20000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "Running `pytest -q test_solution.py` from the sandbox exits with code 0."
+  - "`test_solution.py` is byte-identical to the fixture version."
+  - "`solution.py` defines `add(a, b)` returning `a + b` (or equivalent)."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - exec
+  - pytest
+  - deterministic
+  - smoke-test

@@ -1,0 +1,101 @@
+id: L0_309
+layer: L0
+suite: tool-use
+title: "Emit deeply nested object (3 levels) without flattening"
+description: |
+  You have access to a bash shell. The "create subscription" record
+  has the deeply-nested shape:
+
+      {
+        "user": {
+          "id": <string>,
+          "contact": {
+            "email": <string>,
+            "address": {
+              "country": <ISO-3166 alpha-2>,
+              "city":    <string>
+            }
+          }
+        },
+        "plan": <enum: "free" | "pro" | "enterprise">
+      }
+
+  The user request:
+
+      "Subscribe user `u-7421` (email alice@example.com, country DE,
+       city Berlin) to the `pro` plan."
+
+  Create the file `out/subscription.json` whose contents are exactly
+  the following bytes (no whitespace, no trailing newline, keys in
+  the order shown):
+
+      {"user":{"id":"u-7421","contact":{"email":"alice@example.com","address":{"country":"DE","city":"Berlin"}}},"plan":"pro"}
+
+  The skill being measured: produce the EXACT 3-level nested
+  structure, no flattening to `user_id` / `user_email` / `country` at
+  the top level, no extra fields, `country` as the ISO-3166 alpha-2
+  code `DE` (not `Germany`).
+
+  Failure modes:
+    - flattening (`{"user_id":"u-7421","user_email":...}`),
+    - `country` = `"Germany"` instead of `"DE"`,
+    - missing the `address` nesting,
+    - wrong `plan` enum value.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_309/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/subscription.json: '{"user":{"id":"u-7421","contact":{"email":"alice@example.com","address":{"country":"DE","city":"Berlin"}}},"plan":"pro"}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 8, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 18000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "File `out/subscription.json` exists with the exact 3-level nested bytes shown."
+  - "`country` is the ISO-3166 alpha-2 `DE` (not `Germany`)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - deeply-nested
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

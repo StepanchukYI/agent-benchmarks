@@ -1,0 +1,95 @@
+id: L0_311
+layer: L0
+suite: tool-use
+title: "Three independent queries: produce one record per city, no duplicates"
+description: |
+  You have access to a bash shell. The user asks:
+
+      "Tell me the current weather in three cities: Berlin, Tokyo,
+       and Buenos Aires. Issue all three lookups — they are
+       independent."
+
+  Create exactly three files, one per city, each containing exactly
+  the bytes shown (no whitespace, no trailing newline):
+
+      out/weather_berlin.json
+        bytes: {"city":"Berlin"}
+
+      out/weather_tokyo.json
+        bytes: {"city":"Tokyo"}
+
+      out/weather_buenos_aires.json
+        bytes: {"city":"Buenos Aires"}
+
+  The skill being measured: when three queries are independent, issue
+  ONE record per query without duplicates or omissions. Whether you
+  emit the three bash calls in a single message (parallel) or one at
+  a time (serial) is unobservable to the scorer — what's checked is
+  the three-file end state.
+
+  Failure modes:
+    - any of the three files missing,
+    - extra files like `out/weather_paris.json` (asking the user
+      first, or inventing extra cities),
+    - duplicates,
+    - wrong city name (paraphrased / translated),
+    - wrong byte sequence inside any file.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_311/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/weather_berlin.json: '{"city":"Berlin"}'
+        out/weather_tokyo.json: '{"city":"Tokyo"}'
+        out/weather_buenos_aires.json: '{"city":"Buenos Aires"}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 10, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 2000, max_tokens: 10000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 120000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Three files exist, one per city, with the exact bytes shown."
+  - "No extra files under `out/weather_*.json`."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - independent-queries
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

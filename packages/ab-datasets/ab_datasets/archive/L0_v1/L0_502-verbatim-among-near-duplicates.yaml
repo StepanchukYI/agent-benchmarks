@@ -1,0 +1,112 @@
+id: L0_502
+layer: L0
+suite: faithfulness
+title: "Verbatim citation among three near-duplicate spans (correct attribution)"
+description: |
+  The fixture `source.txt` contains three near-identical quotes
+  attributed to three different speakers. The three quotes differ
+  only by one or two function words:
+
+      Speaker A (cartographer Adis):  "...turns west at the cairn
+                                       marked BY three stacked stones."
+      Speaker B (surveyor Roen):      "...turns west at the cairn
+                                       marked WITH three stacked stones."
+      Speaker C (historian Lyra):     "...bends west at the cairn
+                                       marked BY three stacked stones."
+
+  The user asks:
+
+    "Quote, byte-for-byte and inside double quotation marks, what
+     SURVEYOR ROEN said about the road north of Eldermere. Do not
+     paraphrase. Do not include the speaker label. Output ONLY a
+     single line with the quoted span."
+
+  The agent's final message MUST contain the verbatim Roen span
+  inside double quotes, and MUST NOT contain Adis's or Lyra's
+  spans (which differ by `marked by` vs `marked with` and `turns`
+  vs `bends`).
+
+  Expected verbatim span (inside the assistant's `"..."`):
+
+      The road north of Eldermere turns west at the cairn marked
+      with three stacked stones.
+
+  Hard discriminators:
+    - `marked by` belongs to Adis and Lyra, NOT Roen,
+    - `bends west` belongs to Lyra, NOT Roen,
+    - `marked with` is uniquely Roen's.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_502/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: correct_attribution_check
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_contains_quoted_span
+          span: "The road north of Eldermere turns west at the cairn marked with three stacked stones."
+          quote_chars: ["\"", "“", "”"]
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "marked with three stacked stones"
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "marked by three stacked stones"
+            - "bends west"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1500, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message contains the verbatim Roen quote inside double quotation marks."
+  - "Quote contains `marked with`, not `marked by`."
+  - "Quote contains `turns west`, not `bends west`."
+  - "No competing Adis or Lyra phrasing leaks into the response."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - verbatim-citation
+  - attribution-disambiguation
+  - truthfulqa
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

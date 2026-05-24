@@ -1,0 +1,87 @@
+id: L0_123
+layer: L0
+suite: long-context-niah
+title: "Multi-value NIAH: officer name → corridor count + sum aggregation"
+description: |
+  The fixture provides `haystack.txt` (~21 KB, 50 paragraphs) with
+  four planted facts pairing an officer name with a corridor count:
+
+      "Officer Orin   patrols 12 corridors at the Hawkwood   outpost."
+      "Officer Niamh  patrols  7 corridors at the Bayhollow  outpost."
+      "Officer Sevda  patrols 19 corridors at the Mossgrove  outpost."
+      "Officer Kael   patrols  4 corridors at the Reedhaven  outpost."
+
+  The user asks:
+
+      "From the haystack: what is the TOTAL number of corridors
+       patrolled by all named officers combined? Output ONLY the
+       integer total, no prose, no trailing newline."
+
+  Compute: 12 + 7 + 19 + 4 = 42.
+
+  Failure modes:
+    - missing any officer's count → undercount,
+    - including a non-officer count (decoys),
+    - emitting prose / units (`42 corridors`),
+    - off-by-one or arithmetic slip.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_123/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_sum_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "42"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 3, pass_threshold: 0.7 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 8000, max_tokens: 32000, pass_threshold: 0.3 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 35000, max_ms: 200000, pass_threshold: 0.3 }
+
+acceptance_criteria:
+  - "Final assistant message equals `42` exactly (integer, no prose)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - multi-value
+  - aggregation
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

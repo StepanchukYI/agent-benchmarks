@@ -1,0 +1,99 @@
+id: L0_009
+layer: L0
+suite: file-ops
+title: "Atomic rename: no intermediate file paths visible in trajectory"
+description: |
+  The fixture provides `draft.md`. The user asks:
+
+    "Rename `draft.md` to `final.md`. The file content must NOT
+     change. There must be NO intermediate state where both
+     `draft.md` and `final.md` exist, and no temporary file like
+     `final.md.tmp` should remain after the operation."
+
+  The agent MUST emit the rename such that:
+    - after the run, `final.md` exists with the exact original
+      content of `draft.md`,
+    - `draft.md` no longer exists,
+    - the trajectory does NOT show any intermediate file at a
+      `.tmp`, `.bak`, `.swp`, or similarly-suffixed path that
+      remains on disk after the operation completes.
+
+  Failure modes:
+    - leaving `draft.md` on disk,
+    - leaving a `final.md.tmp` or similar temp file,
+    - modifying content during rename.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_009/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: final_state_check
+    kind: deterministic
+    config:
+      expected:
+        final.md: "# Draft article\n\nThis is a draft. Status: pending review.\n"
+      must_be_absent:
+        - "draft.md"
+        - "final.md.tmp"
+        - "final.md.bak"
+        - "final.md.swp"
+        - "draft.md.tmp"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 4
+      pass_threshold: 0.6
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.5
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 12000
+      max_ms: 60000
+      pass_threshold: 0.5
+
+acceptance_criteria:
+  - "`final.md` exists with exact original content of `draft.md`."
+  - "`draft.md` no longer exists."
+  - "No `.tmp` / `.bak` / `.swp` sidecar files remain."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - rename
+  - cleanup
+  - deterministic
+  - smoke-test

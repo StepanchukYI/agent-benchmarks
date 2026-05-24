@@ -68,22 +68,22 @@ scorer_chain:
   - name: tool_skill
     kind: deterministic
     config:
-      max_tool_calls: 15
-      pass_threshold: 0.5
+      max_tool_calls: 7
+      pass_threshold: 0.8
 
   - name: context_efficiency
     kind: deterministic
     config:
       target_tokens: 2500
-      max_tokens: 14000
-      pass_threshold: 0.3
+      max_tokens: 7000
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 30000
-      max_ms: 180000
-      pass_threshold: 0.3
+      max_ms: 90000
+      pass_threshold: 0.6
 
 acceptance_criteria:
   - "`event.json` validates against `schema.json`."

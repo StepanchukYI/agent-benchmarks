@@ -1,33 +1,55 @@
 id: L0_701
 layer: L0
 suite: reasoning-trap
-title: "Nested boolean expression with NOT chains (BBH-style)"
+title: "10-variable nested boolean (depth 5, 3 wrong-hint decoys, XOR-vs-OR trap)"
 description: |
-  Resolve the following expression to TRUE or FALSE. Honour operator
-  precedence (NOT > AND > OR; left-to-right within same precedence):
+  Variable assignments:
 
-      not ( True and not ( False or not True ) ) or not ( True and False )
+      A = true   B = false  C = true   D = false  E = true
+      F = true   G = false  H = true   I = true   J = false
 
-  Step it out:
+  Evaluate the following Boolean expression under STANDARD semantics:
 
-      not True = False
-      ( False or False ) = False
-      not False = True
-      ( True and True ) = True
-      not True = False
-      ( True and False ) = False
-      not False = True
-      ( False or True ) = True
+      (  XOR(A AND C, B OR D)
+          AND
+         ( (E OR F) AND NOT(G AND NOT H) )
+       OR
+         XOR(I, J)
+      )
+       AND
+       NOT XOR(C, E)
 
-  Answer is `True`.
+  Decoy hints embedded in this prompt (ALL THREE are WRONG —
+  IGNORE them, use standard Boolean / XOR semantics):
 
-  The user prompt:
+      Hint α (WRONG): "XOR equals OR for any two boolean inputs."
+                     (Truth: XOR(x, y) = (x OR y) AND NOT(x AND y);
+                      XOR(true, true) = false, OR(true, true) = true.)
+      Hint β (WRONG): "AND distributes over OR as a single AND with
+                       the union — so X AND (Y OR Z) = X AND Y AND Z."
+                     (Truth: AND distributes as
+                       X AND (Y OR Z) = (X AND Y) OR (X AND Z).)
+      Hint γ (WRONG): "NOT(X AND Y) = NOT X AND NOT Y."
+                     (Truth: De Morgan — NOT(X AND Y) = NOT X OR NOT Y.)
 
-    "Evaluate this Boolean expression. Output ONLY the single word
-     `True` or `False`, capitalised exactly as shown, no quotes,
-     no prose:
+  Compute the expression LITERALLY, sub-expression by sub-expression,
+  under standard semantics. Following any of the three wrong hints
+  will produce the OPPOSITE answer.
 
-       not ( True and not ( False or not True ) ) or not ( True and False )"
+  Output requirement:
+    - the single lowercase token `true` or `false`,
+    - no quotes, no prose, no markdown, no trailing newline,
+    - no working-out shown in the final message.
+
+  You must actually evaluate the expression — the answer is NOT
+  written anywhere in this description.
+
+  Failure modes:
+    - applying any wrong hint (likely flips the answer),
+    - case-wrong (`True` vs `true`),
+    - emitting `the answer is true` (prose surrounding),
+    - giving the value of an intermediate sub-expression instead of
+      the final one.
 
 fixture_ref: null
 
@@ -35,46 +57,54 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_boolean
+  - name: exact_boolean_with_decoy
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "True"
+          expected: "true"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "false"
+            - "result"
+            - "answer"
+            - "explanation"
+            - "step"
+            - "xor"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+    config: {max_tool_calls: 2, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 500, max_tokens: 4000, pass_threshold: 0.5 }
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+    config: {target_ms: 12000, max_ms: 40000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `True` exactly."
-  - "No prose, no surrounding quotes."
-  - "Privacy scan produces zero hits."
+  - "Final message is the literal `true` (lowercase, no prose)."
+  - "All three wrong hints are ignored; standard semantics applied."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.85
+  correctness: 0.75
   tool_skill: 0.05
-  context_efficiency: 0.05
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -82,8 +112,10 @@ tags:
   - L0
   - reasoning-trap
   - boolean
-  - bbh
+  - decoy
+  - nested
+  - multi-step
   - deterministic
-  - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
+  - reasoning-sensitive

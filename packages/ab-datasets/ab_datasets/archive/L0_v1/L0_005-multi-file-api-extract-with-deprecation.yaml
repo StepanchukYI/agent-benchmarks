@@ -1,0 +1,121 @@
+id: L0_005
+layer: L0
+suite: extract
+title: "Multi-file API surface extraction with deprecation filter"
+description: |
+  The fixture contains THREE Python modules — `auth.py`, `billing.py`,
+  `storage.py`. Each module declares several public top-level
+  functions and some private ones (name starts with `_`). Some public
+  functions are marked DEPRECATED with a `# @deprecated:` comment on
+  the line immediately preceding the `def`.
+
+  The agent must produce `API.md` listing the **stable** (non-
+  deprecated, non-private) public API across the three modules,
+  grouped by module, with modules in alphabetical order, and
+  functions within each module also in alphabetical order. The exact
+  format is:
+
+      ## auth
+      - login
+      - logout
+      - refresh_token
+
+      ## billing
+      - charge
+      - refund_full
+
+      ## storage
+      - delete
+      - get
+      - put
+
+  Strict requirements:
+    - private functions (`_hash_password`, `_ledger_entry`,
+      `_serialize`) MUST be excluded,
+    - deprecated functions (`renew_session`, `reimburse`) MUST be
+      excluded,
+    - module headers use H2 `##`, separated by exactly one blank line,
+    - functions use bullet `- name`, one per line, no parentheses,
+    - file ends with a single trailing newline.
+
+  Failure modes:
+    - including any private or deprecated function,
+    - missing any stable function,
+    - wrong alphabetical ordering,
+    - wrong header level or formatting.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_005/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        API.md: "## auth\n- login\n- logout\n- refresh_token\n\n## billing\n- charge\n- refund_full\n\n## storage\n- delete\n- get\n- put\n"
+
+  - name: must_not_contain_check
+    kind: deterministic
+    config:
+      target_path: "API.md"
+      forbidden_substrings:
+        - "_hash_password"
+        - "_ledger_entry"
+        - "_serialize"
+        - "renew_session"
+        - "reimburse"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 15, pass_threshold: 0.5 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 3000, max_tokens: 16000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 25000, max_ms: 150000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "API.md exists with the exact byte content shown in description."
+  - "Modules sorted alphabetically; functions within module sorted alphabetically."
+  - "No private function names appear anywhere in API.md."
+  - "No deprecated function names appear anywhere in API.md."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - extract
+  - multi-file
+  - api-surface
+  - deprecation-filter
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

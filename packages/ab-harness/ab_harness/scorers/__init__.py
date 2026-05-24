@@ -198,6 +198,37 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "red_green_exec": "correctness",
     "minimal_patch_state_diff": "correctness",
     "hallucination_check": "correctness",
+    # ----- Lever B rewrite batch (27 names). All but `optional_arg_gating`
+    # land on the correctness pillar — they assert on workdir state / output
+    # bytes / numeric values. `optional_arg_gating` checks tool-call shape,
+    # so it maps to tool_skill.
+    "byte_exact_all_five": "correctness",
+    "csv_sum_strict": "correctness",
+    "exact_assignment_5": "correctness",
+    "exact_boolean_with_decoy": "correctness",
+    "exact_multiset_difference": "correctness",
+    "exact_needle_value": "correctness",
+    "exact_year": "correctness",
+    "file_diff_and_invariants": "correctness",
+    "filter_array_check": "correctness",
+    "four_needles_ordered": "correctness",
+    "ifbench_six_constraint": "correctness",
+    "json_schema_check": "correctness",
+    "json_strict_order_and_word_counts": "correctness",
+    "near_collision_match": "correctness",
+    "optional_arg_gating": "tool_skill",
+    "per_slot_writes": "correctness",
+    "punctuation_exact_match": "correctness",
+    "range_then_hash": "correctness",
+    "rotation_check": "correctness",
+    "stitched_segments_check": "correctness",
+    "strict_order_with_decoys": "correctness",
+    "three_axis_constraint": "correctness",
+    "three_step_pipeline_check": "correctness",
+    "three_step_state_chain": "correctness",
+    "top5_position_tiebreak": "correctness",
+    "total_sum_check": "correctness",
+    "transitivity_check": "correctness",
 }
 
 

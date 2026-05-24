@@ -1,0 +1,85 @@
+id: L0_704
+layer: L0
+suite: reasoning-trap
+title: "Object counting with category filter (BBH-style)"
+description: |
+  The user prompt:
+
+    "I have 3 apples, 2 oranges, 5 bananas, 1 dragon fruit, 4
+     potatoes, 2 carrots, 6 onions, and 1 mango. How many FRUITS
+     do I have in total? A potato, a carrot, and an onion are NOT
+     fruits. Output ONLY the integer total, no prose, no
+     punctuation."
+
+  Fruits = apples (3) + oranges (2) + bananas (5) + dragon fruit (1)
+        + mango (1) = 12.
+
+  Vegetables (excluded) = potatoes (4) + carrots (2) + onions (6) = 12.
+
+  Answer: `12`.
+
+  Failure modes:
+    - including vegetables in the count (would yield 24),
+    - missing a fruit (would yield 11 or less),
+    - misreading "dragon fruit" as two items,
+    - returning total of all items.
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_count
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "12"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 500, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 8000, max_ms: 45000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `12` exactly."
+  - "No prose, no punctuation."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - counting
+  - category-filter
+  - bbh
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,0 +1,112 @@
+id: L0_017
+layer: L0
+suite: schema-fill
+title: "Fill a schema requiring an array of three `{name, version}` objects"
+description: |
+  The fixture provides `manifest.json` and `schema.json`. The schema
+  requires:
+
+    - `release` — string matching `^v[0-9]+\.[0-9]+\.[0-9]+$`,
+    - `components` — array of EXACTLY 3 unique objects, each
+      `{name: string, version: semver}` with NO extra properties.
+    - `additionalProperties: false` at every level.
+
+  The user info:
+
+      "Add the three components: catalog 1.0.2, fetcher 0.3.7,
+       leaderboard 2.4.0. Patch manifest.json so it passes schema.json."
+
+  Edit `manifest.json` minimally to add the `components` array. The
+  `release` field MUST be preserved unchanged. Items MUST appear in
+  the order shown above (catalog, fetcher, leaderboard).
+
+  Failure modes:
+    - `components` as an object instead of an array,
+    - extra fields like `team` / `description` on any component,
+    - duplicate or missing component,
+    - wrong version string format,
+    - `release` mutated.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_017/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: schema_validator
+    kind: schema
+    config:
+      target: "manifest.json"
+      schema_path: "schema.json"
+
+  - name: manifest_value_equals
+    kind: schema
+    config:
+      target: "manifest.json"
+      mode: json_value_equals
+      additional_properties_forbidden: true
+      expected:
+        release: "v2.4.0"
+        components:
+          - { name: "catalog",     version: "1.0.2" }
+          - { name: "fetcher",     version: "0.3.7" }
+          - { name: "leaderboard", version: "2.4.0" }
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 15
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 12000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 25000
+      max_ms: 150000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "`manifest.json` validates against `schema.json`."
+  - "`components` is an array of exactly 3 ordered objects (catalog/fetcher/leaderboard)."
+  - "Each component has only `name` and `version`."
+  - "`release` is preserved as v2.4.0."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - schema-fill
+  - json-schema
+  - array-of-objects
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive

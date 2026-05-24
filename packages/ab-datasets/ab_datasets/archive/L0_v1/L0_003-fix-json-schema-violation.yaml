@@ -1,0 +1,95 @@
+id: L0_003
+layer: L0
+suite: schema-fill
+title: "Fix a JSON file to satisfy its JSON Schema"
+description: |
+  The fixture provides `config.json` and `schema.json`. The schema requires
+  the fields `name` (string) and `version` (semver-like string matching
+  `^[0-9]+\.[0-9]+\.[0-9]+$`). The provided `config.json` is missing the
+  `version` field and therefore fails validation.
+
+  The agent must edit `config.json` minimally so that it validates against
+  the schema. The existing `name` field must be preserved unchanged. No
+  other keys may be added.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_003/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: schema_validator
+    kind: schema
+    config:
+      target: "config.json"
+      schema_path: "schema.json"
+
+  - name: preserved_name_and_version
+    kind: schema
+    config:
+      target: "config.json"
+      schema:
+        type: object
+        required: [name, version]
+        properties:
+          name:
+            const: "example-widget"
+          version:
+            type: string
+            pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 30
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 20000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "`config.json` validates against `schema.json` with no errors."
+  - "The `name` field equals `example-widget` (unchanged from the fixture)."
+  - "A `version` field is present and matches the semver pattern."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - schema-fill
+  - json-schema
+  - deterministic
+  - smoke-test

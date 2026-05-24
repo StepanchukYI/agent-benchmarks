@@ -1,0 +1,97 @@
+id: L0_710
+layer: L0
+suite: reasoning-trap
+title: "Timezone arithmetic with DST trap (frontier)"
+description: |
+  A 6-hour flight departs from New York City (timezone America/
+  New_York, observes DST) on **2027-03-13 22:30 local time** and
+  flies to Berlin (timezone Europe/Berlin, observes DST).
+
+  On 2027-03-13 22:30, New York is in EST (UTC-5).
+  On 2027-03-14 02:00 New York time, the US clocks JUMP FORWARD to
+  03:00 (start of DST). So between 22:30 NY on March 13 and the
+  6-hour-later moment, we cross the local DST transition.
+
+  Wall-clock arithmetic in NY local time over a real-time 6-hour
+  span starting at 22:30 EST:
+    - 22:30 EST = 03:30 UTC on March 14.
+    - 6 hours later = 09:30 UTC on March 14.
+  Berlin on 2027-03-14 09:30 UTC: Berlin transitions to DST one
+  WEEK later (last Sunday of March = 2027-03-28), so on
+  2027-03-14 Berlin is still CET (UTC+1). Therefore Berlin local
+  time = 10:30.
+
+  The user prompt:
+
+    "A 6-hour flight departs New York City at 2027-03-13 22:30
+     local. What is the arrival time in Berlin LOCAL time? Output
+     ONLY in `YYYY-MM-DD HH:MM` format (24-hour), no timezone
+     name, no prose."
+
+  Expected (exact): `2027-03-14 10:30`.
+
+  Failure modes:
+    - ignoring DST entirely (would yield 11:30 if treating NY as
+      UTC-5 vs Berlin UTC+1 = 6 hour gap, then adding 6 hours of
+      flight → 04:30 Berlin → wrong),
+    - applying Berlin DST too early,
+    - off-by-one on the date (March 14 vs 13).
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_arrival_time
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "2027-03-14 10:30"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1000, max_tokens: 6000, pass_threshold: 0.4 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 20000, max_ms: 90000, pass_threshold: 0.4 }
+
+acceptance_criteria:
+  - "Final assistant message equals `2027-03-14 10:30` exactly."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - timezone
+  - dst
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

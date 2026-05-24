@@ -1,15 +1,53 @@
 id: L0_711
 layer: L0
 suite: reasoning-trap
-title: "Modular arithmetic: clock-face hour (easy)"
+title: "9-step modular arithmetic chain with sha1 fingerprint"
 description: |
-  It is currently 09:00. Exactly 47 hours later, what hour does the
-  clock show (24-hour format, two digits, no minutes, no AM/PM)?
+  Compute the following STRICTLY in the given order (every step is
+  needed and chains into the next):
 
-  Compute: (9 + 47) mod 24 = 56 mod 24 = 8 → `08`.
+      P1 = (3 ** 17)  mod 997
+      P2 = (5 ** 11)  mod 997
+      P3 = (7 ** 23)  mod 1013
+      P4 = (11 ** 13) mod 1019
+      P5 = (13 ** 19) mod 1031
 
-  Output ONLY the two-digit hour `08` — no surrounding text, no quotes,
-  no minutes, no trailing newline.
+      R1 = (P1 * P2)       mod 997
+      R2 = (R1 * P3)       mod 1013
+      R3 = (R2 + P4)       mod 1019
+      R4 = (R3 ** 2 + P5)  mod 1031
+
+  Build the joined chain string by concatenating the 9 integers in
+  order, separated by a literal `-` (hyphen-minus, U+002D), no spaces
+  anywhere:
+
+      chain = "<P1>-<P2>-<P3>-<P4>-<P5>-<R1>-<R2>-<R3>-<R4>"
+
+  Compute the lowercase hex SHA-1 of the UTF-8 bytes of `chain`
+  (no trailing newline). Output ONLY the 40-character hex digest as
+  the SOLE final assistant message — no prefix, no quotes, no
+  markdown, no trailing newline, no working-out.
+
+  You MUST actually compute the chain — the digest is NOT in this
+  description. The most reliable path is `Bash` with a single
+  Python one-liner using `pow(base, exp, mod)` and
+  `hashlib.sha1(...).hexdigest()`.
+
+  Common pitfalls (do NOT make these errors — each will give the
+  wrong digest):
+    - confusing modulus for one of P1..P5 (each uses a DIFFERENT
+      modulus: 997, 997, 1013, 1019, 1031 — read carefully),
+    - applying the modulus AFTER the multiplication for R1 but
+      forgetting to re-apply the next modulus 1013 for R2,
+    - using `(R3 ** 2) mod 1031 + P5` (wrong precedence — the
+      spec is `(R3 ** 2 + P5) mod 1031`, addition is INSIDE the mod),
+    - off-by-one in any exponent (e.g. `3 ** 16` instead of `3 ** 17`),
+    - separating integers with `,` or ` ` instead of `-`,
+    - emitting any intermediate value (P1..P5 or R1..R4) in the final
+      message — scorer rejects digit sequences in the answer.
+
+  Reference precedence (when in doubt):
+    R4 = ( (R3 * R3) + P5 ) mod 1031
 
 fixture_ref: null
 
@@ -17,54 +55,65 @@ config:
   required_tier: T0
   recommended_tier: T0
   also_run_on: [T2]
-  requires: { skills: [], mcps: [], vault_state: {} }
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_answer_check
+  - name: range_then_hash
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "08"
+          expected: "611b3d27ab7fa7431e394973a5ed87e8ccf3e462"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "P1"
+            - "R1"
+            - "mod"
+            - " "
+            - "-"
 
   - name: privacy_check
     kind: privacy_check
-    config: { patterns_path: "docs/privacy-patterns.yaml" }
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 2, pass_threshold: 1.0 }
+    config: {max_tool_calls: 3, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 400, max_tokens: 3000, pass_threshold: 0.5 }
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 8000, max_ms: 60000, pass_threshold: 0.5 }
+    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `08` exactly (two-digit, no prose)."
-  - "Privacy scan produces zero hits."
+  - "Final message is the 40-char lowercase hex sha1 of the chain."
+  - "All 5 base powers and 4 chain combinations computed with the correct moduli."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.85
+  correctness: 0.75
   tool_skill: 0.05
-  context_efficiency: 0.05
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - reasoning-trap
-  - arithmetic
-  - modular
+  - modular-arithmetic
+  - multi-step
+  - state-chain
+  - hash
+  - frontier
   - deterministic
-  - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
+  - reasoning-sensitive

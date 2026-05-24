@@ -256,6 +256,37 @@ TRACK_B_SCORER_NAMES: tuple[str, ...] = (
     "importance_distribution_check",
     "skill_invocation_check",
     "lifecycle_order_check",
+    # ----- Lever B rewrite batch (27 names). Each is a fresh assertion-chain
+    # alias used by the tightened L0 task YAMLs. All dispatch through
+    # `_make_assertion_scorer` — no per-name impl needed; logic lives in the
+    # task YAML's `assertions:` block under standard `kind:` entries.
+    "byte_exact_all_five",
+    "csv_sum_strict",
+    "exact_assignment_5",
+    "exact_boolean_with_decoy",
+    "exact_multiset_difference",
+    "exact_needle_value",
+    "exact_year",
+    "file_diff_and_invariants",
+    "filter_array_check",
+    "four_needles_ordered",
+    "ifbench_six_constraint",
+    "json_schema_check",
+    "json_strict_order_and_word_counts",
+    "near_collision_match",
+    "optional_arg_gating",
+    "per_slot_writes",
+    "punctuation_exact_match",
+    "range_then_hash",
+    "rotation_check",
+    "stitched_segments_check",
+    "strict_order_with_decoys",
+    "three_axis_constraint",
+    "three_step_pipeline_check",
+    "three_step_state_chain",
+    "top5_position_tiebreak",
+    "total_sum_check",
+    "transitivity_check",
 )
 
 

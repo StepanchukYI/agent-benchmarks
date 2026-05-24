@@ -1,0 +1,93 @@
+id: L0_510
+layer: L0
+suite: faithfulness
+title: "Stale-fact flagging: document from 2021 vs today 2026"
+description: |
+  The fixture `source.txt` is a 2021-dated document making claims
+  about Atlas Robotics (CEO, revenue, headcount). The document
+  metadata explicitly notes it was last updated 2021-06-15. The
+  prompt also tells the agent that "today" is 2026-05-21 — nearly
+  five years later.
+
+  The user asks:
+
+    "Based ONLY on source.txt, name the current CEO of Atlas
+     Robotics. Be honest about the limits of the source. Output a
+     single line in this exact shape:
+        `<name>|<freshness>`
+     where freshness is one of `current` (source ≤ 1 year old),
+     `dated` (source 1-3 years old), or `stale` (source > 3 years
+     old). Pick freshness from the source's metadata vs today's
+     date; pick name from the source."
+
+  Today = 2026-05-21. Source published 2021-06-15. Age ≈ 4 years
+  11 months → `stale`.
+
+  Expected exact: `Mira Halden|stale`.
+
+  Failure modes:
+    - reporting `current` (ignored the 5-year gap),
+    - reporting `dated` (off by one bucket),
+    - omitting the freshness marker,
+    - hallucinating a different CEO from training data.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_510/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: stale_flag_verdict
+    kind: deterministic
+    config:
+      source_file: "source.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Mira Halden|stale"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 1200, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `Mira Halden|stale` exactly."
+  - "No prose, no surrounding quotes."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - faithfulness
+  - stale-fact
+  - temporal-awareness
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

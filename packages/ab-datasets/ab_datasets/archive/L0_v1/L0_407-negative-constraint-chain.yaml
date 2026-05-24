@@ -1,0 +1,96 @@
+id: L0_407
+layer: L0
+suite: instruction-following
+title: "Negative-constraint chain: avoid all listed substrings"
+description: |
+  The user prompt:
+
+    "Write a single paragraph (3-5 sentences) about the physics
+     of rainbows. The paragraph MUST NOT contain ANY of the
+     following substrings (case-insensitive): `prism`, `Newton`,
+     `colour`, `color`, `spectrum`, `wavelength`, `nm`, `Iris`,
+     `sun shower`, `God`, `pot of gold`. Plain prose only —
+     no markdown, no lists."
+
+  This is a frontier negative-constraint task: the model must
+  describe rainbows accurately while avoiding 11 of the most
+  natural words to use.
+
+  Failure modes:
+    - any banned substring appears (case-insensitive match),
+    - markdown formatting present,
+    - too short (<3 sentences) or too long (>5 sentences).
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: forbidden_substrings_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "prism"
+            - "Newton"
+            - "colour"
+            - "color"
+            - "spectrum"
+            - "wavelength"
+            - " nm "
+            - "Iris"
+            - "sun shower"
+            - " God "
+            - "pot of gold"
+        - kind: final_assistant_message_sentence_count_range
+          min: 3
+          max: 5
+        - kind: final_assistant_message_no_markdown
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 600, max_tokens: 4000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final message contains none of the eleven banned substrings."
+  - "Sentence count is between 3 and 5."
+  - "No markdown."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - instruction-following
+  - ifeval
+  - followbench
+  - negative-constraints
+  - frontier
+  - deterministic
+  - reasoning-sensitive

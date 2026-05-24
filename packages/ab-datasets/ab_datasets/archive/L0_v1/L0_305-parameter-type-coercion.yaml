@@ -1,0 +1,101 @@
+id: L0_305
+layer: L0
+suite: tool-use
+title: "Parse user value with units, emit typed number (not string)"
+description: |
+  You have access to a bash shell. The "set thermostat" record requires
+  a single numeric field `celsius` (integer or float, range [-50, 50]).
+
+  The user prompt presents the value as a string with units:
+
+      "Set the thermostat to '22 celsius'."
+
+  Create the file `out/thermostat.json` whose contents are exactly the
+  following bytes (no whitespace, no trailing newline):
+
+      {"celsius":22}
+
+  Use:
+
+      mkdir -p out && printf '%s' '{"celsius":22}' > out/thermostat.json
+
+  The skill being measured: parse the value out of the units-suffixed
+  user string, drop the unit, and emit a NUMBER in JSON (`22`), not the
+  string `"22"` and not `"22 celsius"`.
+
+  Failure modes:
+    - `{"celsius":"22"}` — value is a string,
+    - `{"celsius":"22 celsius"}` — units leaked into the value,
+    - `{"celsius":22.0}` — float when integer was natural,
+    - extra keys not in the schema.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_305/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/thermostat.json: '{"celsius":22}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 8
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 1500
+      max_tokens: 8000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "File `out/thermostat.json` exists with bytes `{\"celsius\":22}` exactly."
+  - "`celsius` is the JSON number 22 (not the string `\"22\"`, no units)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - type-coercion
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,0 +1,81 @@
+id: L0_001
+layer: L0
+suite: file-ops
+title: "Create a file with exact specified content"
+description: |
+  Create a single new file at the path `notes/greeting.txt` with the exact
+  byte-for-byte content:
+
+      Hello, Example.
+
+  No surrounding whitespace, no trailing newlines beyond the one shown above.
+  The agent has access to a single `write_file` tool and the fixture working
+  directory is empty.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_001/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        notes/greeting.txt: "Hello, Example.\n"
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 30
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 20000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "File `notes/greeting.txt` exists at the sandbox working directory after the run."
+  - "Bytes of the file equal exactly `Hello, Example.\\n` with no other content."
+  - "Privacy scan produces zero hits against docs/privacy-patterns.yaml."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.10
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - deterministic
+  - smoke-test
+  - byte-exact-output
+  - output-normalization-sensitive

@@ -1,0 +1,105 @@
+id: L0_303
+layer: L0
+suite: tool-use
+title: "Two-step pipeline: create order, then reference its id in confirmation"
+description: |
+  You have access to a bash shell. The fixture seeds a file
+  `seed/last_order_id.txt` whose contents are exactly the bytes
+  `ORD-1042` (no trailing newline). Treat that file as the value a
+  backend would have RETURNED in a real pipeline — it stands in for
+  `create_order(...) -> order_id`.
+
+  Workflow:
+
+    1. Create `out/order.json` containing exactly the bytes:
+
+         {"customer_id":"C-42","items":["SKU-1","SKU-2"]}
+
+    2. Read the seeded id and use it verbatim as the `order_id` in the
+       confirmation. Create `out/email.json` containing exactly:
+
+         {"order_id":"ORD-1042","subject":"Order confirmation"}
+
+  Both files must end up on disk. Reading the order id from the seeded
+  file (rather than fabricating one) is the skill BFCL probes with the
+  `tool_arg_from_prior_return` shape: the downstream step's argument
+  MUST be the value the upstream step produced, verbatim.
+
+  Failure modes:
+    - missing either file,
+    - fabricating an order_id different from `ORD-1042`,
+    - paraphrasing the customer id or item SKUs,
+    - wrong byte sequence (extra whitespace, key reorder, etc.).
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_303/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: file_diff
+    kind: deterministic
+    config:
+      expected:
+        out/order.json: '{"customer_id":"C-42","items":["SKU-1","SKU-2"]}'
+        out/email.json: '{"order_id":"ORD-1042","subject":"Order confirmation"}'
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 12
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 10000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 20000
+      max_ms: 120000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "File `out/order.json` exists with the exact two-field record shown."
+  - "File `out/email.json` exists with `order_id` equal to the seeded `ORD-1042`."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  tool_skill: 0.20
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: easy
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - tool-use
+  - bash-friendly
+  - multi-step
+  - ordering
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

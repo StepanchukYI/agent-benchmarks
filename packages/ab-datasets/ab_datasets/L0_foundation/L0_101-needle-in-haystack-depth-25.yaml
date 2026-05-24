@@ -1,85 +1,103 @@
 id: L0_101
 layer: L0
 suite: long-context-niah
-title: "Needle-in-haystack: retrieve passphrase planted at ~25% depth"
+title: "NIAH hardened: 5 needles + decoys + sha1 pipeline (119K tokens)"
 description: |
-  The fixture provides `haystack.txt` (~42 KB, ~100 short paragraphs of
-  plausible-looking distractor prose, deterministically generated). One
-  paragraph at ~25% depth contains the only meaningful fact:
+  The haystack `haystack.txt` is 477,266 bytes
+  (~119K tokens) of dense bureaucratic filler.
 
-      "The secret passphrase recorded in the Eldermere archive on the
-       seventh of Frostmonth is QUARRY-FALCON-7."
+  STEP 1 — Extract.
+    Read haystack.txt. Find every paragraph that contains the phrase
+    "signal frequency" used as a FACTUAL statement (look for the
+    confirmed-by-regional-verification-panel phrasing, NOT draft /
+    preliminary / superseded entries — those are decoys to exclude).
 
-  The user asks:
+    There are exactly 5 TRUE (entity, value) pairs to
+    collect. Each entity appears in exactly ONE confirmed paragraph;
+    some entities ALSO appear in a DECOY paragraph (marked "draft"
+    or "preliminary, superseded") — those must be EXCLUDED.
 
-    "Read the entire haystack. What is the secret passphrase recorded
-     in the Eldermere archive on the seventh of Frostmonth? Answer
-     with ONLY the passphrase, in uppercase, with no surrounding text."
+    Entity names you must find values for (values are NOT given —
+    discover each entity's <value> from the haystack itself):
+      Anvilford, Brenthal, Corwick, Dunmore, Elwick
 
-  The agent's final message MUST equal `QUARRY-FALCON-7` exactly (byte-
-  for-byte, no quotes, no punctuation, no prose). The decoy paragraphs
-  do NOT contain the string `QUARRY-FALCON-7`.
+  STEP 2 — Sort.
+    Sort the (entity, value) pairs alphabetically by entity name.
 
+  STEP 3 — Format.
+    Build a SINGLE string by joining the pairs as `<entity>=<value>`
+    with the literal `|` separator (NO whitespace around `|`).
+    The `<value>` is exactly as printed in the haystack INCLUDING
+    any unit suffix (e.g. `88.7 MHz`, not just `88.7`).
+
+  STEP 4 — Hash.
+    Compute the lowercase hex SHA-1 of the UTF-8 bytes of the joined
+    string (no trailing newline). Emit ONLY the 40-character hex
+    digest as the final assistant message. No prefix, no quotes, no
+    markdown, no trailing newline.
+
+    You must actually compute the hash — the digest is NOT in this
+    description. Use `Bash` (`shasum -a 1` or `sha1sum`) or Python
+    (`hashlib.sha1(s.encode()).hexdigest()`).
+
+  Failure modes:
+    - including a decoy value (draft/superseded entry),
+    - missing a needle (especially the tail-depth ones),
+    - emitting the joined string instead of the sha1,
+    - wrong sort order (must be alphabetical by entity name),
+    - emitting prose surrounding the digest.
 fixture_ref: "fixtures/repos/L0_smoke/L0_101/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_passphrase_check
+  - name: four_needles_ordered
     kind: deterministic
     config:
       source_file: "haystack.txt"
       assertions:
         - kind: final_assistant_message_equals
-          expected: "QUARRY-FALCON-7"
+          expected: "dbbff83e79747de0e01ef7362f8b85412a650e89"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+          - "Anvilford"
+          - "signal"
+          - "="
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 1
-      pass_threshold: 1.0
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 12000
-      max_tokens: 40000
-      pass_threshold: 0.3
+    config: {target_tokens: 60000, max_tokens: 150000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 30000
-      max_ms: 180000
-      pass_threshold: 0.3
+    config: {target_ms: 90000, max_ms: 240000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `QUARRY-FALCON-7` exactly (no quotes, no prose)."
-  - "Agent did not invent a passphrase from a decoy paragraph."
-  - "Privacy scan produces zero hits."
+  - "Final message is the 40-char lowercase hex sha1 of the pipe-joined alphabetical pairs."
+  - "No decoy / draft / superseded values are included."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.80
-  tool_skill: 0.05
+  correctness: 0.70
+  tool_skill: 0.10
   context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -87,10 +105,13 @@ tags:
   - L0
   - long-context
   - niah
-  - ruler
+  - multi-needle
+  - decoy
+  - hash
+  - frontier
   - deterministic
-  - smoke-test
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
   - context-window-sensitive
+  - multi-step

@@ -1,0 +1,112 @@
+id: L0_008
+layer: L0
+suite: file-ops
+title: "Idempotent edit: applying the same edit twice yields the same file"
+description: |
+  The fixture provides `state.json`:
+
+      {"counter": 0, "flag": false}
+
+  The user asks (single combined prompt):
+
+    "Set `flag` to true and ensure `counter` is exactly 1 in
+     state.json. If you must run more than one operation, the final
+     file content must be identical to what a single correct
+     operation would produce — running your sequence twice must
+     yield the same final file content."
+
+  The agent MUST emit the final file as
+  `{"counter": 1, "flag": true}` (JSON-equivalent — key order is
+  not enforced, only the parsed value). Crucially, if the harness
+  re-applies the agent's operations a second time on the original
+  fixture, the final file must STILL parse to the same value
+  (counter=1, flag=true) — not counter=2.
+
+  Failure modes:
+    - using "increment by 1" semantics that would yield counter=2
+      on a second run,
+    - touching unrelated keys (extras forbidden),
+    - producing invalid JSON.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_008/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: final_state_check
+    kind: schema
+    config:
+      target: "state.json"
+      mode: "json_value_equals"
+      expected:
+        counter: 1
+        flag: true
+      additional_properties_forbidden: true
+
+  - name: idempotency_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: replay_then_compare_json
+          target: "state.json"
+          replay_source_trajectory_section: "file_writes"
+          expected_after_double_apply:
+            counter: 1
+            flag: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 5
+      pass_threshold: 0.5
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 2000
+      max_tokens: 10000
+      pass_threshold: 0.4
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 15000
+      max_ms: 90000
+      pass_threshold: 0.4
+
+acceptance_criteria:
+  - "state.json parses to {counter: 1, flag: true} with no extra keys."
+  - "Re-applying the same writes against the original fixture still yields counter=1 (idempotent)."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.75
+  tool_skill: 0.15
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - file-ops
+  - idempotency
+  - state-diff
+  - deterministic
+  - smoke-test

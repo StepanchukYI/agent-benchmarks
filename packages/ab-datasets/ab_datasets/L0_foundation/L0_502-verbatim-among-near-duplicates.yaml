@@ -1,97 +1,94 @@
 id: L0_502
 layer: L0
 suite: faithfulness
-title: "Verbatim citation among three near-duplicate spans (correct attribution)"
+title: "Near-duplicates differing only in punctuation: pick the exact paragraph"
 description: |
-  The fixture `source.txt` contains three near-identical quotes
-  attributed to three different speakers. The three quotes differ
-  only by one or two function words:
+  The fixture `source.txt` lists FIVE paragraphs (P1..P5) which are
+  byte-identical except for ONE punctuation mark in the middle:
 
-      Speaker A (cartographer Adis):  "...turns west at the cairn
-                                       marked BY three stacked stones."
-      Speaker B (surveyor Roen):      "...turns west at the cairn
-                                       marked WITH three stacked stones."
-      Speaker C (historian Lyra):     "...bends west at the cairn
-                                       marked BY three stacked stones."
+      P1: "The bell at Saltmoor tolls thrice at dusk; its echo is heard across the bay."
+      P2: "The bell at Saltmoor tolls thrice at dusk, its echo is heard across the bay."
+      P3: "The bell at Saltmoor tolls thrice at dusk: its echo is heard across the bay."
+      P4: "The bell at Saltmoor tolls thrice at dusk — its echo is heard across the bay."
+      P5: "The bell at Saltmoor tolls thrice at dusk. Its echo is heard across the bay."
 
   The user asks:
 
-    "Quote, byte-for-byte and inside double quotation marks, what
-     SURVEYOR ROEN said about the road north of Eldermere. Do not
-     paraphrase. Do not include the speaker label. Output ONLY a
-     single line with the quoted span."
+    "Look at the five paragraphs in source.txt. Output ONLY the
+     paragraph whose middle punctuation is a COLON (`:`). Output
+     the body of the paragraph exactly as written (no `P3:` label,
+     no surrounding quotes, no prose). One single line."
 
-  The agent's final message MUST contain the verbatim Roen span
-  inside double quotes, and MUST NOT contain Adis's or Lyra's
-  spans (which differ by `marked by` vs `marked with` and `turns`
-  vs `bends`).
+  Expected exact:
 
-  Expected verbatim span (inside the assistant's `"..."`):
+      The bell at Saltmoor tolls thrice at dusk: its echo is heard across the bay.
 
-      The road north of Eldermere turns west at the cairn marked
-      with three stacked stones.
+  This pattern is RULER-style "verbatim among near-duplicates" but on a
+  punctuation-only axis — exposes models that normalise punctuation
+  during retrieval (they collapse `;`, `,`, `:`, `—`, `.` to the same
+  cluster).
 
-  Hard discriminators:
-    - `marked by` belongs to Adis and Lyra, NOT Roen,
-    - `bends west` belongs to Lyra, NOT Roen,
-    - `marked with` is uniquely Roen's.
+  Failure modes:
+    - returning the semicolon paragraph (most similar visual),
+    - returning the dash paragraph (em-dash mistaken for colon),
+    - including the `P3:` label,
+    - paraphrasing.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_502/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: correct_attribution_check
+  - name: punctuation_exact_match
     kind: deterministic
     config:
       source_file: "source.txt"
       assertions:
-        - kind: final_assistant_message_contains_quoted_span
-          span: "The road north of Eldermere turns west at the cairn marked with three stacked stones."
-          quote_chars: ["\"", "“", "”"]
-        - kind: final_assistant_message_contains_substring_verbatim
-          substring: "marked with three stacked stones"
+        - kind: final_assistant_message_equals
+          expected: "The bell at Saltmoor tolls thrice at dusk: its echo is heard across the bay."
+          trim_whitespace: true
         - kind: final_assistant_message_does_not_contain
           forbidden:
-            - "marked by three stacked stones"
-            - "bends west"
+            - "P1"
+            - "P2"
+            - "P3"
+            - "P4"
+            - "P5"
+            - "; its echo"
+            - ", its echo"
+            - "— its echo"
+            - ". Its echo"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: { max_tool_calls: 2, pass_threshold: 0.8 }
+    config: {max_tool_calls: 3, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: { target_tokens: 1500, max_tokens: 6000, pass_threshold: 0.5 }
+    config: {target_tokens: 1000, max_tokens: 4000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: { target_ms: 15000, max_ms: 90000, pass_threshold: 0.5 }
+    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message contains the verbatim Roen quote inside double quotation marks."
-  - "Quote contains `marked with`, not `marked by`."
-  - "Quote contains `turns west`, not `bends west`."
-  - "No competing Adis or Lyra phrasing leaks into the response."
+  - "Final message equals the colon-variant paragraph byte-for-byte."
+  - "Other four near-duplicate punctuations not present."
+  - "No `Pn:` label, no surrounding quotes."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.80
+  correctness: 0.85
   tool_skill: 0.05
-  context_efficiency: 0.10
+  context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
@@ -102,11 +99,10 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - faithfulness
-  - verbatim-citation
-  - attribution-disambiguation
-  - truthfulqa
-  - frontier
-  - deterministic
+  - verbatim
+  - punctuation-sensitive
+  - near-duplicates
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

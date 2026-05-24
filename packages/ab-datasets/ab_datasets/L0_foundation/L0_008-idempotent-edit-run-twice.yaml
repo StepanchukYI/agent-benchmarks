@@ -1,95 +1,95 @@
 id: L0_008
 layer: L0
 suite: file-ops
-title: "Idempotent edit: applying the same edit twice yields the same file"
+title: "Idempotent version bump across 5 JSON files"
 description: |
-  The fixture provides `state.json`:
+  The fixture seeds 5 JSON files at the workdir root:
 
-      {"counter": 0, "flag": false}
+      api.json   {"version": "0.1.0", "name": "api"}
+      core.json  {"version": "0.1.0", "name": "core"}
+      ui.json    {"version": "0.1.0", "name": "ui"}
+      db.json    {"version": "0.1.0", "name": "db"}
+      cli.json   {"version": "0.1.0", "name": "cli"}
+
+  Each file has a trailing newline.
 
   The user asks (single combined prompt):
 
-    "Set `flag` to true and ensure `counter` is exactly 1 in
-     state.json. If you must run more than one operation, the final
-     file content must be identical to what a single correct
-     operation would produce — running your sequence twice must
-     yield the same final file content."
+    "In every `*.json` at the workdir root, set the `version` field to
+     `0.2.0`. The `name` field must remain unchanged. The JSON keys
+     must stay in the same order — first key `version`, second key
+     `name` — and the file must end with a single trailing newline.
 
-  The agent MUST emit the final file as
-  `{"counter": 1, "flag": true}` (JSON-equivalent — key order is
-  not enforced, only the parsed value). Crucially, if the harness
-  re-applies the agent's operations a second time on the original
-  fixture, the final file must STILL parse to the same value
-  (counter=1, flag=true) — not counter=2.
+     Idempotency: if your sequence of operations is replayed a second
+     time against the original fixture, the final file content must
+     be IDENTICAL to what one run produces (no double-bump, no extra
+     keys, no whitespace drift)."
+
+  Expected final state (all 5 files, byte-exact including trailing \\n):
+
+      {"version": "0.2.0", "name": "<basename>"}\n
 
   Failure modes:
-    - using "increment by 1" semantics that would yield counter=2
-      on a second run,
-    - touching unrelated keys (extras forbidden),
-    - producing invalid JSON.
+    - touching only some of the 5 files,
+    - bumping to "0.2.1" or "0.10.0" (mis-parsing semver),
+    - reordering keys to alpha (`name` before `version`),
+    - adding extra keys / removing `name`,
+    - adding a UTF-8 BOM,
+    - non-idempotent edits (e.g. "increment minor by 1" → "0.3.0" on 2nd apply).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_008/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: final_state_check
-    kind: schema
-    config:
-      target: "state.json"
-      mode: "json_value_equals"
-      expected:
-        counter: 1
-        flag: true
-      additional_properties_forbidden: true
-
-  - name: idempotency_check
+  - name: byte_exact_all_five
     kind: deterministic
     config:
       assertions:
-        - kind: replay_then_compare_json
-          target: "state.json"
-          replay_source_trajectory_section: "file_writes"
-          expected_after_double_apply:
-            counter: 1
-            flag: true
+        - kind: workdir_file_content_equals
+          path: "api.json"
+          content: "{\"version\": \"0.2.0\", \"name\": \"api\"}\n"
+        - kind: workdir_file_content_equals
+          path: "core.json"
+          content: "{\"version\": \"0.2.0\", \"name\": \"core\"}\n"
+        - kind: workdir_file_content_equals
+          path: "ui.json"
+          content: "{\"version\": \"0.2.0\", \"name\": \"ui\"}\n"
+        - kind: workdir_file_content_equals
+          path: "db.json"
+          content: "{\"version\": \"0.2.0\", \"name\": \"db\"}\n"
+        - kind: workdir_file_content_equals
+          path: "cli.json"
+          content: "{\"version\": \"0.2.0\", \"name\": \"cli\"}\n"
+        - kind: workdir_file_no_bom
+          path: "api.json"
+        - kind: workdir_file_no_bom
+          path: "core.json"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 5
-      pass_threshold: 0.5
+    config: {max_tool_calls: 15, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 2000
-      max_tokens: 10000
-      pass_threshold: 0.4
+    config: {target_tokens: 3000, max_tokens: 9000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 15000
-      max_ms: 90000
-      pass_threshold: 0.4
+    config: {target_ms: 25000, max_ms: 75000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "state.json parses to {counter: 1, flag: true} with no extra keys."
-  - "Re-applying the same writes against the original fixture still yields counter=1 (idempotent)."
+  - "All 5 JSON files updated to version 0.2.0 with name unchanged."
+  - "Key order preserved (version, then name)."
+  - "Trailing newline present, no BOM."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -99,7 +99,7 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -107,6 +107,5 @@ tags:
   - L0
   - file-ops
   - idempotency
-  - state-diff
-  - deterministic
-  - smoke-test
+  - batch-edit
+  - hard

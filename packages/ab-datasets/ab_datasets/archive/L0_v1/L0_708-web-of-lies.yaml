@@ -1,0 +1,93 @@
+id: L0_708
+layer: L0
+suite: reasoning-trap
+title: "Web of lies: chained truth-tellers and liars (BBH-style)"
+description: |
+  Five people each make exactly one statement about whether ONE
+  specific other person is telling the truth.
+
+      - Adis says: "Berek tells the truth."
+      - Berek says: "Cira lies."
+      - Cira says: "Donal tells the truth."
+      - Donal says: "Eira lies."
+      - Eira says: "Adis lies."
+
+  We're told ONE seed fact: **Eira tells the truth**.
+
+  Propagate:
+    - Eira (T) → "Adis lies" is true → Adis lies (F).
+    - Adis (F) → "Berek tells the truth" is false → Berek lies (F).
+    - Berek (F) → "Cira lies" is false → Cira tells the truth (T).
+    - Cira (T) → "Donal tells the truth" is true → Donal tells the truth (T).
+    - Donal (T) → "Eira lies" is true → Eira lies (F).
+
+  Contradiction at Eira (we assumed T, derived F). So the seed fact
+  is INCONSISTENT. The correct answer is `inconsistent`.
+
+  The user prompt:
+
+    "Given those five statements, the seed fact `Eira tells the
+     truth` is either CONSISTENT (a coherent assignment exists) or
+     INCONSISTENT (no coherent assignment). Output ONLY one of
+     these two single lowercase words: `consistent` or
+     `inconsistent`. No prose."
+
+fixture_ref: null
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on: [T2]
+  requires: { skills: [], mcps: [], vault_state: {} }
+
+scorer_chain:
+  - name: exact_verdict
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "inconsistent"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 6000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 12000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals `inconsistent` exactly."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.85
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - reasoning-trap
+  - web-of-lies
+  - propagation
+  - bbh
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive

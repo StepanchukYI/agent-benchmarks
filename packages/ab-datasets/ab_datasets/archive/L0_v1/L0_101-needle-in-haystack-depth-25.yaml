@@ -1,0 +1,96 @@
+id: L0_101
+layer: L0
+suite: long-context-niah
+title: "Needle-in-haystack: retrieve passphrase planted at ~25% depth"
+description: |
+  The fixture provides `haystack.txt` (~42 KB, ~100 short paragraphs of
+  plausible-looking distractor prose, deterministically generated). One
+  paragraph at ~25% depth contains the only meaningful fact:
+
+      "The secret passphrase recorded in the Eldermere archive on the
+       seventh of Frostmonth is QUARRY-FALCON-7."
+
+  The user asks:
+
+    "Read the entire haystack. What is the secret passphrase recorded
+     in the Eldermere archive on the seventh of Frostmonth? Answer
+     with ONLY the passphrase, in uppercase, with no surrounding text."
+
+  The agent's final message MUST equal `QUARRY-FALCON-7` exactly (byte-
+  for-byte, no quotes, no punctuation, no prose). The decoy paragraphs
+  do NOT contain the string `QUARRY-FALCON-7`.
+
+fixture_ref: "fixtures/repos/L0_smoke/L0_101/"
+
+config:
+  required_tier: T0
+  recommended_tier: T0
+  also_run_on:
+    - T2
+  requires:
+    skills: []
+    mcps: []
+    vault_state: {}
+
+scorer_chain:
+  - name: exact_passphrase_check
+    kind: deterministic
+    config:
+      source_file: "haystack.txt"
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "QUARRY-FALCON-7"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config:
+      patterns_path: "docs/privacy-patterns.yaml"
+
+  - name: tool_skill
+    kind: deterministic
+    config:
+      max_tool_calls: 1
+      pass_threshold: 1.0
+
+  - name: context_efficiency
+    kind: deterministic
+    config:
+      target_tokens: 12000
+      max_tokens: 40000
+      pass_threshold: 0.3
+
+  - name: latency_cost
+    kind: deterministic
+    config:
+      target_ms: 30000
+      max_ms: 180000
+      pass_threshold: 0.3
+
+acceptance_criteria:
+  - "Final assistant message equals `QUARRY-FALCON-7` exactly (no quotes, no prose)."
+  - "Agent did not invent a passphrase from a decoy paragraph."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.80
+  tool_skill: 0.05
+  context_efficiency: 0.10
+  latency_cost: 0.05
+  memory_specific: 0.00
+
+difficulty: medium
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - long-context
+  - niah
+  - ruler
+  - deterministic
+  - smoke-test
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
+  - context-window-sensitive

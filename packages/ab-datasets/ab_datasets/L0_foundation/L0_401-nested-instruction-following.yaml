@@ -1,36 +1,36 @@
 id: L0_401
 layer: L0
 suite: instruction-following
-title: "Follow nested conditional instruction (do X then Y unless Z)"
+title: "IFBench-style 6 simultaneous verifiable constraints"
 description: |
-  The user prompt is a single message with a conditional branch:
+  The user prompt:
 
-    "Print the numbers from 1 to 10, one per line. Then print 'done' on
-     a new line — unless any number is divisible by 7, in which case
-     print 'skip' instead of 'done'."
+    "Write a paragraph about how photosynthesis works. ALL of the
+     following must hold simultaneously — none of them is optional:
 
-  Inside [1,10] the number 7 IS divisible by 7. Therefore the correct
-  output ends with 'skip', not 'done'. The numeric block must contain
-  exactly the integers 1..10, one per line, in ascending order, with
-  no surrounding prose.
+       1. Exactly 60 words (Unicode-word, \\w+).
+       2. Exactly 4 sentences, separated by . ! ?.
+       3. Must NOT contain (case-insensitive): chlorophyll, sunlight,
+          carbon dioxide, oxygen, plant, green, leaf, energy.
+       4. Must contain (case-sensitive, verbatim): the token 'ATP' once
+          and the token 'Calvin' once.
+       5. The first word must begin with the capital letter 'T'.
+       6. No markdown — no triple backticks, no '**', no leading '# '
+          or '- '."
 
-  Expected output (byte-exact):
+  IFBench-style: 6 verifiable constraints applied simultaneously. The
+  paper finds that frontier models drop 20–40 pp from "loose" (any
+  single constraint satisfied) to "strict" (all simultaneous).
 
-      1
-      2
-      3
-      4
-      5
-      6
-      7
-      8
-      9
-      10
-      skip
+  Failure modes the scorer catches:
+    - any forbidden substring present (case-insensitive),
+    - missing ATP or Calvin,
+    - wrong first letter,
+    - word count off by 1,
+    - sentence count off by 1,
+    - markdown leaks.
 
-  No leading/trailing whitespace, no commentary, no markdown formatting.
-
-fixture_ref: null
+fixture_ref:
 
 config:
   required_tier: T0
@@ -43,13 +43,33 @@ config:
     vault_state: {}
 
 scorer_chain:
-  - name: exact_output_check
+  - name: ifbench_six_constraint
     kind: deterministic
     config:
       assertions:
-        - kind: final_assistant_message_equals
-          expected: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\nskip"
-          trim_trailing_newline: true
+        - kind: final_assistant_message_word_count
+          expected: 60
+        - kind: final_assistant_message_sentence_count_range
+          min: 4
+          max: 4
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - chlorophyll
+            - sunlight
+            - carbon dioxide
+            - oxygen
+            - plant
+            - green
+            - leaf
+            - energy
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "ATP"
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "Calvin"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "^T[a-z]"
+        - kind: final_assistant_message_no_markdown
 
   - name: privacy_check
     kind: privacy_check
@@ -65,21 +85,21 @@ scorer_chain:
   - name: context_efficiency
     kind: deterministic
     config:
-      target_tokens: 500
-      max_tokens: 4000
-      pass_threshold: 0.5
+      target_tokens: 600
+      max_tokens: 2500
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 10000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
-  - "Final assistant message equals the expected 11-line block (1..10 then 'skip')."
-  - "Last line is `skip` (not `done`) because 7 is divisible by 7."
-  - "Zero tool calls are issued (this task is text-only)."
+  - "All 7 constraints simultaneously hold."
+  - "Final message is plain prose only."
+  - "Zero tool calls."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -89,17 +109,17 @@ weights:
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: easy
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - instruction-following
-  - ifeval
-  - conditional
+  - ifbench
+  - multi-constraint
   - deterministic
-  - smoke-test
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

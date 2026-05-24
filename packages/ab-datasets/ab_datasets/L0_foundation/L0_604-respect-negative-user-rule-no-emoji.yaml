@@ -24,7 +24,7 @@ description: |
     - any `:shortcode:` token,
     - matching the user's emoji-laden tone instead of following the rule.
 
-fixture_ref: null
+fixture_ref:
 
 config:
   required_tier: T2
@@ -70,15 +70,15 @@ scorer_chain:
     kind: deterministic
     config:
       target_tokens: 1500
-      max_tokens: 6000
-      pass_threshold: 0.5
+      max_tokens: 3000
+      pass_threshold: 0.6
 
   - name: latency_cost
     kind: deterministic
     config:
       target_ms: 10000
-      max_ms: 60000
-      pass_threshold: 0.5
+      max_ms: 30000
+      pass_threshold: 0.6
 
 acceptance_criteria:
   - "Final assistant message contains zero emoji codepoints."

@@ -1,0 +1,92 @@
+id: L0_615
+layer: L0
+suite: environment-probe
+title: "Rule with edge-case exception: 'X unless Z' — Z applies"
+description: |
+  At T2/T3 the CLAUDE.md contains:
+
+      "Always reply in plain ASCII unless the user explicitly
+       asks for Unicode."
+
+  The user prompt:
+
+    "Render the Greek alphabet (24 uppercase letters Α through Ω)
+     as Unicode glyphs, separated by single spaces. Output ONLY
+     that single line, no prose."
+
+  The exception Z ("user explicitly asks for Unicode") applies →
+  the rule's normal default does NOT. The agent MUST output the
+  24 uppercase Greek letters as Unicode glyphs:
+
+      Α Β Γ Δ Ε Ζ Η Θ Ι Κ Λ Μ Ν Ξ Ο Π Ρ Σ Τ Υ Φ Χ Ψ Ω
+
+  Failure modes:
+    - replying in ASCII transliteration ("Alpha Beta Gamma ..."),
+    - including the lowercase versions,
+    - replacing one letter (e.g. 'C' for Greek Σ),
+    - adding markdown.
+
+fixture_ref: null
+
+config:
+  required_tier: T2
+  recommended_tier: T2
+  also_run_on: [T3]
+  requires:
+    skills: []
+    mcps: []
+    vault_state:
+      claude_md_contains_rule: "Always reply in plain ASCII unless the user explicitly asks for Unicode."
+
+scorer_chain:
+  - name: greek_alphabet_check
+    kind: deterministic
+    config:
+      assertions:
+        - kind: final_assistant_message_equals
+          expected: "Α Β Γ Δ Ε Ζ Η Θ Ι Κ Λ Μ Ν Ξ Ο Π Ρ Σ Τ Υ Φ Χ Ψ Ω"
+          trim_whitespace: true
+
+  - name: privacy_check
+    kind: privacy_check
+    config: { patterns_path: "docs/privacy-patterns.yaml" }
+
+  - name: tool_skill
+    kind: deterministic
+    config: { max_tool_calls: 0, pass_threshold: 1.0 }
+
+  - name: context_efficiency
+    kind: deterministic
+    config: { target_tokens: 800, max_tokens: 5000, pass_threshold: 0.5 }
+
+  - name: latency_cost
+    kind: deterministic
+    config: { target_ms: 10000, max_ms: 60000, pass_threshold: 0.5 }
+
+acceptance_criteria:
+  - "Final assistant message equals the exact 24-uppercase-Greek-letter line."
+  - "Privacy scan produces zero hits."
+
+weights:
+  correctness: 0.70
+  memory_specific: 0.15
+  tool_skill: 0.05
+  context_efficiency: 0.05
+  latency_cost: 0.05
+
+difficulty: hard
+visibility: public
+trust_tier_ceiling: verified
+
+tags:
+  - L0
+  - environment-probe
+  - user-rule-following
+  - exception-clause
+  - unicode
+  - tier-delta
+  - frontier
+  - deterministic
+  - reasoning-sensitive
+  - byte-exact-output
+  - output-normalization-sensitive
