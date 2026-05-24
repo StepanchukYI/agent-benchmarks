@@ -1,1 +1,1 @@
-content of C
+CHARLIE content three — initial value C

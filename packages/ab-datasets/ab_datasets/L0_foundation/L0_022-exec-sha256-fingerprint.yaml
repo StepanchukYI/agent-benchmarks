@@ -1,41 +1,45 @@
 id: L0_022
 layer: L0
 suite: exec
-title: "SHA-256 of a byte range selected by a separate prior step"
+title: "Multi-file sha256 chain → meta-fingerprint (5 files + 1 decoy)"
 description: |
-  The fixture provides `data.bin` (256 deterministic random bytes; seed
-  20260524). The agent must compute the SHA-256 hex digest of a
-  **range** of bytes, not the whole file.
+  Fixture: 6 files in the workdir.
 
-  The user asks:
+      alpha.bin, bravo.bin, charlie.bin, delta.bin, echo.bin
+        — 5 deterministic 1 KB binaries that ARE part of the chain.
+      alpha.bin.bak
+        — a decoy backup file. MUST be excluded from the chain.
 
-    "In two steps:
+  STEP 1 — Per-file digests.
+    Compute the lowercase hex SHA-256 of the bytes of each of the
+    five CHAIN files (NOT the .bak decoy). Use shell `shasum -a 256`
+    or Python `hashlib.sha256(open(p, 'rb').read()).hexdigest()`.
 
-       step 1 — extract bytes [64, 128) from `data.bin` (64 bytes
-                starting at offset 64) into a new file
-                `out/range.bin`. Use `dd`, `tail -c | head -c`, or
-                `head -c128 | tail -c64`. Do NOT use Python.
-       step 2 — compute SHA-256 of `out/range.bin` and write ONLY
-                the 64-hex-character lowercase digest to
-                `out/digest.txt` (no trailing newline, no filename
-                column, no `sha256:` prefix).
+  STEP 2 — Order + join.
+    Order the digests in the canonical file order:
+      alpha.bin → bravo.bin → charlie.bin → delta.bin → echo.bin
+    Pipe-join the 5 digests with the literal `|` separator (no spaces).
 
-     Both files must exist at the end of the run."
+  STEP 3 — Meta-fingerprint.
+    Compute the SHA-256 of the UTF-8 bytes of the joined string (no
+    trailing newline). Output ONLY the 64-character lowercase hex
+    digest as the SOLE final assistant message. No prefix, no quotes,
+    no markdown, no trailing newline.
 
-  Expected:
+  STEP 4 — Invariant.
+    Do NOT modify or create any file. All 6 fixture files must
+    remain byte-identical.
 
-      out/range.bin   exactly 64 bytes, matching data.bin[64:128]
-      out/digest.txt  exact 64-char hex digest:
-                      `86c50668a6f0ed0d0972fee79adbe41c0e16bbac5e46117afea845b203da3ccf`
+  You MUST actually compute the chain — the meta-digest is NOT in this
+  description.
 
   Failure modes:
-    - off-by-one on the byte range (extracting [63,127) or [64,127]),
-    - hashing the whole `data.bin` instead of the range (Opus's most
-      likely shortcut — must resist),
-    - using Python (forbidden — shell only),
-    - including the filename column in the digest file,
-    - uppercase hex,
-    - trailing newline in the digest file.
+    - including alpha.bin.bak in the chain (gives a different digest),
+    - wrong order (e.g. alphabetical → identical here but different
+      casing would diverge),
+    - wrong separator (`,` or space instead of `|`),
+    - using SHA-1 instead of SHA-256,
+    - emitting any intermediate digest in the final message.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_022/"
 
@@ -50,11 +54,26 @@ scorer_chain:
     kind: deterministic
     config:
       assertions:
-        - kind: workdir_file_content_equals
-          path: "out/digest.txt"
-          content: "86c50668a6f0ed0d0972fee79adbe41c0e16bbac5e46117afea845b203da3ccf"
-        - kind: workdir_file_exists
-          path: "out/range.bin"
+        - kind: final_assistant_message_equals
+          expected: "26dfe7ccd9fa7fde5d88cfdb7273f828663ae4361bdcb458b5a3feb69b1f8413"
+          trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "|"
+            - "alpha"
+            - "bravo"
+        - kind: file_unchanged
+          path: "alpha.bin"
+        - kind: file_unchanged
+          path: "bravo.bin"
+        - kind: file_unchanged
+          path: "charlie.bin"
+        - kind: file_unchanged
+          path: "delta.bin"
+        - kind: file_unchanged
+          path: "echo.bin"
+        - kind: file_unchanged
+          path: "alpha.bin.bak"
 
   - name: privacy_check
     kind: privacy_check
@@ -62,27 +81,28 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 6, pass_threshold: 0.8}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 1500, max_tokens: 5000, pass_threshold: 0.6}
+    config: {target_tokens: 2500, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
+    config: {target_ms: 25000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "out/range.bin exists (64 bytes, bytes [64,128) of data.bin)."
-  - "out/digest.txt = lowercase 64-hex SHA-256 of that range, no newline."
-  - "Privacy scan produces zero hits."
+  - "Final message is the 64-char lowercase hex sha256 of the pipe-joined per-file sha256 digests."
+  - "alpha.bin.bak is excluded from the chain."
+  - "All 6 fixture files unchanged."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.75
-  tool_skill: 0.15
-  context_efficiency: 0.05
+  correctness: 0.70
+  tool_skill: 0.10
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
 difficulty: hard
 visibility: public
@@ -91,10 +111,13 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - exec
-  - bash
-  - hashing
-  - sha256
-  - multi-step
-  - hard
+  - file-ops
+  - multi-file
+  - hash
+  - chain
+  - decoy
+  - state-chain
+  - deterministic
   - byte-exact-output
   - output-normalization-sensitive
+  - reasoning-sensitive

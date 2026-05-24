@@ -1,0 +1,1 @@
+LOCKED: this file must remain byte-identical after rotation.

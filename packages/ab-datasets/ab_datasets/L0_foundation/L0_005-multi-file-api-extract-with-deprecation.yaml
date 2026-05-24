@@ -1,87 +1,141 @@
 id: L0_005
 layer: L0
 suite: extract
-title: "Multi-file API surface extraction with deprecation filter"
+title: "Extract stable API across 6 modules + skip malformed + sha1 fingerprint"
 description: |
-  The fixture contains THREE Python modules — `auth.py`, `billing.py`,
-  `storage.py`. Each module declares several public top-level
-  functions and some private ones (name starts with `_`). Some public
-  functions are marked DEPRECATED with a `# @deprecated:` comment on
-  the line immediately preceding the `def`.
+  Fixture: 7 files in the workdir.
 
-  The agent must produce `API.md` listing the **stable** (non-
-  deprecated, non-private) public API across the three modules,
-  grouped by module, with modules in alphabetical order, and
-  functions within each module also in alphabetical order. The exact
-  format is:
+      auth.py, billing.py, cache.py, metrics.py, storage.py, worker.py
+        — six valid Python modules.
+      BROKEN.py
+        — NOT a valid Python source (UTF-16 BOM + binary noise at byte 4).
+          Reading it as UTF-8 will throw UnicodeDecodeError. The agent
+          must DETECT this and SKIP — not crash, not include any
+          fabricated content from it.
 
-      ## auth
-      - login
-      - logout
-      - refresh_token
+  STEP 1 — Discover.
+    List the fixture directory. There are exactly 7 `.py` files.
 
-      ## billing
-      - charge
-      - refund_full
+  STEP 2 — Skip BROKEN.py.
+    Attempt to read each `.py`. `BROKEN.py` will fail UTF-8 decode —
+    handle the error gracefully and exclude it from further analysis.
 
-      ## storage
-      - delete
-      - get
-      - put
+  STEP 3 — Extract stable API.
+    For each of the six valid modules, list every top-level function
+    that is:
+      - public (name does NOT start with `_`), AND
+      - NOT deprecated (no `# @deprecated:` comment on the line
+        IMMEDIATELY above the `def`).
 
-  Strict requirements:
-    - private functions (`_hash_password`, `_ledger_entry`,
-      `_serialize`) MUST be excluded,
-    - deprecated functions (`renew_session`, `reimburse`) MUST be
-      excluded,
-    - module headers use H2 `##`, separated by exactly one blank line,
-    - functions use bullet `- name`, one per line, no parentheses,
-    - file ends with a single trailing newline.
+    Deprecated functions present in the fixture (must be EXCLUDED):
+      auth.renew_session, billing.reimburse, cache.flush,
+      worker.batch_enqueue.
+    Private functions present (must be EXCLUDED):
+      auth._hash_password, billing._audit_log, metrics._internal_tick,
+      storage._validate_bucket, worker._retry.
+
+  STEP 4 — Sort and structure.
+    Sort module names alphabetically. Within each module, sort function
+    names alphabetically. Write the result to `API.md` with this EXACT
+    format (one blank line between module sections, single trailing
+    newline at EOF):
+
+        ## auth
+        - login
+        - logout
+        - refresh_token
+
+        ## billing
+        - charge
+        - refund_full
+
+        ...
+
+  STEP 5 — Fingerprint.
+    Compute the lowercase hex SHA-1 of the UTF-8 bytes of `API.md`.
+    Write the 40-char digest as the SOLE content of `checksum.txt`
+    (no trailing newline, no prefix).
+
+  STEP 6 — Invariant.
+    Do NOT modify any source file. `BROKEN.py` and the six valid
+    modules must remain byte-identical to the fixture seed.
 
   Failure modes:
-    - including any private or deprecated function,
-    - missing any stable function,
-    - wrong alphabetical ordering,
-    - wrong header level or formatting.
+    - including a deprecated or private function in `API.md`,
+    - including content from `BROKEN.py` (or crashing on its read),
+    - wrong module / function sort order,
+    - wrong sha1 in `checksum.txt` (anything other than the digest of
+      the byte-exact `API.md`),
+    - modifying any source file.
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_005/"
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: file_diff
+  - name: file_diff_and_invariants
     kind: deterministic
     config:
-      expected:
-        API.md: "## auth\n- login\n- logout\n- refresh_token\n\n## billing\n- charge\n- refund_full\n\n## storage\n- delete\n- get\n- put\n"
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "API.md"
+          content: |
+            ## auth
+            - login
+            - logout
+            - refresh_token
 
-  - name: must_not_contain_check
-    kind: deterministic
-    config:
-      target_path: "API.md"
-      forbidden_substrings:
-        - "_hash_password"
-        - "_ledger_entry"
-        - "_serialize"
-        - "renew_session"
-        - "reimburse"
+            ## billing
+            - charge
+            - refund_full
+
+            ## cache
+            - delete
+            - get
+            - invalidate
+            - set
+
+            ## metrics
+            - record
+            - snapshot
+
+            ## storage
+            - delete
+            - get
+            - put
+
+            ## worker
+            - enqueue
+            - status
+        - kind: workdir_file_content_equals
+          path: "checksum.txt"
+          content: "c7089d39d58e0482c8bae5248e855298873b3bb8"
+        - kind: file_unchanged
+          path: "auth.py"
+        - kind: file_unchanged
+          path: "billing.py"
+        - kind: file_unchanged
+          path: "cache.py"
+        - kind: file_unchanged
+          path: "metrics.py"
+        - kind: file_unchanged
+          path: "storage.py"
+        - kind: file_unchanged
+          path: "worker.py"
+        - kind: file_unchanged
+          path: "BROKEN.py"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 7, pass_threshold: 0.8}
+    config: {max_tool_calls: 12, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
@@ -89,33 +143,34 @@ scorer_chain:
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 25000, max_ms: 75000, pass_threshold: 0.6}
+    config: {target_ms: 30000, max_ms: 90000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "API.md exists with the exact byte content shown in description."
-  - "Modules sorted alphabetically; functions within module sorted alphabetically."
-  - "No private function names appear anywhere in API.md."
-  - "No deprecated function names appear anywhere in API.md."
-  - "Privacy scan produces zero hits."
+  - "API.md has 6 sections in alphabetical order with alphabetical functions."
+  - "checksum.txt holds the sha1 of API.md byte-content."
+  - "All 7 source files unchanged."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.75
-  tool_skill: 0.15
-  context_efficiency: 0.05
+  correctness: 0.70
+  tool_skill: 0.10
+  context_efficiency: 0.10
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - extract
+  - file-ops
   - multi-file
-  - api-surface
-  - deprecation-filter
+  - decoy
+  - state-chain
+  - hash
   - deterministic
-  - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
+  - reasoning-sensitive

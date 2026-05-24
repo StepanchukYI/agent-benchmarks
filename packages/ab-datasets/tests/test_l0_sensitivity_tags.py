@@ -50,7 +50,7 @@ EXPECT_REASONING_SENSITIVE: frozenset[str] = frozenset({
     # schema-fill that requires reasoning (nested / array / optional / conditional)
     "L0_016", "L0_017", "L0_018", "L0_019",
     # exec / extract that requires reasoning
-    "L0_020", "L0_023", "L0_024", "L0_025",
+    "L0_020", "L0_022", "L0_023", "L0_024", "L0_025",
     # extract & file-ops with reasoning
     "L0_005", "L0_011", "L0_012", "L0_013", "L0_014", "L0_015",
     # faithfulness: abstain, contradictions, attribution, draft-audit

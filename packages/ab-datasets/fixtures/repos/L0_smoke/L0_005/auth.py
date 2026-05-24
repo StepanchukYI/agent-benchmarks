@@ -1,25 +1,20 @@
-"""Auth module."""
+"""Authentication module."""
 
-
-def login(user, password):
-    """Login a user."""
+def login(username: str, password: str) -> bool:
+    """Authenticate a user with username/password."""
     return True
 
+def logout(session_id: str) -> None:
+    """Invalidate a session."""
+    pass
 
-def logout(user):
-    """Log out a user."""
+def refresh_token(token: str) -> str:
+    """Refresh an expired JWT."""
+    return "new_token"
+
+# @deprecated: use login() with explicit credentials
+def renew_session(session_id: str) -> bool:
     return True
 
-
-# @deprecated: replaced by `refresh_token`. Do NOT include in README.
-def renew_session(user):
-    return True
-
-
-def refresh_token(user):
-    """Refresh the auth token."""
-    return True
-
-
-def _hash_password(password):
-    return password
+def _hash_password(pw: str) -> str:
+    return "hash"

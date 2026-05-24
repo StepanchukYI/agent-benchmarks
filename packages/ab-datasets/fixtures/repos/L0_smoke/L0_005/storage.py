@@ -1,20 +1,13 @@
-"""Storage module."""
+"""Object storage."""
 
+def put(bucket: str, key: str, blob: bytes) -> str:
+    return "etag"
 
-def get(key):
-    """Get a value by key."""
-    return None
+def get(bucket: str, key: str) -> bytes:
+    return b""
 
-
-def put(key, value):
-    """Put a value at a key."""
+def delete(bucket: str, key: str) -> bool:
     return True
 
-
-def delete(key):
-    """Delete a value by key."""
+def _validate_bucket(b: str) -> bool:
     return True
-
-
-def _serialize(value):
-    return value

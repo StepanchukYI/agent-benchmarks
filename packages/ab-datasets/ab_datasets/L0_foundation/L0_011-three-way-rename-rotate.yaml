@@ -1,35 +1,51 @@
 id: L0_011
 layer: L0
 suite: file-ops
-title: "Three-way atomic rotation: a.txt -> b.txt -> c.txt -> a.txt"
+title: "5-file LEFT rotation with sha1 verify + locked-file invariant"
 description: |
-  The fixture contains three files: `a.txt`, `b.txt`, `c.txt`, each
-  with its own one-line content (`content of A`, `content of B`,
-  `content of C`).
+  Fixture: 6 files in the workdir.
 
-  The user asks:
+      a.txt, b.txt, c.txt, d.txt, e.txt — 5 files forming a rotation cycle.
+      locked.txt — a decoy that MUST remain byte-identical (do NOT
+                   read, write, or even touch it).
 
-    "Rotate the contents of these three files so that, after the
-     operation:
-       - a.txt contains what was in c.txt,
-       - b.txt contains what was in a.txt,
-       - c.txt contains what was in b.txt.
+  Each of the 5 cycle files starts with content like:
+      "ALPHA content one — initial value A\n"
 
-     All three files must remain (no extra or deleted files), and
-     no `.tmp`, `.bak`, `.swp`, or `.0` sidecar files may remain
-     on disk after the operation completes."
+  STEP 1 — Perform LEFT rotation.
+    Replace each file's content with the content of its NEXT neighbour
+    in the cycle (a ← b, b ← c, c ← d, d ← e, e ← a).
 
-  Expected final state:
+    Concretely the new contents should be:
+      a.txt → "BRAVO content two — initial value B\n"
+      b.txt → "CHARLIE content three — initial value C\n"
+      c.txt → "DELTA content four — initial value D\n"
+      d.txt → "ECHO content five — initial value E\n"
+      e.txt → "ALPHA content one — initial value A\n"
 
-      a.txt = "content of C\n"
-      b.txt = "content of A\n"
-      c.txt = "content of B\n"
+    Constraint: no INTERMEDIATE files. Do NOT create `.tmp`, `.bak`,
+    `.swp`, or any extra file. The rotation must be performed using
+    only in-memory shuffling and the 5 final writes.
+
+  STEP 2 — Verify.
+    Compute the SHA-1 of the UTF-8 bytes of the concatenation of the
+    5 post-rotation file contents, taken in the alphabetical order
+    a, b, c, d, e (no separator between concatenations, single newline
+    at the end of each file is preserved). Write the 40-char lowercase
+    hex digest as the SOLE content of `rotation.sha1` (no trailing
+    newline, no prefix).
+
+  STEP 3 — Invariant.
+    `locked.txt` must remain byte-identical to its seed. Do NOT read
+    it, write it, or include its content in any computation.
 
   Failure modes:
-    - one file ends up duplicated (the agent overwrote without
-      saving the intermediate),
-    - leftover temp file (`a.txt.tmp`, `.0`, `.bak`),
-    - any extra or missing file at the end.
+    - touching locked.txt (any read or write),
+    - creating an intermediate .tmp / .bak / .swp file,
+    - off-by-one rotation (rotating right instead of left, or by 2),
+    - writing the wrong sha1 to rotation.sha1,
+    - leaving the rotation incomplete (e.g. a.txt still has "ALPHA"
+      because the model overwrote it before reading b).
 
 fixture_ref: "fixtures/repos/L0_smoke/L0_011/"
 
@@ -40,22 +56,36 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: rotated_state
+  - name: rotation_check
     kind: deterministic
     config:
-      expected:
-        a.txt: "content of C\n"
-        b.txt: "content of A\n"
-        c.txt: "content of B\n"
-      must_be_absent:
-        - "a.txt.tmp"
-        - "b.txt.tmp"
-        - "c.txt.tmp"
-        - "a.txt.bak"
-        - "b.txt.bak"
-        - "c.txt.bak"
-        - "a.txt.0"
-        - "b.txt.0"
+      assertions:
+        - kind: workdir_file_content_equals
+          path: "a.txt"
+          content: "BRAVO content two — initial value B\n"
+        - kind: workdir_file_content_equals
+          path: "b.txt"
+          content: "CHARLIE content three — initial value C\n"
+        - kind: workdir_file_content_equals
+          path: "c.txt"
+          content: "DELTA content four — initial value D\n"
+        - kind: workdir_file_content_equals
+          path: "d.txt"
+          content: "ECHO content five — initial value E\n"
+        - kind: workdir_file_content_equals
+          path: "e.txt"
+          content: "ALPHA content one — initial value A\n"
+        - kind: workdir_file_content_equals
+          path: "rotation.sha1"
+          content: "e370250a354e72c6a580cd3e78632c8f7d4a7ad6"
+        - kind: file_unchanged
+          path: "locked.txt"
+        - kind: workdir_file_absent
+          path: "a.txt.tmp"
+        - kind: workdir_file_absent
+          path: "a.txt.bak"
+        - kind: workdir_file_absent
+          path: "rotation.tmp"
 
   - name: privacy_check
     kind: privacy_check
@@ -63,27 +93,29 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 5, pass_threshold: 0.8}
+    config: {max_tool_calls: 14, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 2000, max_tokens: 5000, pass_threshold: 0.6}
+    config: {target_tokens: 3000, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 20000, max_ms: 60000, pass_threshold: 0.6}
+    config: {target_ms: 25000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Three files exist with the rotated content shown."
-  - "No sidecar files (.tmp/.bak/.swp/.0) remain."
-  - "Privacy scan produces zero hits."
+  - "All 5 cycle files have rotated content (LEFT rotation)."
+  - "rotation.sha1 holds the sha1 of the concatenated post-rotation contents."
+  - "locked.txt unchanged."
+  - "No intermediate .tmp/.bak files left in workdir."
+  - "Privacy scan zero hits."
 
 weights:
-  correctness: 0.75
+  correctness: 0.70
   tool_skill: 0.15
   context_efficiency: 0.05
   latency_cost: 0.05
-  memory_specific: 0.00
+  memory_specific: 0.05
 
 difficulty: hard
 visibility: public
@@ -92,11 +124,13 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - file-ops
-  - multi-file
-  - atomic
   - rotation
-  - frontier
+  - multi-file
+  - locked-file-invariant
+  - decoy
+  - state-chain
+  - hash
   - deterministic
-  - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
+  - reasoning-sensitive
