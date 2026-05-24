@@ -1,36 +1,63 @@
 id: L0_708
 layer: L0
 suite: reasoning-trap
-title: "Web of lies: chained truth-tellers and liars (BBH-style)"
+title: "5 web-of-lies chains: each yields T or L, joined → sha1"
 description: |
-  Five people each make exactly one statement about whether ONE
-  specific other person is telling the truth.
+  Solve 5 independent "web of lies" problems. In each, a chain of
+  people make statements about each other. Truth-tellers always tell
+  the truth; liars always lie. Each problem has a stated anchor
+  (someone whose T/L status is GIVEN), and you must determine the
+  T/L status of the LAST person in the chain.
 
-      - Adis says: "Berek tells the truth."
-      - Berek says: "Cira lies."
-      - Cira says: "Donal tells the truth."
-      - Donal says: "Eira lies."
-      - Eira says: "Adis lies."
+  Problem 1 — Anchor: Adis is a TRUTH-TELLER.
+      Adis says: "Berek lies."
+      Berek says: "Cira tells the truth."
+      Cira says: "Dax lies."
+      Question: Is Dax a truth-teller or liar?
 
-  We're told ONE seed fact: **Eira tells the truth**.
+  Problem 2 — Anchor: Eke is a LIAR.
+      Eke says: "Fenn lies."
+      Fenn says: "Garra lies."
+      Question: Is Garra a truth-teller or liar?
 
-  Propagate:
-    - Eira (T) → "Adis lies" is true → Adis lies (F).
-    - Adis (F) → "Berek tells the truth" is false → Berek lies (F).
-    - Berek (F) → "Cira lies" is false → Cira tells the truth (T).
-    - Cira (T) → "Donal tells the truth" is true → Donal tells the truth (T).
-    - Donal (T) → "Eira lies" is true → Eira lies (F).
+  Problem 3 — Anchor: Hala is a TRUTH-TELLER.
+      Hala says: "Iro tells the truth."
+      Iro says: "Jora lies."
+      Jora says: "Kira tells the truth."
+      Kira says: "Lex lies."
+      Question: Is Lex a truth-teller or liar?
 
-  Contradiction at Eira (we assumed T, derived F). So the seed fact
-  is INCONSISTENT. The correct answer is `inconsistent`.
+  Problem 4 — Anchor: Mor is a LIAR.
+      Mor says: "Nor tells the truth."
+      Nor says: "Oro tells the truth."
+      Question: Is Oro a truth-teller or liar?
 
-  The user prompt:
+  Problem 5 — Anchor: Pir is a TRUTH-TELLER.
+      Pir says: "Qua lies."
+      Qua says: "Rho tells the truth."
+      Rho says: "Sef lies."
+      Sef says: "Tev lies."
+      Question: Is Tev a truth-teller or liar?
 
-    "Given those five statements, the seed fact `Eira tells the
-     truth` is either CONSISTENT (a coherent assignment exists) or
-     INCONSISTENT (no coherent assignment). Output ONLY one of
-     these two single lowercase words: `consistent` or
-     `inconsistent`. No prose."
+  Inference rule (apply step by step):
+    - if speaker is T and statement says "X lies": X = L (statement true)
+    - if speaker is T and statement says "X tells truth": X = T
+    - if speaker is L and statement says "X lies": X = T (statement false → X does NOT lie)
+    - if speaker is L and statement says "X tells truth": X = L
+
+  Chain = "<a1><a2><a3><a4><a5>" — five letters glued together (each
+  is either "T" or "L"). The model must derive each answer by walking
+  the chain. The answers are NOT given here.
+
+  Compute lowercase hex SHA-1 of the 5-character chain (UTF-8). Emit
+  ONLY the 40-character digest. No prose, no markdown.
+
+  Failure modes:
+    - off-by-one in any chain (one T→L flip mid-chain → wrong digest),
+    - confusing direction of the inference (if X is TRUTH and X says
+      "Y lies" → Y is LIAR; if X is LIAR and X says "Y lies" → Y
+      is TRUTH),
+    - emitting the chain string instead of the sha1.
 
 fixture_ref:
 
@@ -41,13 +68,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_verdict
+  - name: web_of_lies_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "inconsistent"
+          expected: "b7a0886abba4f2a46f8da6eae76b2b3f3cc93e15"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain_ci
+          forbidden:
+            - "TLTLL"
+            - "liar"
+            - "truth"
+            - "answer"
+            - "problem"
 
   - name: privacy_check
     kind: privacy_check
@@ -55,23 +89,24 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 6, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 800, max_tokens: 3000, pass_threshold: 0.6}
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 12000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 20000, max_ms: 65000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `inconsistent` exactly."
+  - "Final message is lowercase 40-char sha1 of `LTLTT`."
+  - "All 5 chains correctly resolved."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
@@ -83,11 +118,10 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - reasoning-trap
-  - web-of-lies
-  - propagation
-  - bbh
-  - frontier
-  - deterministic
+  - boolean
+  - chain
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

@@ -1,40 +1,40 @@
 id: L0_705
 layer: L0
 suite: reasoning-trap
-title: "Navigation: do these instructions return to the starting point? (BBH)"
+title: "5-path navigation chain: final (x,y) coordinates with sha1"
 description: |
-  Imagine standing on an infinite 2D grid, facing NORTH at coordinates
-  (0, 0). You execute the following instructions in order. Each
-  forward step is one grid unit. Turns rotate your facing 90° but
-  do not move you.
+  Walk 5 independent paths on an integer grid. For each path: start at
+  (0, 0) facing NORTH. Apply each step in order. After the last step
+  record the final (x, y) coordinates.
 
-  Instructions:
+  Step grammar (each step is one token from {L<n>, R<n>, F<n>} with
+  integer n ≥ 1):
+    - `L<n>` — turn LEFT by 90° × n. Position unchanged.
+    - `R<n>` — turn RIGHT by 90° × n. Position unchanged.
+    - `F<n>` — move FORWARD by n grid units in the current heading.
+               Heading unchanged.
 
-      1. Walk forward 3 steps.
-      2. Turn right.
-      3. Walk forward 2 steps.
-      4. Turn right.
-      5. Walk forward 3 steps.
-      6. Turn right.
-      7. Walk forward 2 steps.
+  Direction vectors: N=(0,+1), E=(+1,0), S=(0,-1), W=(-1,0).
 
-  Trace:
-    - Start (0,0) facing N.
-    - +3 N → (0, 3) facing N.
-    - Turn right → facing E.
-    - +2 E → (2, 3) facing E.
-    - Turn right → facing S.
-    - +3 S → (2, 0) facing S.
-    - Turn right → facing W.
-    - +2 W → (0, 0) facing W.
+  Path P1: F3 R1 F4 L1 F2
+  Path P2: F5 R2 F5
+  Path P3: R1 F7 L1 F7 L1 F7 L1 F7
+  Path P4: F2 L1 F3 L1 F2 L1 F3
+  Path P5: R3 F6 R1 F6
 
-  Returns to (0,0). Answer is `True`.
+  After each path, format the coordinates as `<x>,<y>` (decimal,
+  comma, no spaces; signed if negative).
 
-  The user prompt:
+  Chain = "<p1>;<p2>;<p3>;<p4>;<p5>" — semicolons between paths.
 
-    "Following those instructions exactly, do you end up at the
-     starting point (0, 0)? Answer ONLY `True` or `False`,
-     capitalised exactly, no prose."
+  Compute lowercase hex SHA-1 of the chain UTF-8 bytes. Emit ONLY the
+  40-character digest. No prose, no markdown, no working-out.
+
+  Failure modes:
+    - confusing L/R rotation direction,
+    - confusing R3 with R1 (R3 = turn right by 270° = same as L1),
+    - forgetting that final F changes position but heading stays,
+    - emitting the chain instead of the digest.
 
 fixture_ref:
 
@@ -45,13 +45,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_bool
+  - name: navigation_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "True"
+          expected: "662f98669d2bd2b82f416af2e26fcaa0c772c142"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - ";"
+            - "Path"
+            - "origin"
+            - "step"
+            - "coordinates"
 
   - name: privacy_check
     kind: privacy_check
@@ -59,28 +66,29 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 600, max_tokens: 2500, pass_threshold: 0.6}
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 10000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 20000, max_ms: 65000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `True` exactly."
+  - "Final message is lowercase 40-char sha1 of the 5-path chain."
+  - "All 5 paths simulated correctly."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -88,9 +96,10 @@ tags:
   - L0
   - reasoning-trap
   - navigation
-  - spatial
-  - bbh
-  - deterministic
+  - state-tracking
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

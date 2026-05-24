@@ -71,6 +71,7 @@ scorer_chain:
             - "^T[a-z]"
         - kind: final_assistant_message_no_markdown
 
+      pass_threshold: 0.7
   - name: privacy_check
     kind: privacy_check
     config:

@@ -1,24 +1,55 @@
 id: L0_713
 layer: L0
 suite: reasoning-trap
-title: "Constraint-satisfaction: minimum trips for a small river-crossing (medium)"
+title: "5 river-crossing min-trip puzzles + sha1 fingerprint"
 description: |
-  Three people (P, Q, R) must cross a river using a single boat that
-  holds AT MOST two people at a time. The boat cannot cross empty —
-  someone must row it back. R is the only one strong enough to row;
-  P and Q cannot row at all. All three must end up on the far bank.
+  Compute the MINIMUM number of one-way crossings needed to get
+  everyone from the LEFT bank to the RIGHT bank in each of the 5
+  puzzles. A "crossing" is one trip in one direction (left→right
+  or right→left). The boat cannot cross empty unless explicitly
+  stated.
 
-  What is the MINIMUM number of one-way boat trips (each crossing
-  counts as one trip, whether outbound or return) needed to get all
-  three to the far bank?
+  P1 — Two people {A, B} on the left bank. Boat capacity = 1
+       person. Both must end on the right. Anyone can row.
+       Minimum crossings?
 
-  Walkthrough:
-    Trip 1: R takes P across.         Far: {P, R} · Near: {Q}
-    Trip 2: R returns alone.          Far: {P}    · Near: {Q, R}
-    Trip 3: R takes Q across.         Far: {P, Q, R}
+  P2 — Three people {A, B, C} on the left bank. Boat capacity = 2.
+       No further constraints. All must end on the right. Anyone
+       can row.
+       Minimum crossings?
 
-  Three trips suffice. Output ONLY the single digit `3` — no prose,
-  no trailing newline.
+  P3 — Four people {A, B, C, D} on the left bank. Boat capacity = 2.
+       No further constraints. All must end on the right. Anyone
+       can row.
+       Minimum crossings?
+
+  P4 — Farmer with WOLF, GOAT, and CABBAGE on the left bank. Boat
+       carries the farmer plus at most one item. Constraint: wolf
+       eats goat if left alone together; goat eats cabbage if left
+       alone together. Farmer must move everything to the right
+       bank. Minimum crossings?
+
+  P5 — 3 MISSIONARIES and 3 CANNIBALS on the left bank. Boat
+       capacity = 2 (must always carry at least one, can be
+       missionary or cannibal). Constraint: on EITHER bank, if any
+       missionary is present, cannibals must not outnumber them
+       (else missionaries are eaten). All must end on the right.
+       Minimum crossings?
+
+  Chain = "<P1>,<P2>,<P3>,<P4>,<P5>" — comma-separated integers,
+  no spaces.
+
+  Compute lowercase hex SHA-1 of the chain (UTF-8). Emit ONLY the
+  40-character digest. No prose, no markdown, no working-out.
+
+  Reference values (verify by direct simulation, do NOT trust this
+  list — included only for hint scale):
+    each value lies in [3, 11].
+
+  Failure modes:
+    - counting only the rightward trips (ignoring returns),
+    - off-by-one on P4 (canonical wolf-goat-cabbage is 7),
+    - emitting the chain itself instead of the digest.
 
 fixture_ref:
 
@@ -29,13 +60,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_answer_check
+  - name: river_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "3"
+          expected: "ad4b5d71f62b2c3b9470508266e28b48bad68632"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "3,3,5,7,11"
+            - ","
+            - "crossings"
+            - "trips"
+            - "step"
 
   - name: privacy_check
     kind: privacy_check
@@ -43,28 +81,29 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 2, pass_threshold: 1.0}
+    config: {max_tool_calls: 6, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 600, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 10000, max_ms: 40000, pass_threshold: 0.6}
+    config: {target_ms: 20000, max_ms: 65000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `3` exactly."
+  - "Final message is lowercase 40-char sha1 of the 5 min-crossing chain."
+  - "All 5 puzzles solved with the minimum number of one-way crossings."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -72,8 +111,10 @@ tags:
   - L0
   - reasoning-trap
   - constraint-satisfaction
-  - planning
-  - deterministic
+  - search
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

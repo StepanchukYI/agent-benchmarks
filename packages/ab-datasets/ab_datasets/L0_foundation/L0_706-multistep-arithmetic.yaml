@@ -1,32 +1,44 @@
 id: L0_706
 layer: L0
 suite: reasoning-trap
-title: "Multi-step arithmetic with parentheses, negatives, fractions (BBH)"
+title: "5-expression arithmetic chain with sha1 fingerprint"
 description: |
-  Compute the exact value of the following expression. All
-  operations use standard math precedence (parentheses first, then
-  multiplication/division left-to-right, then add/subtract
-  left-to-right).
+  Evaluate the following FIVE expressions strictly in order. ALL
+  divisions are INTEGER division (floor toward 0 on non-negative
+  operands; same as Python `//`). `**` is exponentiation. `mod` is
+  the Python `%` modulo. All operands are integers; all five results
+  are integers.
 
-      ( -3 + 5 ) * ( 7 - 2 ) / 2 + ( 1/4 - 1/6 ) * 24
+      E1 = (17 * 23) - (45 / 5) + 8
+      E2 = (13 ** 3) - (7 ** 4) + 1000
+      E3 = ((100 - 37) * 4) + (256 / 8) - 11
+      E4 = (11 ** 5) mod 997
+      E5 = (2024 - 17) / 7 + (9 * 11) - 1
 
-  Step-by-step:
-    - (-3 + 5) = 2
-    - (7 - 2) = 5
-    - 2 * 5 = 10
-    - 10 / 2 = 5
-    - (1/4) - (1/6) = (3/12) - (2/12) = 1/12
-    - (1/12) * 24 = 2
-    - 5 + 2 = 7
+  Walk-through for E1:
+      17 * 23 = 391
+      45 / 5  = 9  (integer division)
+      391 - 9 + 8 = 390   →  E1 = 390.
 
-  Answer: `7`.
+  Compute E1..E5. Join the five integers in order with the literal
+  `:` (colon, U+003A) separator (no spaces):
 
-  The user prompt:
+      chain = "<E1>:<E2>:<E3>:<E4>:<E5>"
 
-    "Compute exactly. Output ONLY the integer or simplified fraction,
-     no prose, no decimal approximation:
+  Compute the lowercase hex SHA-1 of the UTF-8 bytes of `chain`
+  (no trailing newline). Emit ONLY the 40-character hex digest as the
+  final assistant message — no prefix, no quotes, no markdown, no
+  working-out.
 
-       ( -3 + 5 ) * ( 7 - 2 ) / 2 + ( 1/4 - 1/6 ) * 24"
+  Use `Bash` (`shasum -a 1`) or Python (`hashlib.sha1`). The digest is
+  NOT given in this prompt — you must compute it.
+
+  Failure modes:
+    - using FLOAT division on E1 / E3 / E5 (yields `390.0` not `390`,
+      which serialises differently inside the chain string),
+    - off-by-one on any single E_i,
+    - emitting the joined chain instead of the sha1,
+    - prose around the digest.
 
 fixture_ref:
 
@@ -37,13 +49,21 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_number
+  - name: arith_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "7"
+          expected: "9bafc9eaa12328863effae38e238caf02d318939"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "390"
+            - "796"
+            - "step"
+            - ":"
+            - "E1"
+            - "E2"
 
   - name: privacy_check
     kind: privacy_check
@@ -51,28 +71,29 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 500, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 10000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `7` exactly."
+  - "Final message is lowercase 40-char sha1 of `E1:E2:E3:E4:E5`."
+  - "Integer division throughout — no `.0` in the chain."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -81,8 +102,8 @@ tags:
   - reasoning-trap
   - arithmetic
   - multi-step
-  - bbh
-  - deterministic
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

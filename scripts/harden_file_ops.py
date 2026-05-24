@@ -362,7 +362,7 @@ def harden_L0_022() -> None:
 
     # Deterministic 5 files with distinct seeded byte content
     files = {}
-    for i, name in enumerate(["alpha.bin", "bravo.bin", "charlie.bin", "delta.bin", "echo.bin"]):
+    for name in ["alpha.bin", "bravo.bin", "charlie.bin", "delta.bin", "echo.bin"]:
         # 1 KB of seeded pseudo-random bytes
         seed = hashlib.sha256(f"L0_022:{name}".encode()).digest()
         content = (seed * 32)[:1024]

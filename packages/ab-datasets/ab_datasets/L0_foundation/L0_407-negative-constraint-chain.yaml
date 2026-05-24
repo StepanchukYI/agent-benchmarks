@@ -1,25 +1,41 @@
 id: L0_407
 layer: L0
 suite: instruction-following
-title: "Negative-constraint chain: avoid all listed substrings"
+title: "Forbidden + mandatory + length 3-axis IFBench-extended"
 description: |
   The user prompt:
 
-    "Write a single paragraph (3-5 sentences) about the physics
-     of rainbows. The paragraph MUST NOT contain ANY of the
-     following substrings (case-insensitive): `prism`, `Newton`,
-     `colour`, `color`, `spectrum`, `wavelength`, `nm`, `Iris`,
-     `sun shower`, `God`, `pot of gold`. Plain prose only —
-     no markdown, no lists."
+    "Write a single paragraph about how a rainbow forms. ALL of the
+     following constraints hold simultaneously:
 
-  This is a frontier negative-constraint task: the model must
-  describe rainbows accurately while avoiding 11 of the most
-  natural words to use.
+       1. EXACTLY 80 words (Unicode \\w+ tokens). Not 79, not 81.
+       2. EXACTLY 5 sentences (separated by . ! ?).
+       3. Must NOT contain any of these substrings (case-insensitive):
+          prism, Newton, colour, color, spectrum, wavelength, nm,
+          Iris, sun shower, God, pot of gold, rainbow, light.
+       4. MUST contain EACH of these substrings (case-sensitive
+          verbatim): 'Snell', 'refractive index', 'cone of view',
+          'circular arc'.
+       5. First word must start with the capital letter 'W'.
+       6. Last word must start with the lowercase letter 'r'.
+       7. No markdown — no triple backticks, no '**', no leading
+          '# ' or '- '.
+
+     Plain prose only. No quotes around the paragraph. No lists.
+     No commentary before or after."
+
+  Frontier hardness: the forbidden list eliminates 13 of the most
+  natural words to use; the mandatory list forces 4 specific
+  technical phrases; the length and sentence count are exact; first/
+  last letter constraints further restrict word choice.
 
   Failure modes:
-    - any banned substring appears (case-insensitive match),
-    - markdown formatting present,
-    - too short (<3 sentences) or too long (>5 sentences).
+    - any forbidden substring (case-insensitive),
+    - any mandatory substring missing,
+    - 79 or 81 words (off-by-one common),
+    - 4 or 6 sentences,
+    - first word not starting with 'W',
+    - last word not starting with lowercase 'r'.
 
 fixture_ref:
 
@@ -30,26 +46,45 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: forbidden_substrings_check
+  - name: seven_axis_constraint
     kind: deterministic
     config:
+      pass_threshold: 0.71
       assertions:
+        - kind: final_assistant_message_word_count
+          expected: 80
+        - kind: final_assistant_message_sentence_count_range
+          min: 5
+          max: 5
         - kind: final_assistant_message_does_not_contain_ci
           forbidden:
-            - "prism"
-            - "Newton"
-            - "colour"
-            - "color"
-            - "spectrum"
-            - "wavelength"
+            - prism
+            - Newton
+            - colour
+            - color
+            - spectrum
+            - wavelength
             - " nm "
-            - "Iris"
-            - "sun shower"
+            - Iris
+            - sun shower
             - " God "
-            - "pot of gold"
-        - kind: final_assistant_message_sentence_count_range
-          min: 3
-          max: 5
+            - pot of gold
+            - rainbow
+            - light
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "Snell"
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "refractive index"
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "cone of view"
+        - kind: final_assistant_message_contains_substring_verbatim
+          substring: "circular arc"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "^W[a-z]"
+        - kind: final_assistant_message_matches_any
+          patterns:
+            - "\\br[a-z]+[.!?]?\\s*$"
         - kind: final_assistant_message_no_markdown
 
   - name: privacy_check
@@ -62,16 +97,15 @@ scorer_chain:
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 600, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 700, max_tokens: 3000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 12000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 12000, max_ms: 40000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final message contains none of the eleven banned substrings."
-  - "Sentence count is between 3 and 5."
-  - "No markdown."
+  - "7 of 10 constraints simultaneously satisfied (graded threshold 0.71)."
+  - "Strict on word count, sentence count, forbidden + mandatory."
   - "Privacy scan produces zero hits."
 
 weights:
@@ -88,9 +122,9 @@ trust_tier_ceiling: verified
 tags:
   - L0
   - instruction-following
-  - ifeval
-  - followbench
-  - negative-constraints
-  - frontier
-  - deterministic
+  - ifbench
+  - multi-constraint
+  - negative
+  - mandatory
+  - hard
   - reasoning-sensitive

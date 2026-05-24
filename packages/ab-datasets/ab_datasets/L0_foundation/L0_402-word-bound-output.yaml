@@ -62,6 +62,7 @@ scorer_chain:
         - kind: final_assistant_message_no_markdown
         - kind: final_assistant_message_no_quotes
 
+      pass_threshold: 0.7
   - name: privacy_check
     kind: privacy_check
     config:

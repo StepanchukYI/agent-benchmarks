@@ -1,28 +1,48 @@
 id: L0_704
 layer: L0
 suite: reasoning-trap
-title: "Object counting with category filter (BBH-style)"
+title: "5-axis object counting chain with sha1 fingerprint"
 description: |
-  The user prompt:
+  Solve all 5 of the following independent counting problems exactly
+  as specified, then chain the 5 integer results into a sha1 digest.
 
-    "I have 3 apples, 2 oranges, 5 bananas, 1 dragon fruit, 4
-     potatoes, 2 carrots, 6 onions, and 1 mango. How many FRUITS
-     do I have in total? A potato, a carrot, and an onion are NOT
-     fruits. Output ONLY the integer total, no prose, no
-     punctuation."
+  Q1 — Vowel-initial words.
+      list = ["amber", "stone", "echo", "rover", "ivy", "tower",
+              "umbra", "lake", "ash", "wren"]
+      Count words whose first character (case-folded) is in
+      {a,e,i,o,u}. Yield N1.
 
-  Fruits = apples (3) + oranges (2) + bananas (5) + dragon fruit (1)
-        + mango (1) = 12.
+  Q2 — Even numbers.
+      list = [3, 7, 12, 4, 19, 25, 8, 11, 6, 2, 14, 30, 9, 5, 17, 1, 23, 100]
+      Count values where value % 2 == 0. Yield N2.
 
-  Vegetables (excluded) = potatoes (4) + carrots (2) + onions (6) = 12.
+  Q3 — String length strictly greater than 5.
+      list = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta",
+              "eta", "theta", "iota"]
+      Count items where len(s) > 5 (5 itself does NOT count).
+      Yield N3.
 
-  Answer: `12`.
+  Q4 — Strictly greater than median.
+      list = [3, 7, 1, 4, 9, 2, 6, 8, 5]
+      Compute median as the middle element after sorting (for odd-
+      length list = element at index N//2 of the sorted list).
+      Count values > median (strictly, no ties). Yield N4.
+
+  Q5 — Prime values in dict.
+      d = {"a": 2, "b": 4, "c": 5, "d": 6, "e": 7, "f": 9, "g": 11, "h": 12}
+      Count values v where v is a prime number (2,3,5,7,11,...). 1
+      is NOT prime. Yield N5.
+
+  Chain = "<N1>,<N2>,<N3>,<N4>,<N5>" (comma, no spaces).
+  Compute lowercase hex SHA-1 of chain (UTF-8 bytes, no trailing
+  newline). Emit ONLY the 40-character hex digest. No prose, no
+  markdown, no working-out.
 
   Failure modes:
-    - including vegetables in the count (would yield 24),
-    - missing a fruit (would yield 11 or less),
-    - misreading "dragon fruit" as two items,
-    - returning total of all items.
+    - off-by-one on any single N_i (one wrong → wrong digest),
+    - treating 1 as prime in Q5,
+    - using strictly-less-than where strict-greater is asked,
+    - emitting the chain string instead of the digest.
 
 fixture_ref:
 
@@ -33,13 +53,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_count
+  - name: counting_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "12"
+          expected: "adf65eac2001d9b1924e4a8a8232631b5344eb54"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "5,8,1,4,4"
+            - "N1"
+            - "step"
+            - "answer"
+            - ","
 
   - name: privacy_check
     kind: privacy_check
@@ -47,29 +74,29 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 500, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 8000, max_ms: 22500, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `12` exactly."
-  - "No prose, no punctuation."
+  - "Final message is lowercase 40-char sha1 of `5,8,1,4,4`."
+  - "All 5 counts correctly computed."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -77,9 +104,9 @@ tags:
   - L0
   - reasoning-trap
   - counting
-  - category-filter
-  - bbh
-  - deterministic
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

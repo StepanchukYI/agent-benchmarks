@@ -1,29 +1,47 @@
 id: L0_405
 layer: L0
 suite: instruction-following
-title: "Explicit override of default formatting habit"
+title: "Override default Python habits: 6 simultaneous formatting constraints"
 description: |
   The user prompt:
 
-    "List the seven days of the week, in the conventional Sunday-
-     first order (Sun, Mon, ..., Sat), but DO NOT use bullet
-     points, numbered list, or any list marker. Output the seven
-     full names separated by `, ` (comma + space). Output ONLY
-     that comma-separated line, no surrounding prose."
+    "Write a Python function `triple(x)` that returns `x * 3`. The
+     function MUST satisfy ALL of these constraints simultaneously
+     (any one violated → fail):
 
-  Default model habit is to render lists as markdown bullets.
-  This task explicitly overrides that.
+       1. Exactly 5 lines including the `def` line and the return
+          line. No more, no less. Blank lines count as a line.
+       2. NO type hints anywhere (no `int`, `: x: int`, `-> int`).
+       3. NO docstring (no triple-quoted string anywhere).
+       4. The return statement uses the multiplication operator `*`
+          (NOT `+`, NOT `x.__mul__`, NOT a loop).
+       5. Indent is EXACTLY 4 spaces (not 2, not a tab).
+       6. No trailing whitespace on any line; final newline at end
+          of the response.
 
-  Expected exact final message:
+     Output ONLY the function code — no surrounding prose, no
+     markdown code fence, no comments inside the body."
 
-      Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday
+  Expected output (byte-exact, 5 lines + trailing \\n):
+
+      def triple(x):
+          y = x * 3
+          z = y
+          w = z
+          return w
+
+  This deliberately forces the model to violate its STRONG bias to
+  write the canonical 2-line `def triple(x): return x * 3`. The
+  5-line constraint can be satisfied by any 3 intermediate
+  assignments — the byte-exact match below uses y/z/w.
 
   Failure modes:
-    - rendering as bullet/numbered list,
-    - adding prose ("Here are the seven days:"),
-    - omitting any day,
-    - reordering (Monday-first is a common default),
-    - using abbreviations.
+    - canonical 2-line implementation (1 line short),
+    - including docstring,
+    - including type hints (`def triple(x: int) -> int:`),
+    - using `return x + x + x` (constraint 4),
+    - markdown code fence around it,
+    - prose explanation.
 
 fixture_ref:
 
@@ -34,13 +52,22 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_csv_line
+  - name: override_python_check
     kind: deterministic
     config:
+      pass_threshold: 0.7
       assertions:
         - kind: final_assistant_message_equals
-          expected: "Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday"
-          trim_whitespace: true
+          expected: "def triple(x):\n    y = x * 3\n    z = y\n    w = z\n    return w"
+          trim_trailing_newline: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "->"
+            - ": int"
+            - "\"\"\""
+            - "'''"
+            - "```"
+        - kind: no_markdown_fence
 
   - name: privacy_check
     kind: privacy_check
@@ -52,35 +79,35 @@ scorer_chain:
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 400, max_tokens: 1500, pass_threshold: 0.6}
+    config: {target_tokens: 800, max_tokens: 3000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 8000, max_ms: 22500, pass_threshold: 0.6}
+    config: {target_ms: 10000, max_ms: 30000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final message equals the exact comma-space-separated line."
-  - "No bullet, no numbered list, no prose."
+  - "Exact 5-line function with 3 intermediate assignments."
+  - "No type hints, no docstring, no fence."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
+  correctness: 0.80
   tool_skill: 0.05
-  context_efficiency: 0.05
+  context_efficiency: 0.10
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - instruction-following
-  - ifeval
-  - followbench
+  - ifbench
   - override-default
-  - deterministic
+  - multi-constraint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

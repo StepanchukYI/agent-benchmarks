@@ -64,6 +64,7 @@ scorer_chain:
           field: summary
           expected: 17
 
+      pass_threshold: 0.75
   - name: json_schema_check
     kind: schema
     config:

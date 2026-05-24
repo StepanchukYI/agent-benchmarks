@@ -1,28 +1,55 @@
 id: L0_714
 layer: L0
 suite: reasoning-trap
-title: "Trap question with a misleading anchor (medium)"
+title: "5 anchor-trap brain-teaser chain with sha1 fingerprint"
 description: |
-  Read the problem CAREFULLY before answering.
+  Each of the 5 puzzles is a classic "trap" question where the
+  obvious / anchored answer is WRONG. Compute the correct integer
+  answer for each.
 
-      "Alice and Bob each have a number. Bob's number is twice
-       Alice's. Their sum is 30. Alice then GIVES Bob 4 from her
-       number. What is the difference between Bob's NEW number
-       and Alice's NEW number?"
+  P1 — "If 5 machines take 5 minutes to make 5 widgets, how many
+       MINUTES does it take 100 machines to make 100 widgets?"
+       (Trap: 100. The correct rate is 1 widget per machine per
+       5 min, so 100 machines make 100 widgets in 5 minutes.)
+       Answer in minutes (integer).
 
-  Naive trap: people anchor on the original ratio (Bob = 2 · Alice)
-  and report the original difference `10`.
+  P2 — "A bat and a ball together cost $1.10. The bat costs $1.00
+       MORE than the ball. How much does the BALL cost — in
+       cents (integer)?"
+       (Trap: 10. Algebra: bat = ball + 1.00; bat + ball = 1.10;
+       so 2·ball + 1.00 = 1.10 → ball = 0.05 → 5 cents.)
+       Answer in cents (integer).
 
-  Correct walkthrough:
+  P3 — "A lily pad in a pond doubles in surface area every day.
+       On day 48 the lily pad covers the ENTIRE pond. On what day
+       did it cover EXACTLY HALF of the pond?"
+       (Trap: 24. The correct answer: half-coverage occurred the
+       day before full-coverage, so day 47.)
+       Answer in days (integer day number).
 
-      Alice + 2·Alice = 30  →  3·Alice = 30  →  Alice = 10, Bob = 20.
-      After Alice gives 4 to Bob:
-        Alice_new = 10 − 4 = 6
-        Bob_new   = 20 + 4 = 24
-        Difference = 24 − 6 = 18.
+  P4 — "In a room of exactly 100 people, 99 % wear glasses. How
+       many people MUST LEAVE so that, of those remaining, exactly
+       98 % wear glasses? Nobody puts on or removes glasses; the
+       same 1 person without glasses stays in the room."
+       (Trap: 1. Setup: 1 person without glasses must equal 2 % of
+       remaining → remaining = 50 → 50 must leave.)
+       Answer (integer).
 
-  Output ONLY the integer `18` — no prose, no units, no trailing
-  newline.
+  P5 — "You are running a race. You overtake the runner who is
+       currently in 2nd place. What place are YOU in immediately
+       after overtaking?"
+       (Trap: 1st. Correct: you take their place — 2nd.)
+       Answer as the place number (integer 1–10).
+
+  Chain = "<A1>-<A2>-<A3>-<A4>-<A5>" — hyphens between answers.
+
+  Compute lowercase hex SHA-1 of the chain (UTF-8). Emit ONLY the
+  40-character digest. No prose, no markdown, no working-out.
+
+  Failure modes:
+    - falling for any of the 5 trap answers (100, 10, 24, 1, 1),
+    - off-by-one on P3 (day 24 is naive half; correct is day 47),
+    - emitting the chain instead of the digest.
 
 fixture_ref:
 
@@ -33,13 +60,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_answer_check
+  - name: trap_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "18"
+          expected: "84063f67ea4397372f0e8d09fdc4527d7d73a5f9"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "5-5-47-50-2"
+            - "-"
+            - "trap"
+            - "answer"
+            - "step"
 
   - name: privacy_check
     kind: privacy_check
@@ -47,38 +81,40 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 2, pass_threshold: 1.0}
+    config: {max_tool_calls: 6, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 600, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 10000, max_ms: 40000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `18` exactly."
-  - "Does NOT report `10` (the anchor trap)."
+  - "Final message is lowercase 40-char sha1 of `5-5-47-50-2`."
+  - "All 5 trap puzzles answered correctly."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - reasoning-trap
-  - misleading-anchor
-  - word-problem
-  - deterministic
+  - anchor-trap
+  - brain-teaser
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

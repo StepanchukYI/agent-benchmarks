@@ -1640,11 +1640,22 @@ def run_assertion_chain(
     assertions: list[dict],
     *,
     extra_context: dict | None = None,
+    pass_threshold: float = 1.0,
 ) -> ScorerVerdict:
     """Walk a list of assertion dicts; produce one ScorerVerdict per scorer.
 
     `extra_context` keys are passed through into each assertion's `params`
     dict prefixed with `_` (e.g. `tool_schema_path` -> `_tool_schema_path`).
+
+    `pass_threshold` (default 1.0) controls graded scoring:
+      - 1.0 → all assertions must pass for the scorer to pass (legacy/strict).
+      - 0.6-0.7 → partial credit: e.g. 4/6 assertions = score 0.67, passes if
+        threshold ≤ 0.67. Lets weaker models get partial credit on multi-axis
+        tasks (IFBench, multi-step pipelines, near-collision NIAH) while
+        preserving binary pass for single-fact tasks.
+
+    `score` is always the raw fraction `passed / total` regardless of
+    threshold — only the `pass_` bool is gated by the threshold.
     """
     results: list[dict] = []
     passed = 0
@@ -1671,13 +1682,21 @@ def run_assertion_chain(
 
     total = len(results)
     score = (passed / total) if total else 1.0
-    overall_ok = total > 0 and passed == total
+    # Clamp threshold to [0, 1] defensively. Default 1.0 = strict.
+    threshold = max(0.0, min(1.0, float(pass_threshold)))
+    overall_ok = total > 0 and score >= threshold - 1e-9
     return score_to_verdict(
         scorer_name,
         ScorerKind.deterministic,
         overall_ok,
         score,
-        {"assertions": results, "scorer_name": scorer_name, "passed": passed, "total": total},
+        {
+            "assertions": results,
+            "scorer_name": scorer_name,
+            "passed": passed,
+            "total": total,
+            "pass_threshold": threshold,
+        },
     )
 
 

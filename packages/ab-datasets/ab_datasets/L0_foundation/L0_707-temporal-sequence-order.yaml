@@ -1,40 +1,55 @@
 id: L0_707
 layer: L0
 suite: reasoning-trap
-title: "Temporal sequence ordering with relative constraints (BBH-style)"
+title: "5-puzzle ordering chain with sha1 fingerprint"
 description: |
-  Five events happened on Tuesday. The following relative-time facts
-  are all true:
+  Solve 5 independent ordering puzzles. Each puzzle yields a unique
+  permutation of its event labels. Chain the 5 orderings into one
+  string and SHA-1 it.
 
-      - The meeting started AFTER the standup.
-      - The lunch happened AFTER the meeting.
-      - The code review happened BEFORE the standup.
-      - The deploy happened AFTER the lunch but BEFORE the
-        retrospective.
-      - The retrospective was the last event of the day.
+  P1 — Events {A, B, C, D} with constraints:
+       - B happens BEFORE D.
+       - C happens AFTER A.
+       - C happens BEFORE B.
+       - A is the first event.
+       Output: "A,C,B,D"
 
-  There are exactly six events to order (code review, standup,
-  meeting, lunch, deploy, retrospective). Walk through:
-    - retrospective is LAST.
-    - code review BEFORE standup.
-    - meeting AFTER standup, BEFORE lunch.
-    - lunch BEFORE deploy, deploy BEFORE retrospective.
-    - So order is: code review, standup, meeting, lunch, deploy,
-      retrospective.
+  P2 — Events {X, Y, Z} with constraints:
+       - X happens BEFORE Z.
+       - Y happens AFTER Z.
+       Output: "X,Z,Y"
 
-  Final order: `code review, standup, meeting, lunch, deploy,
-  retrospective`.
+  P3 — Events {K, L, M, N, P} with constraints:
+       - M happens BEFORE N.
+       - P happens AFTER N.
+       - P happens BEFORE L.
+       - K happens BEFORE L.
+       - M is the first event.
+       Output: "M,P,N,L,K" (the unique valid ordering under the given
+       partial-order constraints, with the tie-break: when more than
+       one element could come next, choose the one that appears
+       first ALPHABETICALLY).
 
-  The user prompt:
+  P4 — Events {Q, R} with constraints:
+       - Q happens BEFORE R.
+       Output: "Q,R"
 
-    "List the six events in their chronological order, separated by
-     ` -> ` (single space, arrow, single space). Output ONLY the
-     ordered chain, no prose. Use the exact lowercase event names
-     as given."
+  P5 — Events {S, T, U, V} with constraints:
+       - T happens BEFORE V.
+       - V happens BEFORE U.
+       - U happens BEFORE S.
+       Output: "T,V,U,S"
 
-  Expected (exact):
+  Chain = "<P1>|<P2>|<P3>|<P4>|<P5>" — pipes separate puzzles.
 
-      code review -> standup -> meeting -> lunch -> deploy -> retrospective
+  Compute lowercase hex SHA-1 of the chain (UTF-8). Emit ONLY the
+  40-character digest. No prose, no markdown, no working-out.
+
+  Failure modes:
+    - missing the alphabetical tie-break rule in P3 (yields wrong
+      ordering),
+    - reversing any partial order direction,
+    - emitting the chain instead of the digest.
 
 fixture_ref:
 
@@ -45,13 +60,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_chain
+  - name: ordering_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "code review -> standup -> meeting -> lunch -> deploy -> retrospective"
+          expected: "a3d94df519dabc44e2f0ce013794dea840811553"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "|"
+            - "puzzle"
+            - "Output"
+            - "step"
+            - "ordering"
 
   - name: privacy_check
     kind: privacy_check
@@ -59,37 +81,40 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 6, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 700, max_tokens: 2500, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 12000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals the exact chain shown."
+  - "Final message is lowercase 40-char sha1 of the 5-puzzle chain."
+  - "All 5 orderings respect the constraints + alphabetical tie-break."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - reasoning-trap
-  - temporal-ordering
-  - bbh
-  - deterministic
+  - ordering
+  - constraint-satisfaction
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

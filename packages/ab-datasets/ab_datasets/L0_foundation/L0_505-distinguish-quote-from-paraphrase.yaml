@@ -1,107 +1,115 @@
 id: L0_505
 layer: L0
 suite: faithfulness
-title: "Distinguish a verbatim quote from a critic's paraphrase"
+title: "5-quote verbatim/paraphrase classification chain with sha1"
 description: |
-  The fixture provides `source.txt` describing architect Iren Olbrich.
-  The source contains:
-    - one verbatim Olbrich quote: "The form follows the water — every
-      angle in the roof is a tangent to a wave I watched one November
-      morning."
-    - one critic paraphrase: "a frozen tide of timber"
-    - an explicit disclaimer: "Olbrich herself never used that phrase".
+  ─── SOURCE TEXT ───
+  Architect Iren Olbrich, when accepting the 2024 Bracken award, told
+  the audience: "The form follows the water — every line of stone
+  must learn from the river." Critics have noted that Olbrich's
+  practice can be loosely summarised as a doctrine of fluidity over
+  rigidity. In a 2023 interview, she remarked: "We do not draw
+  buildings; we listen for them in the landscape." Her biographer
+  Karel Vetz writes that Olbrich's work is "a kind of sympathetic
+  geometry — buildings that lean toward their context." Olbrich
+  herself denies any single doctrine; in 2025 she said: "I have no
+  doctrine, only patience for the stone." Her early collaborators
+  describe the studio's method as "iterative carving" — a phrase that
+  Olbrich has neither endorsed nor disputed.
+  ─── END SOURCE ───
 
-  The user asks:
+  For each of the 5 quoted spans below, classify it as `V` (appears
+  verbatim within `"..."` in the source) or `P` (paraphrase or
+  third-party characterisation — not a verbatim Olbrich quote).
 
-    "Quote Olbrich's own description of the pavilion verbatim from
-     source.txt. Wrap it in quotation marks. Do NOT use the phrase
-     attributed to critics."
+    Q1: "The form follows the water — every line of stone must learn
+         from the river."
+    Q2: "Olbrich believes form follows water."
+    Q3: "Form follows water, every line of stone learning from the
+         river."
+    Q4: "I have no doctrine, only patience for the stone."
+    Q5: "iterative carving"
 
-  The agent's final message MUST contain the verbatim Olbrich quote
-  inside quotation marks AND MUST NOT contain the critics' phrase
-  "a frozen tide of timber" presented as Olbrich's own words.
+  Walk-through:
+    Q1: V — exact verbatim Olbrich quote.
+    Q2: P — paraphrase.
+    Q3: P — close but rephrased; not byte-identical.
+    Q4: V — verbatim 2025 Olbrich quote.
+    Q5: P — phrase used by collaborators, NOT Olbrich's own words.
+
+  Chain = "<c1><c2><c3><c4><c5>" — five letters glued (each `V` or
+  `P`). For this set the chain is `VPPVP`. Compute lowercase hex
+  SHA-1 of the 5-char chain (UTF-8) and emit ONLY the 40-character
+  digest.
 
   Failure modes:
-    - quoting the critics' phrase as Olbrich's,
-    - paraphrasing instead of using the verbatim sentence,
-    - mixing the two and presenting a combined fabricated quote.
+    - mis-classifying a paraphrase as verbatim (Q2, Q3, Q5),
+    - claiming Q5 is Olbrich's quote (source says collaborators said it),
+    - emitting the chain instead of the sha1.
 
-fixture_ref: "fixtures/repos/L0_smoke/L0_505/"
+fixture_ref:
 
 config:
   required_tier: T0
   recommended_tier: T0
-  also_run_on:
-    - T2
-  requires:
-    skills: []
-    mcps: []
-    vault_state: {}
+  also_run_on: [T2]
+  requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: quote_attribution_check
+  - name: verbatim_chain_sha1
     kind: deterministic
     config:
-      source_file: "source.txt"
       assertions:
-        - kind: final_assistant_message_contains_quoted_span
-          span: "The form follows the water — every angle in the roof is a tangent to a wave I watched one November morning."
-          quote_chars: ["\"", "“", "”"]
-        - kind: final_assistant_message_contains_substring_verbatim
-          substring: "The form follows the water"
+        - kind: final_assistant_message_equals
+          expected: "b565996709e300ae95bba28c48f724ea3c91ef81"
+          trim_whitespace: true
         - kind: final_assistant_message_does_not_contain
           forbidden:
-            - "a frozen tide of timber"
-            - "frozen tide"
+            - "VPPVP"
+            - "Olbrich"
+            - "verbatim"
+            - "paraphrase"
+            - "step"
 
   - name: privacy_check
     kind: privacy_check
-    config:
-      patterns_path: "docs/privacy-patterns.yaml"
+    config: {patterns_path: "docs/privacy-patterns.yaml"}
 
   - name: tool_skill
     kind: deterministic
-    config:
-      max_tool_calls: 2
-      pass_threshold: 0.8
+    config: {max_tool_calls: 4, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config:
-      target_tokens: 1200
-      max_tokens: 3000
-      pass_threshold: 0.6
+    config: {target_tokens: 2500, max_tokens: 7000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config:
-      target_ms: 12000
-      max_ms: 30000
-      pass_threshold: 0.6
+    config: {target_ms: 20000, max_ms: 65000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final message contains the verbatim Olbrich sentence inside quotation marks."
-  - "Final message contains NEITHER `a frozen tide of timber` NOR `frozen tide`."
+  - "Final message is lowercase 40-char sha1 of `VPPVP`."
+  - "All 5 verbatim/paraphrase classifications correct."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.65
-  tool_skill: 0.05
-  context_efficiency: 0.10
+  correctness: 0.80
+  tool_skill: 0.10
+  context_efficiency: 0.05
   latency_cost: 0.05
-  memory_specific: 0.15
+  memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
 tags:
   - L0
   - faithfulness
-  - verbatim-citation
-  - misattribution
-  - truthfulqa
-  - deterministic
-  - smoke-test
+  - verbatim
+  - paraphrase
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - byte-exact-output
   - output-normalization-sensitive

@@ -1,30 +1,46 @@
 id: L0_703
 layer: L0
 suite: reasoning-trap
-title: "Date arithmetic across year boundary (BBH-style)"
+title: "5-date arithmetic chain with sha1 fingerprint (cross-year, leap, DST-free)"
 description: |
-  Given a fixed reference date, subtract a number of days that
-  crosses the year boundary. The fixture is text-only — date is in
-  the prompt.
+  Anchor date: `2027-02-14` (a Sunday, non-leap year).
 
-  The user prompt:
+  Compute the following FIVE dates by applying each integer offset to
+  the anchor (offset in days; negative = earlier, positive = later).
+  All arithmetic is in the proleptic Gregorian calendar, no timezone
+  conversions, no DST adjustments:
 
-    "If today is 14 February 2027, what was the date exactly 47
-     days ago? Output ONLY the date in ISO 8601 format
-     (YYYY-MM-DD), no prose, no quotes."
+      D1 = anchor + (-47 days)
+      D2 = anchor + (+183 days)
+      D3 = anchor + (-365 days)
+      D4 = anchor + (+99 days)
+      D5 = anchor + (-730 days)
 
-  Compute step-by-step:
-    - 14 days back from Feb 14 → Jan 31, 2027 (14 days subtracted)
-    - 31 more days back → Dec 31, 2026 (45 days subtracted)
-    - 2 more days → Dec 29, 2026 (47 days subtracted)
+  Format each date as ISO 8601 `YYYY-MM-DD` (zero-padded month and
+  day). Join them in order with the literal `|` separator (no spaces):
 
-  Answer: `2026-12-29`.
+      chain = "<D1>|<D2>|<D3>|<D4>|<D5>"
+
+  Compute the lowercase hex SHA-1 of the UTF-8 bytes of `chain`
+  (no trailing newline appended). Emit ONLY the 40-character hex
+  digest as the final assistant message — no prefix, no quotes, no
+  markdown, no working-out, no trailing newline.
+
+  Use `Bash` (`shasum -a 1` / `sha1sum`) or Python
+  (`hashlib.sha1(s.encode()).hexdigest()`). Do NOT hard-code the
+  digest from this description — it is NOT provided here.
+
+  Reference walk-through (only D1, D5 shown; the model must compute
+  all 5 independently and chain them):
+    - D1: 14 Feb 2027 minus 47 days = 14 Jan 2027 - 16 days = 29 Dec 2026.
+    - D5: 14 Feb 2027 minus 730 days = 14 Feb 2025 (no leap-day in path).
 
   Failure modes:
-    - off-by-one (`2026-12-28` or `2026-12-30`),
-    - forgetting year decrement,
-    - leap-year confusion (2024 is leap; 2027 is not, but
-      computation involves 2026 → 2027 transition).
+    - off-by-one on any single date (one wrong byte → wrong digest),
+    - wrong year decrement crossing the 1 Jan boundary,
+    - including 2024-02-29 in any path (irrelevant for these offsets),
+    - emitting the joined string instead of the sha1,
+    - emitting prose around the digest.
 
 fixture_ref:
 
@@ -35,13 +51,21 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_date
+  - name: date_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "2026-12-29"
+          expected: "47562a66b237e324d8f1e7d8fd0a2c803e731484"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "2026-12-29"
+            - "2027"
+            - "anchor"
+            - "step"
+            - "|"
+            - "="
 
   - name: privacy_check
     kind: privacy_check
@@ -49,28 +73,30 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 500, max_tokens: 2000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 10000, max_ms: 30000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `2026-12-29` exactly."
+  - "Final message is the lowercase 40-char sha1 of `D1|D2|D3|D4|D5`."
+  - "Each date in ISO 8601 YYYY-MM-DD format."
+  - "No prose, no markdown, no intermediates leaked."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
 
-difficulty: medium
+difficulty: hard
 visibility: public
 trust_tier_ceiling: verified
 
@@ -78,8 +104,9 @@ tags:
   - L0
   - reasoning-trap
   - date-arithmetic
-  - bbh
-  - deterministic
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

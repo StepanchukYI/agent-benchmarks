@@ -57,6 +57,7 @@ scorer_chain:
           substring: "Mars"
         - kind: final_assistant_message_no_markdown
 
+      pass_threshold: 0.75
   - name: privacy_check
     kind: privacy_check
     config: {patterns_path: "docs/privacy-patterns.yaml"}

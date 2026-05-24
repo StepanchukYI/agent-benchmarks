@@ -229,6 +229,27 @@ SCORER_PILLAR_MAP: dict[str, str] = {
     "top5_position_tiebreak": "correctness",
     "total_sum_check": "correctness",
     "transitivity_check": "correctness",
+    # Lever C batch 2 (17 aliases). All correctness — they assert on the
+    # final byte-exact assistant message (sha1 of a derived chain) plus
+    # workdir invariants where applicable. `override_python_check` and
+    # `seven_axis_constraint` are also content checks under correctness.
+    "abstain_chain_sha1": "correctness",
+    "arith_chain_sha1": "correctness",
+    "bayes_chain_sha1": "correctness",
+    "chromatic_chain_sha1": "correctness",
+    "contradiction_chain_sha1": "correctness",
+    "counting_chain_sha1": "correctness",
+    "date_chain_sha1": "correctness",
+    "navigation_chain_sha1": "correctness",
+    "ordering_chain_sha1": "correctness",
+    "override_python_check": "correctness",
+    "river_chain_sha1": "correctness",
+    "seven_axis_constraint": "correctness",
+    "stale_chain_sha1": "correctness",
+    "trap_chain_sha1": "correctness",
+    "tz_chain_sha1": "correctness",
+    "verbatim_chain_sha1": "correctness",
+    "web_of_lies_chain_sha1": "correctness",
 }
 
 

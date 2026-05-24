@@ -147,6 +147,12 @@ def _make_assertion_scorer(scorer_name: str):
             extra_context["target_file"] = cfg["target_file"]
         if cfg.get("target_paths"):
             extra_context["target_paths"] = cfg["target_paths"]
+        # Per-scorer graded threshold (default 1.0 = strict / legacy).
+        # Tasks opt in to partial credit by adding `pass_threshold: 0.6-0.7`
+        # in the scorer config. Useful on multi-axis tasks where weaker
+        # models often get 3-4 of 6 assertions right but currently score
+        # zero under all-or-nothing semantics.
+        pass_threshold = float(cfg.get("pass_threshold", 1.0))
         return run_assertion_chain(
             scorer_name,
             events,
@@ -154,6 +160,7 @@ def _make_assertion_scorer(scorer_name: str):
             fixture_dir,
             assertions,
             extra_context=extra_context,
+            pass_threshold=pass_threshold,
         )
 
     _scorer.__name__ = f"{scorer_name}_scorer"
@@ -287,6 +294,27 @@ TRACK_B_SCORER_NAMES: tuple[str, ...] = (
     "top5_position_tiebreak",
     "total_sum_check",
     "transitivity_check",
+    # ----- Lever C batch 2 (17 new aliases): reasoning-trap + IFBench +
+    # faithfulness hardening introduced multi-step pipelines that end with
+    # a sha1 fingerprint on the joined intermediate state. All dispatch via
+    # `_make_assertion_scorer`; semantics live in the per-task `assertions:`.
+    "abstain_chain_sha1",
+    "arith_chain_sha1",
+    "bayes_chain_sha1",
+    "chromatic_chain_sha1",
+    "contradiction_chain_sha1",
+    "counting_chain_sha1",
+    "date_chain_sha1",
+    "navigation_chain_sha1",
+    "ordering_chain_sha1",
+    "override_python_check",
+    "river_chain_sha1",
+    "seven_axis_constraint",
+    "stale_chain_sha1",
+    "trap_chain_sha1",
+    "tz_chain_sha1",
+    "verbatim_chain_sha1",
+    "web_of_lies_chain_sha1",
 )
 
 

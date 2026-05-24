@@ -1,41 +1,40 @@
 id: L0_710
 layer: L0
 suite: reasoning-trap
-title: "Timezone arithmetic with DST trap (frontier)"
+title: "5 UTC→local timezone conversion chain with sha1 fingerprint"
 description: |
-  A 6-hour flight departs from New York City (timezone America/
-  New_York, observes DST) on **2027-03-13 22:30 local time** and
-  flies to Berlin (timezone Europe/Berlin, observes DST).
+  Convert 5 UTC timestamps to local time using the FIXED offset
+  provided for each problem (NO daylight-saving — apply the given
+  offset literally as `local = utc + offset`).
 
-  On 2027-03-13 22:30, New York is in EST (UTC-5).
-  On 2027-03-14 02:00 New York time, the US clocks JUMP FORWARD to
-  03:00 (start of DST). So between 22:30 NY on March 13 and the
-  6-hour-later moment, we cross the local DST transition.
+  For each problem, output the local time in ISO 8601 format
+  `YYYY-MM-DDTHH:MM` (no seconds, no `Z` suffix, no timezone label,
+  T separator capitalised).
 
-  Wall-clock arithmetic in NY local time over a real-time 6-hour
-  span starting at 22:30 EST:
-    - 22:30 EST = 03:30 UTC on March 14.
-    - 6 hours later = 09:30 UTC on March 14.
-  Berlin on 2027-03-14 09:30 UTC: Berlin transitions to DST one
-  WEEK later (last Sunday of March = 2027-03-28), so on
-  2027-03-14 Berlin is still CET (UTC+1). Therefore Berlin local
-  time = 10:30.
+  Problems (UTC time, fixed offset to apply):
+    Q1: 2027-03-10 14:00  +05:30
+    Q2: 2027-07-04 23:00  -08:00
+    Q3: 2027-12-31 18:00  +13:00
+    Q4: 2027-06-15 06:30  -03:30
+    Q5: 2027-09-22 11:15  +09:45
 
-  The user prompt:
+  Walk-through (only Q1 shown; the model must compute all 5):
+    Q1: 14:00 + 5:30 = 19:30 same day → "2027-03-10T19:30"
 
-    "A 6-hour flight departs New York City at 2027-03-13 22:30
-     local. What is the arrival time in Berlin LOCAL time? Output
-     ONLY in `YYYY-MM-DD HH:MM` format (24-hour), no timezone
-     name, no prose."
+  Note Q3 crosses the year boundary: 2027-12-31 18:00 UTC + 13h →
+  2028-01-01 07:00.
 
-  Expected (exact): `2027-03-14 10:30`.
+  Chain = "<L1>|<L2>|<L3>|<L4>|<L5>" — pipes between conversions.
+
+  Compute lowercase hex SHA-1 of the chain (UTF-8). Emit ONLY the
+  40-character digest. No prose, no markdown.
 
   Failure modes:
-    - ignoring DST entirely (would yield 11:30 if treating NY as
-      UTC-5 vs Berlin UTC+1 = 6 hour gap, then adding 6 hours of
-      flight → 04:30 Berlin → wrong),
-    - applying Berlin DST too early,
-    - off-by-one on the date (March 14 vs 13).
+    - using `T` lowercase (`2027-03-10t19:30`),
+    - including timezone label (`...+05:30` or `Z`),
+    - including seconds (`:00`),
+    - failing year rollover on Q3,
+    - emitting the chain string instead of the digest.
 
 fixture_ref:
 
@@ -46,13 +45,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_arrival_time
+  - name: tz_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "2027-03-14 10:30"
+          expected: "03962f91305cb9a69da90f6e5052daec9f0cad98"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "2027-"
+            - "2028-"
+            - "|"
+            - "step"
+            - "UTC"
 
   - name: privacy_check
     kind: privacy_check
@@ -60,23 +66,25 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 1000, max_tokens: 3000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 20000, max_ms: 45000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `2027-03-14 10:30` exactly."
+  - "Final message is lowercase 40-char sha1 of the 5-conversion chain."
+  - "Each local time formatted as `YYYY-MM-DDTHH:MM`."
+  - "Q3 year rollover handled correctly."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
@@ -89,9 +97,10 @@ tags:
   - L0
   - reasoning-trap
   - timezone
-  - dst
-  - frontier
-  - deterministic
+  - date-arithmetic
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive

@@ -1,39 +1,40 @@
 id: L0_709
 layer: L0
 suite: reasoning-trap
-title: "Base-rate / Bayes probability trap (false-positive)"
+title: "5 Bayesian posterior chain with sha1 fingerprint"
 description: |
-  A diagnostic test is 99% accurate (in the sense that the
-  sensitivity = 99% AND the specificity = 99%). The disease has a
-  base rate of 1 in 10,000 in the population. A randomly chosen
-  person tests POSITIVE. What is the probability they actually
-  have the disease?
+  Solve all 5 Bayesian inference problems. Each gives:
+    - prior P(D) — base rate of the condition
+    - sens — sensitivity = P(+ | D)
+    - fp   — false-positive rate = P(+ | ¬D)
 
-  Build the 2×2 table per 1,000,000 people:
-    - Diseased: 1,000,000 × 1/10,000 = 100.
-    - Not diseased: 999,900.
-    - True positives (diseased AND positive): 100 × 0.99 = 99.
-    - False positives (not-diseased AND positive): 999,900 × 0.01
-      = 9,999.
-    - Total positives: 99 + 9,999 = 10,098.
-    - P(disease | positive) = 99 / 10,098 ≈ 0.0098.
+  For each, compute posterior:
+      P(D | +) = sens · P(D) / (sens · P(D) + fp · (1 − P(D)))
 
-  As a percentage rounded to TWO decimal places: `0.98`.
+  Round each posterior to EXACTLY 4 decimal places using banker's
+  rounding NOT — use Python's default `round()` (banker's), but for
+  these inputs the difference is irrelevant. Equivalent: format with
+  Python `f"{x:.4f}"`. Result string for each problem is the
+  zero-prefixed decimal (e.g. `0.1667`, NOT `.1667` and NOT `0.1667000`).
 
-  The user prompt:
+  Problems (prior, sens, fp):
+    Q1: 0.01,  0.99, 0.05
+    Q2: 0.02,  0.95, 0.10
+    Q3: 0.05,  0.90, 0.20
+    Q4: 0.001, 0.99, 0.01
+    Q5: 0.10,  0.80, 0.30
 
-    "What percentage chance does this person actually have the
-     disease, given that they tested positive? Output ONLY a
-     decimal percentage rounded to TWO decimal places, no `%` sign,
-     no prose. (e.g. `42.50` for 42.5%.)"
+  Chain = "<P1>|<P2>|<P3>|<P4>|<P5>" — pipes between problems.
 
-  Expected: `0.98`.
+  Compute lowercase hex SHA-1 of the chain (UTF-8). Emit ONLY the
+  40-character digest. No prose, no markdown.
 
-  Common wrong answers:
-    - `99` (confused test accuracy with posterior),
-    - `99.00` (same trap),
-    - `0.01` (forgot to multiply by 100),
-    - `1.00` (off-by-rounding).
+  Failure modes:
+    - dropping the leading zero (writing `.1667` instead of `0.1667`),
+    - emitting 3 or 5 decimals instead of 4 (`0.167` or `0.16667`),
+    - confusing sensitivity (P(+|D)) with specificity (P(−|¬D)),
+    - using 1−fp inside the denominator (mis-applying Bayes),
+    - emitting the chain instead of the digest.
 
 fixture_ref:
 
@@ -44,13 +45,20 @@ config:
   requires: {skills: [], mcps: [], vault_state: {}}
 
 scorer_chain:
-  - name: exact_percentage
+  - name: bayes_chain_sha1
     kind: deterministic
     config:
       assertions:
         - kind: final_assistant_message_equals
-          expected: "0.98"
+          expected: "8c975f1fc459c1e3290c36245a99f23ec86fe81d"
           trim_whitespace: true
+        - kind: final_assistant_message_does_not_contain
+          forbidden:
+            - "0.1667"
+            - "|"
+            - "posterior"
+            - "Bayes"
+            - "step"
 
   - name: privacy_check
     kind: privacy_check
@@ -58,24 +66,24 @@ scorer_chain:
 
   - name: tool_skill
     kind: deterministic
-    config: {max_tool_calls: 0, pass_threshold: 1.0}
+    config: {max_tool_calls: 8, pass_threshold: 0.8}
 
   - name: context_efficiency
     kind: deterministic
-    config: {target_tokens: 800, max_tokens: 3000, pass_threshold: 0.6}
+    config: {target_tokens: 2000, max_tokens: 6000, pass_threshold: 0.6}
 
   - name: latency_cost
     kind: deterministic
-    config: {target_ms: 15000, max_ms: 45000, pass_threshold: 0.6}
+    config: {target_ms: 18000, max_ms: 60000, pass_threshold: 0.6}
 
 acceptance_criteria:
-  - "Final assistant message equals `0.98` exactly."
-  - "No `%` sign, no prose."
+  - "Final message is lowercase 40-char sha1 of the 5-posterior chain."
+  - "Each posterior to 4 decimals with leading zero."
   - "Privacy scan produces zero hits."
 
 weights:
-  correctness: 0.85
-  tool_skill: 0.05
+  correctness: 0.80
+  tool_skill: 0.10
   context_efficiency: 0.05
   latency_cost: 0.05
   memory_specific: 0.00
@@ -88,10 +96,10 @@ tags:
   - L0
   - reasoning-trap
   - bayes
-  - base-rate
   - probability
-  - frontier
-  - deterministic
+  - multi-step
+  - sha1-fingerprint
+  - hard
   - reasoning-sensitive
   - byte-exact-output
   - output-normalization-sensitive
